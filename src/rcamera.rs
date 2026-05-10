@@ -179,10 +179,10 @@ pub fn get_camera_projection_matrix(camera: &Camera, aspect: f32) -> Matrix {
     const CAMERA_CULL_DISTANCE_FAR: f32 = 1000.0; // Should match RL_CULL_DISTANCE_FAR
 
     if camera.projection == CameraProjection::Perspective as i32 {
-        Mat4::perspective_rh(camera.fovy * DEG2RAD, aspect, CAMERA_CULL_DISTANCE_NEAR, CAMERA_CULL_DISTANCE_FAR)
+        Mat4::perspective_rh_gl(camera.fovy * DEG2RAD, aspect, CAMERA_CULL_DISTANCE_NEAR, CAMERA_CULL_DISTANCE_FAR)
     } else {
         let top = camera.fovy as f32 / 2.0;
         let right = top * aspect;
-        Mat4::orthographic_rh(-right, right, -top, top, CAMERA_CULL_DISTANCE_NEAR, CAMERA_CULL_DISTANCE_FAR)
+        Mat4::orthographic_rh_gl(-right, right, -top, top, CAMERA_CULL_DISTANCE_NEAR, CAMERA_CULL_DISTANCE_FAR)
     }
 }

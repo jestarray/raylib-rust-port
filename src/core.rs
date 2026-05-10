@@ -73,7 +73,7 @@ pub fn init_window(width: i32, height: i32, title: &str) {
                 std::ptr::null()
             }
         });
-        crate::rlgl::rlgl_init(width, height);
+        crate::rlgl::rlglInit(width, height);
         crate::rtext::load_font_default();
     }
 }
@@ -143,6 +143,28 @@ pub fn window_should_close() -> bool {
     }
 }
 
+pub const DEFAULT_VSHADER: &str = "#version 330
+    in vec3 vertexPosition;
+    in vec2 vertexTexCoord;
+    in vec4 vertexColor;
+    out vec2 fragTexCoord;
+    out vec4 fragColor;
+    uniform mat4 mvp;
+    void main() {
+        fragTexCoord = vertexTexCoord;
+        fragColor = vertexColor;
+        gl_Position = mvp * vec4(vertexPosition, 1.0);
+    }";
+
+pub const DEFAULT_FSHADER: &str = "#version 330
+    in vec2 fragTexCoord;
+    in vec4 fragColor;
+    out vec4 finalColor;
+    uniform sampler2D texture0;
+    void main() {
+        finalColor = fragColor * texture(texture0, fragTexCoord);
+    }";
+
 fn map_sdl_key(k: sdl3::keyboard::Keycode) -> i32 {
     use sdl3::keyboard::Keycode::*;
     match k {
@@ -169,13 +191,18 @@ pub fn close_window() {
 
 pub fn begin_drawing() {
     unsafe {
-        crate::rlgl::rl_load_identity();
+        crate::rlgl::rlMatrixMode(crate::rlgl::RL_PROJECTION);
+        crate::rlgl::rlLoadIdentity();
+        crate::rlgl::rlOrtho(0.0, crate::rlgl::RLGL.State.framebufferWidth as f64, crate::rlgl::RLGL.State.framebufferHeight as f64, 0.0, -1.0, 1.0);
+        
+        crate::rlgl::rlMatrixMode(crate::rlgl::RL_MODELVIEW);
+        crate::rlgl::rlLoadIdentity();
     }
 }
 
 pub fn end_drawing() {
     unsafe {
-        crate::rlgl::rl_draw_render_batch_active();
+        crate::rlgl::rlDrawRenderBatchActive();
         if let Some(window) = &CORE.window {
             window.gl_swap_window();
         }
@@ -218,17 +245,73 @@ pub fn get_mouse_wheel_move() -> f32 {
 }
 
 pub fn begin_mode_2d(camera: crate::types::Camera2D) {
-    crate::rlgl::rl_draw_render_batch_active();
-    crate::rlgl::rl_load_identity();
-    crate::rlgl::rl_translatef(camera.offset.x, camera.offset.y, 0.0);
-    crate::rlgl::rl_rotatef(camera.rotation, 0.0, 0.0, 1.0);
-    crate::rlgl::rl_scalef(camera.zoom, camera.zoom, 1.0);
-    crate::rlgl::rl_translatef(-camera.target.x, -camera.target.y, 0.0);
+    unsafe {
+        crate::rlgl::rlDrawRenderBatchActive();
+
+        crate::rlgl::rlMatrixMode(crate::rlgl::RL_PROJECTION);
+        crate::rlgl::rlPushMatrix();
+        crate::rlgl::rlLoadIdentity();
+
+        crate::rlgl::rlOrtho(0.0, crate::rlgl::RLGL.State.framebufferWidth as f64, crate::rlgl::RLGL.State.framebufferHeight as f64, 0.0, -1.0, 1.0);
+
+        crate::rlgl::rlMatrixMode(crate::rlgl::RL_MODELVIEW);
+        crate::rlgl::rlPushMatrix();
+        crate::rlgl::rlLoadIdentity();
+
+        crate::rlgl::rlTranslatef(camera.offset.x, camera.offset.y, 0.0);
+        crate::rlgl::rlRotatef(camera.rotation, 0.0, 0.0, 1.0);
+        crate::rlgl::rlScalef(camera.zoom, camera.zoom, 1.0);
+        crate::rlgl::rlTranslatef(-camera.target.x, -camera.target.y, 0.0);
+    }
 }
 
 pub fn end_mode_2d() {
-    crate::rlgl::rl_draw_render_batch_active();
-    crate::rlgl::rl_load_identity();
+    unsafe {
+        crate::rlgl::rlDrawRenderBatchActive();
+
+        crate::rlgl::rlMatrixMode(crate::rlgl::RL_MODELVIEW);
+        crate::rlgl::rlPopMatrix();
+
+        crate::rlgl::rlMatrixMode(crate::rlgl::RL_PROJECTION);
+        crate::rlgl::rlPopMatrix();
+    }
+}
+
+pub fn begin_mode_3d(camera: crate::types::Camera) {
+    unsafe {
+        crate::rlgl::rlDrawRenderBatchActive();
+        
+        crate::rlgl::rlMatrixMode(crate::rlgl::RL_PROJECTION);
+        crate::rlgl::rlPushMatrix();
+        crate::rlgl::rlLoadIdentity();
+        
+        let aspect = crate::rlgl::RLGL.State.framebufferWidth as f32 / crate::rlgl::RLGL.State.framebufferHeight as f32;
+        let proj = crate::rcamera::get_camera_projection_matrix(&camera, aspect);
+        crate::rlgl::rlMultMatrixf(proj.to_cols_array().as_ptr());
+        
+        crate::rlgl::rlMatrixMode(crate::rlgl::RL_MODELVIEW);
+        crate::rlgl::rlPushMatrix();
+        crate::rlgl::rlLoadIdentity();
+        
+        let view = crate::rcamera::get_camera_view_matrix(&camera);
+        crate::rlgl::rlMultMatrixf(view.to_cols_array().as_ptr());
+        
+        crate::rlgl::rlEnableDepthTest();
+    }
+}
+
+pub fn end_mode_3d() {
+    unsafe {
+        crate::rlgl::rlDrawRenderBatchActive();
+        
+        crate::rlgl::rlMatrixMode(crate::rlgl::RL_MODELVIEW);
+        crate::rlgl::rlPopMatrix();
+        
+        crate::rlgl::rlMatrixMode(crate::rlgl::RL_PROJECTION);
+        crate::rlgl::rlPopMatrix();
+        
+        crate::rlgl::rlDisableDepthTest();
+    }
 }
 
 pub const KEY_RIGHT: i32 = 262;

@@ -67,26 +67,30 @@ pub fn load_texture(file_name: &str) -> Texture {
 }
 
 pub fn load_texture_from_image(image: &Image) -> Texture {
-    let id = rlgl::rl_load_texture(
-        image.data,
-        image.width,
-        image.height,
-        image.format,
-        image.mipmaps,
-    );
+    unsafe {
+        let id = rlgl::rlLoadTexture(
+            image.data,
+            image.width,
+            image.height,
+            image.format,
+            image.mipmaps,
+        );
 
-    Texture {
-        id,
-        width: image.width,
-        height: image.height,
-        mipmaps: image.mipmaps,
-        format: image.format,
+        Texture {
+            id,
+            width: image.width,
+            height: image.height,
+            mipmaps: image.mipmaps,
+            format: image.format,
+        }
     }
 }
 
 pub fn unload_texture(texture: &mut Texture) {
-    rlgl::rl_unload_texture(texture.id);
-    texture.id = 0;
+    unsafe {
+        rlgl::rlUnloadTexture(texture.id);
+        texture.id = 0;
+    }
 }
 
 pub fn draw_texture(texture: &Texture, pos_x: i32, pos_y: i32, tint: Color) {
@@ -172,39 +176,39 @@ pub fn draw_texture_pro(
     }
 
     unsafe {
-        rlgl::rl_set_texture(texture.id);
-        rlgl::rl_begin(RL_QUADS);
-        rlgl::rl_color4ub(tint.r, tint.g, tint.b, tint.a);
+        rlgl::rlSetTexture(texture.id);
+        rlgl::rlBegin(RL_QUADS);
+        rlgl::rlColor4ub(tint.r, tint.g, tint.b, tint.a);
 
         // Bottom-left corner
-        rlgl::rl_tex_coord2f(
+        rlgl::rlTexCoord2f(
             if flip_x { (src.x + src.width) / width } else { src.x / width },
             if flip_y { src.y / height } else { (src.y + src.height) / height },
         );
-        rlgl::rl_vertex2f(bottom_left.x, bottom_left.y);
+        rlgl::rlVertex2f(bottom_left.x, bottom_left.y);
 
         // Bottom-right corner
-        rlgl::rl_tex_coord2f(
+        rlgl::rlTexCoord2f(
             if flip_x { src.x / width } else { (src.x + src.width) / width },
             if flip_y { src.y / height } else { (src.y + src.height) / height },
         );
-        rlgl::rl_vertex2f(bottom_right.x, bottom_right.y);
+        rlgl::rlVertex2f(bottom_right.x, bottom_right.y);
 
         // Top-right corner
-        rlgl::rl_tex_coord2f(
+        rlgl::rlTexCoord2f(
             if flip_x { src.x / width } else { (src.x + src.width) / width },
             if flip_y { (src.y + src.height) / height } else { src.y / height },
         );
-        rlgl::rl_vertex2f(top_right.x, top_right.y);
+        rlgl::rlVertex2f(top_right.x, top_right.y);
 
         // Top-left corner
-        rlgl::rl_tex_coord2f(
+        rlgl::rlTexCoord2f(
             if flip_x { (src.x + src.width) / width } else { src.x / width },
             if flip_y { (src.y + src.height) / height } else { src.y / height },
         );
-        rlgl::rl_vertex2f(top_left.x, top_left.y);
+        rlgl::rlVertex2f(top_left.x, top_left.y);
 
-        rlgl::rl_end();
+        rlgl::rlEnd();
     }
 }
 
@@ -277,121 +281,121 @@ pub fn draw_texture_n_patch(
         let coord_d = Vector2::new((source.x + source.width) / width, (source.y + source.height) / height);
 
         unsafe {
-            rlgl::rl_set_texture(texture.id);
-            rlgl::rl_push_matrix();
-            rlgl::rl_translatef(dest.x, dest.y, 0.0);
-            rlgl::rl_rotatef(rotation, 0.0, 0.0, 1.0);
-            rlgl::rl_translatef(-origin.x, -origin.y, 0.0);
+            rlgl::rlSetTexture(texture.id);
+            rlgl::rlPushMatrix();
+            rlgl::rlTranslatef(dest.x, dest.y, 0.0);
+            rlgl::rlRotatef(rotation, 0.0, 0.0, 1.0);
+            rlgl::rlTranslatef(-origin.x, -origin.y, 0.0);
 
-            rlgl::rl_begin(rlgl::RL_QUADS);
-            rlgl::rl_color4ub(tint.r, tint.g, tint.b, tint.a);
+            rlgl::rlBegin(rlgl::RL_QUADS);
+            rlgl::rlColor4ub(tint.r, tint.g, tint.b, tint.a);
 
             if n_patch_info.layout == crate::types::NPatchLayout::NinePatch as i32 {
                 // TOP-LEFT QUAD
-                rlgl::rl_tex_coord2f(coord_a.x, coord_b.y); rlgl::rl_vertex2f(vert_a.x, vert_b.y);
-                rlgl::rl_tex_coord2f(coord_b.x, coord_b.y); rlgl::rl_vertex2f(vert_b.x, vert_b.y);
-                rlgl::rl_tex_coord2f(coord_b.x, coord_a.y); rlgl::rl_vertex2f(vert_b.x, vert_a.y);
-                rlgl::rl_tex_coord2f(coord_a.x, coord_a.y); rlgl::rl_vertex2f(vert_a.x, vert_a.y);
+                rlgl::rlTexCoord2f(coord_a.x, coord_b.y); rlgl::rlVertex2f(vert_a.x, vert_b.y);
+                rlgl::rlTexCoord2f(coord_b.x, coord_b.y); rlgl::rlVertex2f(vert_b.x, vert_b.y);
+                rlgl::rlTexCoord2f(coord_b.x, coord_a.y); rlgl::rlVertex2f(vert_b.x, vert_a.y);
+                rlgl::rlTexCoord2f(coord_a.x, coord_a.y); rlgl::rlVertex2f(vert_a.x, vert_a.y);
 
                 if draw_center {
                     // TOP-CENTER QUAD
-                    rlgl::rl_tex_coord2f(coord_b.x, coord_b.y); rlgl::rl_vertex2f(vert_b.x, vert_b.y);
-                    rlgl::rl_tex_coord2f(coord_c.x, coord_b.y); rlgl::rl_vertex2f(vert_c.x, vert_b.y);
-                    rlgl::rl_tex_coord2f(coord_c.x, coord_a.y); rlgl::rl_vertex2f(vert_c.x, vert_a.y);
-                    rlgl::rl_tex_coord2f(coord_b.x, coord_a.y); rlgl::rl_vertex2f(vert_b.x, vert_a.y);
+                    rlgl::rlTexCoord2f(coord_b.x, coord_b.y); rlgl::rlVertex2f(vert_b.x, vert_b.y);
+                    rlgl::rlTexCoord2f(coord_c.x, coord_b.y); rlgl::rlVertex2f(vert_c.x, vert_b.y);
+                    rlgl::rlTexCoord2f(coord_c.x, coord_a.y); rlgl::rlVertex2f(vert_c.x, vert_a.y);
+                    rlgl::rlTexCoord2f(coord_b.x, coord_a.y); rlgl::rlVertex2f(vert_b.x, vert_a.y);
                 }
 
                 // TOP-RIGHT QUAD
-                rlgl::rl_tex_coord2f(coord_c.x, coord_b.y); rlgl::rl_vertex2f(vert_c.x, vert_b.y);
-                rlgl::rl_tex_coord2f(coord_d.x, coord_b.y); rlgl::rl_vertex2f(vert_d.x, vert_b.y);
-                rlgl::rl_tex_coord2f(coord_d.x, coord_a.y); rlgl::rl_vertex2f(vert_d.x, vert_a.y);
-                rlgl::rl_tex_coord2f(coord_c.x, coord_a.y); rlgl::rl_vertex2f(vert_c.x, vert_a.y);
+                rlgl::rlTexCoord2f(coord_c.x, coord_b.y); rlgl::rlVertex2f(vert_c.x, vert_b.y);
+                rlgl::rlTexCoord2f(coord_d.x, coord_b.y); rlgl::rlVertex2f(vert_d.x, vert_b.y);
+                rlgl::rlTexCoord2f(coord_d.x, coord_a.y); rlgl::rlVertex2f(vert_d.x, vert_a.y);
+                rlgl::rlTexCoord2f(coord_c.x, coord_a.y); rlgl::rlVertex2f(vert_c.x, vert_a.y);
 
                 if draw_middle {
                     // MIDDLE-LEFT QUAD
-                    rlgl::rl_tex_coord2f(coord_a.x, coord_c.y); rlgl::rl_vertex2f(vert_a.x, vert_c.y);
-                    rlgl::rl_tex_coord2f(coord_b.x, coord_c.y); rlgl::rl_vertex2f(vert_b.x, vert_c.y);
-                    rlgl::rl_tex_coord2f(coord_b.x, coord_b.y); rlgl::rl_vertex2f(vert_b.x, vert_b.y);
-                    rlgl::rl_tex_coord2f(coord_a.x, coord_b.y); rlgl::rl_vertex2f(vert_a.x, vert_b.y);
+                    rlgl::rlTexCoord2f(coord_a.x, coord_c.y); rlgl::rlVertex2f(vert_a.x, vert_c.y);
+                    rlgl::rlTexCoord2f(coord_b.x, coord_c.y); rlgl::rlVertex2f(vert_b.x, vert_c.y);
+                    rlgl::rlTexCoord2f(coord_b.x, coord_b.y); rlgl::rlVertex2f(vert_b.x, vert_b.y);
+                    rlgl::rlTexCoord2f(coord_a.x, coord_b.y); rlgl::rlVertex2f(vert_a.x, vert_b.y);
 
                     if draw_center {
                         // MIDDLE-CENTER QUAD
-                        rlgl::rl_tex_coord2f(coord_b.x, coord_c.y); rlgl::rl_vertex2f(vert_b.x, vert_c.y);
-                        rlgl::rl_tex_coord2f(coord_c.x, coord_c.y); rlgl::rl_vertex2f(vert_c.x, vert_c.y);
-                        rlgl::rl_tex_coord2f(coord_c.x, coord_b.y); rlgl::rl_vertex2f(vert_c.x, vert_b.y);
-                        rlgl::rl_tex_coord2f(coord_b.x, coord_b.y); rlgl::rl_vertex2f(vert_b.x, vert_b.y);
+                        rlgl::rlTexCoord2f(coord_b.x, coord_c.y); rlgl::rlVertex2f(vert_b.x, vert_c.y);
+                        rlgl::rlTexCoord2f(coord_c.x, coord_c.y); rlgl::rlVertex2f(vert_c.x, vert_c.y);
+                        rlgl::rlTexCoord2f(coord_c.x, coord_b.y); rlgl::rlVertex2f(vert_c.x, vert_b.y);
+                        rlgl::rlTexCoord2f(coord_b.x, coord_b.y); rlgl::rlVertex2f(vert_b.x, vert_b.y);
                     }
 
                     // MIDDLE-RIGHT QUAD
-                    rlgl::rl_tex_coord2f(coord_c.x, coord_c.y); rlgl::rl_vertex2f(vert_c.x, vert_c.y);
-                    rlgl::rl_tex_coord2f(coord_d.x, coord_c.y); rlgl::rl_vertex2f(vert_d.x, vert_c.y);
-                    rlgl::rl_tex_coord2f(coord_d.x, coord_b.y); rlgl::rl_vertex2f(vert_d.x, vert_b.y);
-                    rlgl::rl_tex_coord2f(coord_c.x, coord_b.y); rlgl::rl_vertex2f(vert_c.x, vert_b.y);
+                    rlgl::rlTexCoord2f(coord_c.x, coord_c.y); rlgl::rlVertex2f(vert_c.x, vert_c.y);
+                    rlgl::rlTexCoord2f(coord_d.x, coord_c.y); rlgl::rlVertex2f(vert_d.x, vert_c.y);
+                    rlgl::rlTexCoord2f(coord_d.x, coord_b.y); rlgl::rlVertex2f(vert_d.x, vert_b.y);
+                    rlgl::rlTexCoord2f(coord_c.x, coord_b.y); rlgl::rlVertex2f(vert_c.x, vert_b.y);
                 }
 
                 // BOTTOM-LEFT QUAD
-                rlgl::rl_tex_coord2f(coord_a.x, coord_d.y); rlgl::rl_vertex2f(vert_a.x, vert_d.y);
-                rlgl::rl_tex_coord2f(coord_b.x, coord_d.y); rlgl::rl_vertex2f(vert_b.x, vert_d.y);
-                rlgl::rl_tex_coord2f(coord_b.x, coord_c.y); rlgl::rl_vertex2f(vert_b.x, vert_c.y);
-                rlgl::rl_tex_coord2f(coord_a.x, coord_c.y); rlgl::rl_vertex2f(vert_a.x, vert_c.y);
+                rlgl::rlTexCoord2f(coord_a.x, coord_d.y); rlgl::rlVertex2f(vert_a.x, vert_d.y);
+                rlgl::rlTexCoord2f(coord_b.x, coord_d.y); rlgl::rlVertex2f(vert_b.x, vert_d.y);
+                rlgl::rlTexCoord2f(coord_b.x, coord_c.y); rlgl::rlVertex2f(vert_b.x, vert_c.y);
+                rlgl::rlTexCoord2f(coord_a.x, coord_c.y); rlgl::rlVertex2f(vert_a.x, vert_c.y);
 
                 if draw_center {
                     // BOTTOM-CENTER QUAD
-                    rlgl::rl_tex_coord2f(coord_b.x, coord_d.y); rlgl::rl_vertex2f(vert_b.x, vert_d.y);
-                    rlgl::rl_tex_coord2f(coord_c.x, coord_d.y); rlgl::rl_vertex2f(vert_c.x, vert_d.y);
-                    rlgl::rl_tex_coord2f(coord_c.x, coord_c.y); rlgl::rl_vertex2f(vert_c.x, vert_c.y);
-                    rlgl::rl_tex_coord2f(coord_b.x, coord_c.y); rlgl::rl_vertex2f(vert_b.x, vert_c.y);
+                    rlgl::rlTexCoord2f(coord_b.x, coord_d.y); rlgl::rlVertex2f(vert_b.x, vert_d.y);
+                    rlgl::rlTexCoord2f(coord_c.x, coord_d.y); rlgl::rlVertex2f(vert_c.x, vert_d.y);
+                    rlgl::rlTexCoord2f(coord_c.x, coord_c.y); rlgl::rlVertex2f(vert_c.x, vert_c.y);
+                    rlgl::rlTexCoord2f(coord_b.x, coord_c.y); rlgl::rlVertex2f(vert_b.x, vert_c.y);
                 }
 
                 // BOTTOM-RIGHT QUAD
-                rlgl::rl_tex_coord2f(coord_c.x, coord_d.y); rlgl::rl_vertex2f(vert_c.x, vert_d.y);
-                rlgl::rl_tex_coord2f(coord_d.x, coord_d.y); rlgl::rl_vertex2f(vert_d.x, vert_d.y);
-                rlgl::rl_tex_coord2f(coord_d.x, coord_c.y); rlgl::rl_vertex2f(vert_d.x, vert_c.y);
-                rlgl::rl_tex_coord2f(coord_c.x, coord_c.y); rlgl::rl_vertex2f(vert_c.x, vert_c.y);
+                rlgl::rlTexCoord2f(coord_c.x, coord_d.y); rlgl::rlVertex2f(vert_c.x, vert_d.y);
+                rlgl::rlTexCoord2f(coord_d.x, coord_d.y); rlgl::rlVertex2f(vert_d.x, vert_d.y);
+                rlgl::rlTexCoord2f(coord_d.x, coord_c.y); rlgl::rlVertex2f(vert_d.x, vert_c.y);
+                rlgl::rlTexCoord2f(coord_c.x, coord_c.y); rlgl::rlVertex2f(vert_c.x, vert_c.y);
             } else if n_patch_info.layout == crate::types::NPatchLayout::ThreePatchVertical as i32 {
                 // TOP QUAD
-                rlgl::rl_tex_coord2f(coord_a.x, coord_b.y); rlgl::rl_vertex2f(vert_a.x, vert_b.y);
-                rlgl::rl_tex_coord2f(coord_d.x, coord_b.y); rlgl::rl_vertex2f(vert_d.x, vert_b.y);
-                rlgl::rl_tex_coord2f(coord_d.x, coord_a.y); rlgl::rl_vertex2f(vert_d.x, vert_a.y);
-                rlgl::rl_tex_coord2f(coord_a.x, coord_a.y); rlgl::rl_vertex2f(vert_a.x, vert_a.y);
+                rlgl::rlTexCoord2f(coord_a.x, coord_b.y); rlgl::rlVertex2f(vert_a.x, vert_b.y);
+                rlgl::rlTexCoord2f(coord_d.x, coord_b.y); rlgl::rlVertex2f(vert_d.x, vert_b.y);
+                rlgl::rlTexCoord2f(coord_d.x, coord_a.y); rlgl::rlVertex2f(vert_d.x, vert_a.y);
+                rlgl::rlTexCoord2f(coord_a.x, coord_a.y); rlgl::rlVertex2f(vert_a.x, vert_a.y);
 
                 if draw_center {
                     // MIDDLE QUAD
-                    rlgl::rl_tex_coord2f(coord_a.x, coord_c.y); rlgl::rl_vertex2f(vert_a.x, vert_c.y);
-                    rlgl::rl_tex_coord2f(coord_d.x, coord_c.y); rlgl::rl_vertex2f(vert_d.x, vert_c.y);
-                    rlgl::rl_tex_coord2f(coord_d.x, coord_b.y); rlgl::rl_vertex2f(vert_d.x, vert_b.y);
-                    rlgl::rl_tex_coord2f(coord_a.x, coord_b.y); rlgl::rl_vertex2f(vert_a.x, vert_b.y);
+                    rlgl::rlTexCoord2f(coord_a.x, coord_c.y); rlgl::rlVertex2f(vert_a.x, vert_c.y);
+                    rlgl::rlTexCoord2f(coord_d.x, coord_c.y); rlgl::rlVertex2f(vert_d.x, vert_c.y);
+                    rlgl::rlTexCoord2f(coord_d.x, coord_b.y); rlgl::rlVertex2f(vert_d.x, vert_b.y);
+                    rlgl::rlTexCoord2f(coord_a.x, coord_b.y); rlgl::rlVertex2f(vert_a.x, vert_b.y);
                 }
 
                 // BOTTOM QUAD
-                rlgl::rl_tex_coord2f(coord_a.x, coord_d.y); rlgl::rl_vertex2f(vert_a.x, vert_d.y);
-                rlgl::rl_tex_coord2f(coord_d.x, coord_d.y); rlgl::rl_vertex2f(vert_d.x, vert_d.y);
-                rlgl::rl_tex_coord2f(coord_d.x, coord_c.y); rlgl::rl_vertex2f(vert_d.x, vert_c.y);
-                rlgl::rl_tex_coord2f(coord_a.x, coord_c.y); rlgl::rl_vertex2f(vert_a.x, vert_c.y);
+                rlgl::rlTexCoord2f(coord_a.x, coord_d.y); rlgl::rlVertex2f(vert_a.x, vert_d.y);
+                rlgl::rlTexCoord2f(coord_d.x, coord_d.y); rlgl::rlVertex2f(vert_d.x, vert_d.y);
+                rlgl::rlTexCoord2f(coord_d.x, coord_c.y); rlgl::rlVertex2f(vert_d.x, vert_c.y);
+                rlgl::rlTexCoord2f(coord_a.x, coord_c.y); rlgl::rlVertex2f(vert_a.x, vert_c.y);
             } else if n_patch_info.layout == crate::types::NPatchLayout::ThreePatchHorizontal as i32 {
                 // LEFT QUAD
-                rlgl::rl_tex_coord2f(coord_a.x, coord_d.y); rlgl::rl_vertex2f(vert_a.x, vert_d.y);
-                rlgl::rl_tex_coord2f(coord_b.x, coord_d.y); rlgl::rl_vertex2f(vert_b.x, vert_d.y);
-                rlgl::rl_tex_coord2f(coord_b.x, coord_a.y); rlgl::rl_vertex2f(vert_b.x, vert_a.y);
-                rlgl::rl_tex_coord2f(coord_a.x, coord_a.y); rlgl::rl_vertex2f(vert_a.x, vert_a.y);
+                rlgl::rlTexCoord2f(coord_a.x, coord_d.y); rlgl::rlVertex2f(vert_a.x, vert_d.y);
+                rlgl::rlTexCoord2f(coord_b.x, coord_d.y); rlgl::rlVertex2f(vert_b.x, vert_d.y);
+                rlgl::rlTexCoord2f(coord_b.x, coord_a.y); rlgl::rlVertex2f(vert_b.x, vert_a.y);
+                rlgl::rlTexCoord2f(coord_a.x, coord_a.y); rlgl::rlVertex2f(vert_a.x, vert_a.y);
 
                 if draw_center {
                     // CENTER QUAD
-                    rlgl::rl_tex_coord2f(coord_b.x, coord_d.y); rlgl::rl_vertex2f(vert_b.x, vert_d.y);
-                    rlgl::rl_tex_coord2f(coord_c.x, coord_d.y); rlgl::rl_vertex2f(vert_c.x, vert_d.y);
-                    rlgl::rl_tex_coord2f(coord_c.x, coord_a.y); rlgl::rl_vertex2f(vert_c.x, vert_a.y);
-                    rlgl::rl_tex_coord2f(coord_b.x, coord_a.y); rlgl::rl_vertex2f(vert_b.x, vert_a.y);
+                    rlgl::rlTexCoord2f(coord_b.x, coord_d.y); rlgl::rlVertex2f(vert_b.x, vert_d.y);
+                    rlgl::rlTexCoord2f(coord_c.x, coord_d.y); rlgl::rlVertex2f(vert_c.x, vert_d.y);
+                    rlgl::rlTexCoord2f(coord_c.x, coord_a.y); rlgl::rlVertex2f(vert_c.x, vert_a.y);
+                    rlgl::rlTexCoord2f(coord_b.x, coord_a.y); rlgl::rlVertex2f(vert_b.x, vert_a.y);
                 }
 
                 // RIGHT QUAD
-                rlgl::rl_tex_coord2f(coord_c.x, coord_d.y); rlgl::rl_vertex2f(vert_c.x, vert_d.y);
-                rlgl::rl_tex_coord2f(coord_d.x, coord_d.y); rlgl::rl_vertex2f(vert_d.x, vert_d.y);
-                rlgl::rl_tex_coord2f(coord_d.x, coord_a.y); rlgl::rl_vertex2f(vert_d.x, vert_a.y);
-                rlgl::rl_tex_coord2f(coord_c.x, coord_a.y); rlgl::rl_vertex2f(vert_c.x, vert_a.y);
+                rlgl::rlTexCoord2f(coord_c.x, coord_d.y); rlgl::rlVertex2f(vert_c.x, vert_d.y);
+                rlgl::rlTexCoord2f(coord_d.x, coord_d.y); rlgl::rlVertex2f(vert_d.x, vert_d.y);
+                rlgl::rlTexCoord2f(coord_d.x, coord_a.y); rlgl::rlVertex2f(vert_d.x, vert_a.y);
+                rlgl::rlTexCoord2f(coord_c.x, coord_a.y); rlgl::rlVertex2f(vert_c.x, vert_a.y);
             }
 
-            rlgl::rl_end();
-            rlgl::rl_pop_matrix();
+            rlgl::rlEnd();
+            rlgl::rlPopMatrix();
         }
     }
 }

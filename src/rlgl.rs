@@ -1,13 +1,36 @@
-use crate::types::{Matrix, Color};
+use crate::types::{Matrix, Color, Vector2, Rectangle};
 use glam::{Mat4, Vec3};
 use gl;
 
-// Constants
+// --- Constants ---
+
 pub const RL_DEFAULT_BATCH_BUFFER_ELEMENTS: i32 = 8192;
 pub const RL_DEFAULT_BATCH_BUFFERS: i32 = 1;
 pub const RL_DEFAULT_BATCH_DRAWCALLS: i32 = 256;
 pub const RL_DEFAULT_BATCH_MAX_TEXTURE_UNITS: i32 = 4;
 pub const RL_MAX_MATRIX_STACK_SIZE: usize = 32;
+pub const RL_MAX_SHADER_LOCATIONS: usize = 32;
+pub const RL_CULL_DISTANCE_NEAR: f64 = 0.05;
+pub const RL_CULL_DISTANCE_FAR: f64 = 4000.0;
+
+pub const RL_TEXTURE_WRAP_S: u32 = 0x2802;
+pub const RL_TEXTURE_WRAP_T: u32 = 0x2803;
+pub const RL_TEXTURE_MAG_FILTER: u32 = 0x2800;
+pub const RL_TEXTURE_MIN_FILTER: u32 = 0x2801;
+
+pub const RL_TEXTURE_FILTER_NEAREST: u32 = 0x2600;
+pub const RL_TEXTURE_FILTER_LINEAR: u32 = 0x2601;
+pub const RL_TEXTURE_FILTER_MIP_NEAREST: u32 = 0x2700;
+pub const RL_TEXTURE_FILTER_NEAREST_MIP_LINEAR: u32 = 0x2702;
+pub const RL_TEXTURE_FILTER_LINEAR_MIP_NEAREST: u32 = 0x2701;
+pub const RL_TEXTURE_FILTER_MIP_LINEAR: u32 = 0x2703;
+pub const RL_TEXTURE_FILTER_ANISOTROPIC: u32 = 0x3000;
+pub const RL_TEXTURE_MIPMAP_BIAS_RATIO: u32 = 0x4000;
+
+pub const RL_TEXTURE_WRAP_REPEAT: u32 = 0x2901;
+pub const RL_TEXTURE_WRAP_CLAMP: u32 = 0x812F;
+pub const RL_TEXTURE_WRAP_MIRROR_REPEAT: u32 = 0x8370;
+pub const RL_TEXTURE_WRAP_MIRROR_CLAMP: u32 = 0x8742;
 
 pub const RL_MODELVIEW: i32 = 0x1700;
 pub const RL_PROJECTION: i32 = 0x1701;
@@ -17,91 +40,309 @@ pub const RL_LINES: i32 = 0x0001;
 pub const RL_TRIANGLES: i32 = 0x0004;
 pub const RL_QUADS: i32 = 0x0007;
 
-#[derive(Debug)]
-pub struct VertexBuffer {
-    pub element_count: i32,
-    pub vertices: Vec<f32>,
-    pub texcoords: Vec<f32>,
-    pub normals: Vec<f32>,
-    pub colors: Vec<u8>,
-    pub indices: Vec<u32>,
-    pub vao_id: u32,
-    pub vbo_id: [u32; 5],
+pub const RL_UNSIGNED_BYTE: u32 = 0x1401;
+pub const RL_FLOAT: u32 = 0x1406;
+
+pub const RL_STREAM_DRAW: u32 = 0x88E0;
+pub const RL_STREAM_READ: u32 = 0x88E1;
+pub const RL_STREAM_COPY: u32 = 0x88E2;
+pub const RL_STATIC_DRAW: u32 = 0x88E4;
+pub const RL_STATIC_READ: u32 = 0x88E5;
+pub const RL_STATIC_COPY: u32 = 0x88E6;
+pub const RL_DYNAMIC_DRAW: u32 = 0x88E8;
+pub const RL_DYNAMIC_READ: u32 = 0x88E9;
+pub const RL_DYNAMIC_COPY: u32 = 0x88EA;
+
+pub const RL_FRAGMENT_SHADER: u32 = 0x8B30;
+pub const RL_VERTEX_SHADER: u32 = 0x8B31;
+pub const RL_COMPUTE_SHADER: u32 = 0x91B9;
+
+pub const RL_ZERO: i32 = 0;
+pub const RL_ONE: i32 = 1;
+pub const RL_SRC_COLOR: i32 = 0x0300;
+pub const RL_ONE_MINUS_SRC_COLOR: i32 = 0x0301;
+pub const RL_SRC_ALPHA: i32 = 0x0302;
+pub const RL_ONE_MINUS_SRC_ALPHA: i32 = 0x0303;
+pub const RL_DST_ALPHA: i32 = 0x0304;
+pub const RL_ONE_MINUS_DST_ALPHA: i32 = 0x0305;
+pub const RL_DST_COLOR: i32 = 0x0306;
+pub const RL_ONE_MINUS_DST_COLOR: i32 = 0x0307;
+pub const RL_SRC_ALPHA_SATURATE: i32 = 0x0308;
+pub const RL_CONSTANT_COLOR: i32 = 0x8001;
+pub const RL_ONE_MINUS_CONSTANT_COLOR: i32 = 0x8002;
+pub const RL_CONSTANT_ALPHA: i32 = 0x8003;
+pub const RL_ONE_MINUS_CONSTANT_ALPHA: i32 = 0x8004;
+
+pub const RL_FUNC_ADD: i32 = 0x8006;
+pub const RL_MIN: i32 = 0x8007;
+pub const RL_MAX: i32 = 0x8008;
+pub const RL_FUNC_SUBTRACT: i32 = 0x800A;
+pub const RL_FUNC_REVERSE_SUBTRACT: i32 = 0x800B;
+pub const RL_BLEND_EQUATION: i32 = 0x8009;
+pub const RL_BLEND_EQUATION_RGB: i32 = 0x8009;
+pub const RL_BLEND_EQUATION_ALPHA: i32 = 0x883D;
+pub const RL_BLEND_DST_RGB: i32 = 0x80C8;
+pub const RL_BLEND_SRC_RGB: i32 = 0x80C9;
+pub const RL_BLEND_DST_ALPHA: i32 = 0x80CA;
+pub const RL_BLEND_SRC_ALPHA: i32 = 0x80CB;
+pub const RL_BLEND_COLOR: i32 = 0x8005;
+
+pub const RL_READ_FRAMEBUFFER: u32 = 0x8CA8;
+pub const RL_DRAW_FRAMEBUFFER: u32 = 0x8CA9;
+
+pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION: u32 = 0;
+pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD: u32 = 1;
+pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_NORMAL: u32 = 2;
+pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_COLOR: u32 = 3;
+pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_TANGENT: u32 = 4;
+pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD2: u32 = 5;
+pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_INDICES: u32 = 6;
+pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_BONEINDICES: u32 = 7;
+pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_BONEWEIGHTS: u32 = 8;
+pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_INSTANCETRANSFORM: u32 = 9;
+
+pub const RL_CULL_FACE_FRONT: i32 = 0;
+pub const RL_CULL_FACE_BACK: i32 = 1;
+
+pub const RL_FRONT: u32 = 0x0404;
+pub const RL_BACK: u32 = 0x0405;
+pub const RL_FRONT_AND_BACK: u32 = 0x0408;
+
+// --- Enums ---
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PixelFormat {
+    UncompressedGrayscale = 1,
+    UncompressedGrayAlpha,
+    UncompressedR5G6B5,
+    UncompressedR8G8B8,
+    UncompressedR5G5B5A1,
+    UncompressedR4G4B4A4,
+    UncompressedR8G8B8A8,
+    UncompressedR32,
+    UncompressedR32G32B32,
+    UncompressedR32G32B32A32,
+    UncompressedR16,
+    UncompressedR16G16B16,
+    UncompressedR16G16B16A16,
+    CompressedDxt1Rgb,
+    CompressedDxt1Rgba,
+    CompressedDxt3Rgba,
+    CompressedDxt5Rgba,
+    CompressedEtc1Rgb,
+    CompressedEtc2Rgb,
+    CompressedEtc2EacRgba,
+    CompressedPvrtRgb,
+    CompressedPvrtRgba,
+    CompressedAstc4x4Rgba,
+    CompressedAstc8x8Rgba,
 }
 
-impl VertexBuffer {
-    pub fn new(elements: i32) -> Self {
-        Self {
-            element_count: elements,
-            vertices: Vec::with_capacity((elements * 3 * 4) as usize),
-            texcoords: Vec::with_capacity((elements * 2 * 4) as usize),
-            normals: Vec::with_capacity((elements * 3 * 4) as usize),
-            colors: Vec::with_capacity((elements * 4 * 4) as usize),
-            indices: Vec::with_capacity((elements * 6) as usize),
-            vao_id: 0,
-            vbo_id: [0; 5],
-        }
-    }
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FramebufferAttachment {
+    ColorChannel0 = 0,
+    ColorChannel1,
+    ColorChannel2,
+    ColorChannel3,
+    ColorChannel4,
+    ColorChannel5,
+    ColorChannel6,
+    ColorChannel7,
+    Depth = 100,
+    Stencil = 200,
 }
 
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FramebufferAttachTexture {
+    CubemapPositiveX = 0,
+    CubemapNegativeX,
+    CubemapPositiveY,
+    CubemapNegativeY,
+    CubemapPositiveZ,
+    CubemapNegativeZ,
+    Texture2d = 100,
+    Renderbuffer = 200,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextureFilter {
+    Point = 0,
+    Bilinear,
+    Trilinear,
+    Anisotropic4x,
+    Anisotropic8x,
+    Anisotropic16x,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlendMode {
+    Alpha = 0,
+    Additive,
+    Multiplied,
+    AddColors,
+    SubtractColors,
+    AlphaPremultiply,
+    Custom,
+    CustomSeparate,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShaderLocationIndex {
+    VertexPosition = 0,
+    VertexTexcoord01,
+    VertexTexcoord02,
+    VertexNormal,
+    VertexTangent,
+    VertexColor,
+    MatrixMvp,
+    MatrixView,
+    MatrixProjection,
+    MatrixModel,
+    MatrixNormal,
+    VectorView,
+    ColorDiffuse,
+    ColorSpecular,
+    ColorAmbient,
+    MapAlbedo,
+    MapMetalness,
+    MapNormal,
+    MapRoughness,
+    MapOcclusion,
+    MapEmission,
+    MapHeight,
+    MapCubemap,
+    MapIrradiance,
+    MapPrefilter,
+    MapBrdf,
+}
+
+pub const RL_SHADER_LOC_MAP_DIFFUSE: i32 = ShaderLocationIndex::MapAlbedo as i32;
+pub const RL_SHADER_LOC_MAP_SPECULAR: i32 = ShaderLocationIndex::MapMetalness as i32;
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShaderUniformDataType {
+    Float = 0,
+    Vec2,
+    Vec3,
+    Vec4,
+    Int,
+    Ivec2,
+    Ivec3,
+    Ivec4,
+    Uint,
+    Uivec2,
+    Uivec3,
+    Uivec4,
+    Sampler2d,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShaderAttributeDataType {
+    Float = 0,
+    Vec2,
+    Vec3,
+    Vec4,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FramebufferAttachType {
+    ColorChannel0 = 0,
+    ColorChannel1 = 1,
+    ColorChannel2 = 2,
+    ColorChannel3 = 3,
+    ColorChannel4 = 4,
+    ColorChannel5 = 5,
+    ColorChannel6 = 6,
+    ColorChannel7 = 7,
+    Depth = 100,
+    Stencil = 200,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FramebufferAttachTextureType {
+    CubemapPositiveX = 0,
+    CubemapNegativeX = 1,
+    CubemapPositiveY = 2,
+    CubemapNegativeY = 3,
+    CubemapPositiveZ = 4,
+    CubemapNegativeZ = 5,
+    Texture2d = 100,
+    Renderbuffer = 200,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CullMode {
+    Front = 0,
+    Back,
+}
+
+// --- Types ---
+
 #[derive(Debug)]
-pub struct DrawCall {
+pub struct rlVertexBuffer {
+    pub elementCount: i32,
+    pub vertices: *mut f32,
+    pub texcoords: *mut f32,
+    pub normals: *mut f32,
+    pub colors: *mut u8,
+    pub indices: *mut u32,
+    pub vaoId: u32,
+    pub vboId: [u32; 5],
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct rlDrawCall {
     pub mode: i32,
-    pub vertex_count: i32,
-    pub vertex_alignment: i32,
-    pub texture_id: u32,
+    pub vertexCount: i32,
+    pub vertexAlignment: i32,
+    pub textureId: u32,
 }
 
 #[derive(Debug)]
-pub struct RenderBatch {
-    pub buffer_count: i32,
-    pub current_buffer: i32,
-    pub vertex_buffer: Vec<VertexBuffer>,
-    pub draws: Vec<DrawCall>,
-    pub draw_counter: i32,
-    pub current_depth: f32,
+pub struct rlRenderBatch {
+    pub bufferCount: i32,
+    pub currentBuffer: i32,
+    pub vertexBuffer: *mut rlVertexBuffer,
+    pub draws: *mut rlDrawCall,
+    pub drawCounter: i32,
+    pub currentDepth: f32,
 }
 
-impl RenderBatch {
-    pub fn new(num_buffers: i32, elements: i32) -> Self {
-        let mut vertex_buffer = Vec::new();
-        for _ in 0..num_buffers {
-            vertex_buffer.push(VertexBuffer::new(elements));
-        }
-
-        Self {
-            buffer_count: num_buffers,
-            current_buffer: 0,
-            vertex_buffer,
-            draws: Vec::with_capacity(RL_DEFAULT_BATCH_DRAWCALLS as usize),
-            draw_counter: 0,
-            current_depth: -1.0,
-        }
-    }
+#[derive(Debug)]
+pub struct ExtSupported {
+    pub vao: bool,
+    pub instancing: bool,
+    pub texNPOT: bool,
+    pub texDepth: bool,
+    pub texDepthWebGL: bool,
+    pub texFloat32: bool,
+    pub texFloat16: bool,
+    pub texCompDXT: bool,
+    pub texCompETC1: bool,
+    pub texCompETC2: bool,
+    pub texCompPVRT: bool,
+    pub texCompASTC: bool,
+    pub texMirrorClamp: bool,
+    pub texAnisoFilter: bool,
+    pub computeShader: bool,
+    pub ssbo: bool,
+    pub maxAnisotropyLevel: f32,
+    pub maxDepthBits: i32,
 }
 
-pub struct State {
-    pub vertex_counter: i32,
-    pub tc_counter: i32,
-    pub color_counter: i32,
-    pub normal_counter: i32,
-    
-    pub current_matrix: i32,
-    pub modelview: Matrix,
-    pub projection: Matrix,
-    pub transform: Matrix,
-    pub transform_required: bool,
-    pub stack: [Matrix; RL_MAX_MATRIX_STACK_SIZE],
-    pub stack_counter: usize,
-
-    pub default_texture_id: u32,
-    pub active_texture_id: u32,
-    pub default_vbo_id: u32,
-    pub default_shader_id: u32,
-    
-    pub default_batch: Option<RenderBatch>,
-    pub current_batch: Option<*mut RenderBatch>,
-
+pub struct rlglState {
+    pub vertexCounter: i32,
     pub texcoordx: f32,
     pub texcoordy: f32,
     pub normalx: f32,
@@ -111,660 +352,923 @@ pub struct State {
     pub colorg: u8,
     pub colorb: u8,
     pub colora: u8,
-}
 
-pub static mut RLGL: State = State {
-    vertex_counter: 0,
-    tc_counter: 0,
-    color_counter: 0,
-    normal_counter: 0,
+    pub currentMatrixMode: i32,
+    pub modelview: Matrix,
+    pub projection: Matrix,
+    pub transform: Matrix,
+    pub transformRequired: bool,
+    pub stack: [Matrix; RL_MAX_MATRIX_STACK_SIZE],
+    pub stackCounter: i32,
+
+    pub defaultTextureId: u32,
+    pub activeTextureId: [u32; RL_DEFAULT_BATCH_MAX_TEXTURE_UNITS as usize],
+    pub defaultShaderId: u32,
+    pub defaultShaderLocs: [i32; RL_MAX_SHADER_LOCATIONS],
+    pub currentShaderId: u32,
+    pub currentShaderLocs: [i32; RL_MAX_SHADER_LOCATIONS],
+
+    pub framebufferWidth: i32,
+    pub framebufferHeight: i32,
     
-    current_matrix: RL_MODELVIEW,
-    modelview: Matrix::IDENTITY,
-    projection: Matrix::IDENTITY,
-    transform: Matrix::IDENTITY,
-    transform_required: false,
-    stack: [Matrix::IDENTITY; RL_MAX_MATRIX_STACK_SIZE],
-    stack_counter: 0,
+    pub currentBlendMode: i32,
+    pub glBlendSrcFactor: i32,
+    pub glBlendDstFactor: i32,
+    pub glBlendEquation: i32,
+    pub currentTextureId: u32,
+}
 
-    default_texture_id: 0,
-    active_texture_id: 0,
-    default_vbo_id: 0,
-    default_shader_id: 0,
+pub struct rlglData {
+    pub currentBatch: *mut rlRenderBatch,
+    pub defaultBatch: rlRenderBatch,
+    pub State: rlglState,
+    pub ExtSupported: ExtSupported,
+}
+
+pub static mut RLGL: rlglData = unsafe { std::mem::zeroed() };
+
+// Statics
+static mut IS_GPU_READY: bool = false;
+
+// --- Functions ---
+
+pub unsafe fn rlglInit(width: i32, height: i32) {
+    if IS_GPU_READY { return; }
     
-    default_batch: None,
-    current_batch: None,
+    // Initialize state
+    RLGL.State.currentMatrixMode = RL_PROJECTION;
+    RLGL.State.projection = Mat4::orthographic_rh_gl(0.0, width as f32, height as f32, 0.0, -1.0, 1.0);
+    
+    RLGL.State.currentMatrixMode = RL_MODELVIEW;
+    RLGL.State.modelview = Matrix::IDENTITY;
+    RLGL.State.transform = Matrix::IDENTITY;
+    RLGL.State.colorr = 255;
+    RLGL.State.colorg = 255;
+    RLGL.State.colorb = 255;
+    RLGL.State.colora = 255;
 
-    texcoordx: 0.0,
-    texcoordy: 0.0,
-    normalx: 0.0,
-    normaly: 0.0,
-    normalz: 0.0,
-    colorr: 255,
-    colorg: 255,
-    colorb: 255,
-    colora: 255,
-};
+    // Detect extensions
+    rlLoadExtensions();
 
-const DEFAULT_VSHADER: &str = "#version 330
-in vec3 vertexPosition;
-in vec2 vertexTexCoord;
-in vec4 vertexColor;
-out vec2 fragTexCoord;
-out vec4 fragColor;
-uniform mat4 mvp;
-void main() {
-    fragTexCoord = vertexTexCoord;
-    fragColor = vertexColor;
-    gl_Position = mvp * vec4(vertexPosition, 1.0);
-}\0";
+    // Load default shader
+    rlLoadShaderDefault();
+    
+    // Load default texture
+    let pixels: [u8; 4] = [255, 255, 255, 255];
+    RLGL.State.defaultTextureId = rlLoadTexture(pixels.as_ptr() as *const _, 1, 1, PixelFormat::UncompressedR8G8B8A8 as i32, 1);
+    RLGL.State.activeTextureId[0] = RLGL.State.defaultTextureId;
 
-const DEFAULT_FSHADER: &str = "#version 330
-in vec2 fragTexCoord;
-in vec4 fragColor;
-out vec4 finalColor;
-uniform sampler2D texture0;
-uniform vec4 colDiffuse;
-void main() {
-    vec4 texelColor = texture(texture0, fragTexCoord);
-    finalColor = texelColor * colDiffuse * fragColor;
-}\0";
+    // Load default batch
+    RLGL.defaultBatch = rlLoadRenderBatch(RL_DEFAULT_BATCH_BUFFERS, RL_DEFAULT_BATCH_BUFFER_ELEMENTS);
+    RLGL.currentBatch = &mut RLGL.defaultBatch;
 
-pub fn rlgl_init(width: i32, height: i32) {
-    unsafe {
-        // Initialize default batch
-        RLGL.default_batch = Some(RenderBatch::new(RL_DEFAULT_BATCH_BUFFERS, RL_DEFAULT_BATCH_BUFFER_ELEMENTS));
-        RLGL.current_batch = Some(RLGL.default_batch.as_mut().unwrap() as *mut RenderBatch);
+    RLGL.State.framebufferWidth = width;
+    RLGL.State.framebufferHeight = height;
 
-        // Load default shader
-        RLGL.default_shader_id = load_shader(DEFAULT_VSHADER, DEFAULT_FSHADER);
+    IS_GPU_READY = true;
+}
+
+pub unsafe fn rlglClose() {
+    rlUnloadRenderBatch(&mut RLGL.defaultBatch);
+    rlUnloadShaderDefault();
+    rlUnloadTexture(RLGL.State.defaultTextureId);
+    IS_GPU_READY = false;
+}
+
+pub unsafe fn rlLoadExtensions() {
+    // In Rust, we rely on the `gl` crate which usually loads everything via `load_with`.
+    // We assume the caller (core.rs) has already loaded the functions.
+    
+    // For Desktop OpenGL 3.3 Core, most extensions are core features.
+    RLGL.ExtSupported.vao = true;
+    RLGL.ExtSupported.instancing = true;
+    RLGL.ExtSupported.texNPOT = true;
+    RLGL.ExtSupported.texDepth = true;
+    RLGL.ExtSupported.texFloat32 = true;
+    RLGL.ExtSupported.texFloat16 = true;
+    RLGL.ExtSupported.maxDepthBits = 32;
+    RLGL.ExtSupported.texAnisoFilter = true;
+    RLGL.ExtSupported.texMirrorClamp = true;
+
+    #[cfg(feature = "gles2")]
+    {
+        // On GLES2, we would check extensions here using glGetString(GL_EXTENSIONS)
+        // This is a simplified port.
+    }
+}
+
+// Matrix operations
+pub unsafe fn rlMatrixMode(mode: i32) {
+    if RLGL.State.currentMatrixMode != mode {
+        rlDrawRenderBatchActive();
+        RLGL.State.currentMatrixMode = mode;
+    }
+}
+
+pub unsafe fn rlPushMatrix() {
+    if RLGL.State.stackCounter >= RL_MAX_MATRIX_STACK_SIZE as i32 { return; }
+    
+    let mat = match RLGL.State.currentMatrixMode {
+        RL_MODELVIEW => {
+            RLGL.State.transformRequired = true;
+            RLGL.State.modelview
+        }
+        RL_PROJECTION => RLGL.State.projection,
+        _ => Matrix::IDENTITY,
+    };
+    
+    RLGL.State.stack[RLGL.State.stackCounter as usize] = mat;
+    RLGL.State.stackCounter += 1;
+    
+    if RLGL.State.currentMatrixMode == RL_MODELVIEW {
+        RLGL.State.transform = mat;
+    }
+}
+
+pub unsafe fn rlPopMatrix() {
+    if RLGL.State.stackCounter > 0 {
+        RLGL.State.stackCounter -= 1;
+        let mat = RLGL.State.stack[RLGL.State.stackCounter as usize];
         
-        // Initialize default texture (1x1 white pixel)
-        let pixels: [u8; 4] = [255, 255, 255, 255];
-        RLGL.default_texture_id = rl_load_texture(pixels.as_ptr() as *const _, 1, 1, 7, 1);
-        RLGL.active_texture_id = RLGL.default_texture_id;
-
-        // Set up default projection
-        rl_viewport(0, 0, width, height);
-        rl_matrix_mode(RL_PROJECTION);
-        rl_load_identity();
-        rl_ortho(0.0, width as f64, height as f64, 0.0, -1.0, 1.0);
-        rl_matrix_mode(RL_MODELVIEW);
-        rl_load_identity();
-        
-        gl::Disable(gl::CULL_FACE);
-        gl::Disable(gl::DEPTH_TEST);
-        
-        // Create VAO/VBOs for the batch
-        if let Some(batch) = &mut RLGL.default_batch {
-            for buffer in &mut batch.vertex_buffer {
-                gl::GenVertexArrays(1, &mut buffer.vao_id);
-                gl::BindVertexArray(buffer.vao_id);
-                
-                gl::GenBuffers(5, buffer.vbo_id.as_mut_ptr());
-                
-                // Position
-                gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vbo_id[0]);
-                gl::BufferData(gl::ARRAY_BUFFER, (buffer.element_count * 4 * 3 * 4) as isize, std::ptr::null(), gl::DYNAMIC_DRAW);
-                gl::EnableVertexAttribArray(0);
-                gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE as gl::types::GLboolean, 0, std::ptr::null());
-                
-                // TexCoord
-                gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vbo_id[1]);
-                gl::BufferData(gl::ARRAY_BUFFER, (buffer.element_count * 4 * 2 * 4) as isize, std::ptr::null(), gl::DYNAMIC_DRAW);
-                gl::EnableVertexAttribArray(1);
-                gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE as gl::types::GLboolean, 0, std::ptr::null());
-                
-                // Color
-                gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vbo_id[3]);
-                gl::BufferData(gl::ARRAY_BUFFER, (buffer.element_count * 4 * 4) as isize, std::ptr::null(), gl::DYNAMIC_DRAW);
-                gl::EnableVertexAttribArray(2);
-                gl::VertexAttribPointer(2, 4, gl::UNSIGNED_BYTE, gl::TRUE as gl::types::GLboolean, 0, std::ptr::null());
-                
-                gl::BindVertexArray(0);
+        match RLGL.State.currentMatrixMode {
+            RL_MODELVIEW => {
+                RLGL.State.transform = mat;
             }
+            RL_PROJECTION => RLGL.State.projection = mat,
+            _ => {}
+        }
+
+        if RLGL.State.stackCounter == 0 {
+            RLGL.State.transformRequired = false;
         }
     }
 }
 
-fn load_shader(vs_source: &str, fs_source: &str) -> u32 {
-    unsafe {
-        let vs = gl::CreateShader(gl::VERTEX_SHADER);
-        let vs_ptr = vs_source.as_ptr() as *const i8;
-        gl::ShaderSource(vs, 1, &vs_ptr, std::ptr::null());
-        gl::CompileShader(vs);
-        
-        let mut success: i32 = 0;
-        gl::GetShaderiv(vs, gl::COMPILE_STATUS, &mut success);
-        if success == 0 {
-            let mut info_log = [0u8; 512];
-            gl::GetShaderInfoLog(vs, 512, std::ptr::null_mut(), info_log.as_mut_ptr() as *mut i8);
-            println!("Vertex Shader Error: {}", std::str::from_utf8(&info_log).unwrap_or("Unknown"));
+pub unsafe fn rlLoadIdentity() {
+    if !RLGL.State.transformRequired || RLGL.State.currentMatrixMode == RL_PROJECTION {
+        rlDrawRenderBatchActive();
+    }
+    match RLGL.State.currentMatrixMode {
+        RL_MODELVIEW => {
+            if RLGL.State.transformRequired { RLGL.State.transform = Matrix::IDENTITY; }
+            else { RLGL.State.modelview = Matrix::IDENTITY; }
         }
-        
-        let fs = gl::CreateShader(gl::FRAGMENT_SHADER);
-        let fs_ptr = fs_source.as_ptr() as *const i8;
-        gl::ShaderSource(fs, 1, &fs_ptr, std::ptr::null());
-        gl::CompileShader(fs);
-        
-        gl::GetShaderiv(fs, gl::COMPILE_STATUS, &mut success);
-        if success == 0 {
-            let mut info_log = [0u8; 512];
-            gl::GetShaderInfoLog(fs, 512, std::ptr::null_mut(), info_log.as_mut_ptr() as *mut i8);
-            println!("Fragment Shader Error: {}", std::str::from_utf8(&info_log).unwrap_or("Unknown"));
-        }
-        
-        let program = gl::CreateProgram();
-        gl::AttachShader(program, vs);
-        gl::AttachShader(program, fs);
-        
-        gl::BindAttribLocation(program, 0, "vertexPosition\0".as_ptr() as *const i8);
-        gl::BindAttribLocation(program, 1, "vertexTexCoord\0".as_ptr() as *const i8);
-        gl::BindAttribLocation(program, 2, "vertexColor\0".as_ptr() as *const i8);
-        
-        gl::LinkProgram(program);
-        
-        gl::GetProgramiv(program, gl::LINK_STATUS, &mut success);
-        if success == 0 {
-            let mut info_log = [0u8; 512];
-            gl::GetProgramInfoLog(program, 512, std::ptr::null_mut(), info_log.as_mut_ptr() as *mut i8);
-            println!("Shader Link Error: {}", std::str::from_utf8(&info_log).unwrap_or("Unknown"));
-        }
-        
-        program
+        RL_PROJECTION => RLGL.State.projection = Matrix::IDENTITY,
+        _ => {}
     }
 }
 
-pub fn rl_viewport(x: i32, y: i32, width: i32, height: i32) {
-    unsafe {
-        gl::Viewport(x, y, width, height);
+pub unsafe fn rlTranslatef(x: f32, y: f32, z: f32) {
+    if !RLGL.State.transformRequired || RLGL.State.currentMatrixMode == RL_PROJECTION {
+        rlDrawRenderBatchActive();
     }
-}
-
-pub fn rl_ortho(left: f64, right: f64, bottom: f64, top: f64, znear: f64, zfar: f64) {
-    unsafe {
-        let mat = Mat4::orthographic_rh(left as f32, right as f32, bottom as f32, top as f32, znear as f32, zfar as f32);
-        if RLGL.current_matrix == RL_PROJECTION {
-            RLGL.projection = RLGL.projection * mat;
-        } else {
-            RLGL.modelview = RLGL.modelview * mat;
+    let mat = Mat4::from_translation(Vec3::new(x, y, z));
+    match RLGL.State.currentMatrixMode {
+        RL_MODELVIEW => {
+            if RLGL.State.transformRequired { RLGL.State.transform = RLGL.State.transform * mat; }
+            else { RLGL.State.modelview = RLGL.State.modelview * mat; }
         }
+        RL_PROJECTION => RLGL.State.projection = RLGL.State.projection * mat,
+        _ => {}
     }
 }
 
-/// Choose the current matrix to be transformed
-pub fn rl_matrix_mode(mode: i32) {
-    unsafe {
-        if mode == RL_MODELVIEW || mode == RL_PROJECTION || mode == RL_TEXTURE {
-            RLGL.current_matrix = mode;
+pub unsafe fn rlRotatef(angle: f32, x: f32, y: f32, z: f32) {
+    if !RLGL.State.transformRequired || RLGL.State.currentMatrixMode == RL_PROJECTION {
+        rlDrawRenderBatchActive();
+    }
+    let axis = Vec3::new(x, y, z).normalize_or_zero();
+    let mat = Mat4::from_axis_angle(axis, angle * crate::math::DEG2RAD);
+    match RLGL.State.currentMatrixMode {
+        RL_MODELVIEW => {
+            if RLGL.State.transformRequired { RLGL.State.transform = RLGL.State.transform * mat; }
+            else { RLGL.State.modelview = RLGL.State.modelview * mat; }
         }
+        RL_PROJECTION => RLGL.State.projection = RLGL.State.projection * mat,
+        _ => {}
     }
 }
 
-/// Push the current matrix to stack
-pub fn rl_push_matrix() {
-    unsafe {
-        if RLGL.stack_counter < RL_MAX_MATRIX_STACK_SIZE {
-            let mat = if RLGL.current_matrix == RL_MODELVIEW {
-                RLGL.modelview
-            } else {
-                RLGL.projection // texture matrix not supported
-            };
-            RLGL.stack[RLGL.stack_counter] = mat;
-            RLGL.stack_counter += 1;
+pub unsafe fn rlScalef(x: f32, y: f32, z: f32) {
+    if !RLGL.State.transformRequired || RLGL.State.currentMatrixMode == RL_PROJECTION {
+        rlDrawRenderBatchActive();
+    }
+    let mat = Mat4::from_scale(Vec3::new(x, y, z));
+    match RLGL.State.currentMatrixMode {
+        RL_MODELVIEW => {
+            if RLGL.State.transformRequired { RLGL.State.transform = RLGL.State.transform * mat; }
+            else { RLGL.State.modelview = RLGL.State.modelview * mat; }
         }
+        RL_PROJECTION => RLGL.State.projection = RLGL.State.projection * mat,
+        _ => {}
     }
 }
 
-/// Pop latest inserted matrix from stack
-pub fn rl_pop_matrix() {
-    unsafe {
-        if RLGL.stack_counter > 0 {
-            RLGL.stack_counter -= 1;
-            let mat = RLGL.stack[RLGL.stack_counter];
-            if RLGL.current_matrix == RL_MODELVIEW {
-                RLGL.modelview = mat;
-            } else {
-                RLGL.projection = mat;
-            }
+pub unsafe fn rlMultMatrixf(matf: *const f32) {
+    if !RLGL.State.transformRequired || RLGL.State.currentMatrixMode == RL_PROJECTION {
+        rlDrawRenderBatchActive();
+    }
+    let slice = std::slice::from_raw_parts(matf, 16);
+    let mat = Matrix::from_cols_array(slice.try_into().unwrap());
+    match RLGL.State.currentMatrixMode {
+        RL_MODELVIEW => {
+            if RLGL.State.transformRequired { RLGL.State.transform = RLGL.State.transform * mat; }
+            else { RLGL.State.modelview = RLGL.State.modelview * mat; }
         }
+        RL_PROJECTION => RLGL.State.projection = RLGL.State.projection * mat,
+        _ => {}
     }
 }
 
-/// Reset current matrix to identity matrix
-pub fn rl_load_identity() {
-    unsafe {
-        if RLGL.current_matrix == RL_MODELVIEW {
-            RLGL.modelview = Matrix::IDENTITY;
-        } else {
-            RLGL.projection = Matrix::IDENTITY;
+pub unsafe fn rlOrtho(left: f64, right: f64, bottom: f64, top: f64, znear: f64, zfar: f64) {
+    if !RLGL.State.transformRequired || RLGL.State.currentMatrixMode == RL_PROJECTION {
+        rlDrawRenderBatchActive();
+    }
+    let mat = Mat4::orthographic_rh_gl(left as f32, right as f32, bottom as f32, top as f32, znear as f32, zfar as f32);
+    match RLGL.State.currentMatrixMode {
+        RL_MODELVIEW => {
+            if RLGL.State.transformRequired { RLGL.State.transform = RLGL.State.transform * mat; }
+            else { RLGL.State.modelview = RLGL.State.modelview * mat; }
         }
+        RL_PROJECTION => RLGL.State.projection = RLGL.State.projection * mat,
+        _ => {}
     }
 }
 
-/// Multiply the current matrix by a translation matrix
-pub fn rl_translatef(x: f32, y: f32, z: f32) {
-    unsafe {
-        let mat = Mat4::from_translation(Vec3::new(x, y, z));
-        if RLGL.current_matrix == RL_MODELVIEW {
-            RLGL.modelview = RLGL.modelview * mat;
-        } else {
-            RLGL.projection = RLGL.projection * mat;
-        }
-    }
+pub unsafe fn rlViewport(x: i32, y: i32, width: i32, height: i32) {
+    gl::Viewport(x, y, width, height);
 }
 
-/// Multiply the current matrix by a rotation matrix
-pub fn rl_rotatef(angle: f32, x: f32, y: f32, z: f32) {
-    unsafe {
-        let axis = Vec3::new(x, y, z).normalize();
-        let mat = Mat4::from_axis_angle(axis, angle * crate::math::DEG2RAD);
-        if RLGL.current_matrix == RL_MODELVIEW {
-            RLGL.modelview = RLGL.modelview * mat;
-        } else {
-            RLGL.projection = RLGL.projection * mat;
-        }
-    }
-}
+// Vertex level operations
+pub unsafe fn rlBegin(mode: i32) {
+    let batch = &mut *RLGL.currentBatch;
+    let last_draw_idx = (batch.drawCounter - 1) as usize;
+    
+    if batch.draws.add(last_draw_idx).read().mode != mode {
+        if batch.draws.add(last_draw_idx).read().vertexCount > 0 {
+            let mut last_draw = batch.draws.add(last_draw_idx).read();
+            if last_draw.mode == RL_LINES { last_draw.vertexAlignment = last_draw.vertexCount % 2; }
+            else if last_draw.mode == RL_TRIANGLES { last_draw.vertexAlignment = (3 - (last_draw.vertexCount % 3)) % 3; }
+            else { last_draw.vertexAlignment = 0; }
 
-/// Multiply the current matrix by a scaling matrix
-pub fn rl_scalef(x: f32, y: f32, z: f32) {
-    unsafe {
-        let mat = Mat4::from_scale(Vec3::new(x, y, z));
-        if RLGL.current_matrix == RL_MODELVIEW {
-            RLGL.modelview = RLGL.modelview * mat;
-        } else {
-            RLGL.projection = RLGL.projection * mat;
-        }
-    }
-}
-
-/// Multiply the current matrix by another matrix
-pub fn rl_mult_matrixf(matf: Matrix) {
-    unsafe {
-        if RLGL.current_matrix == RL_MODELVIEW {
-            RLGL.modelview = RLGL.modelview * matf;
-        } else {
-            RLGL.projection = RLGL.projection * matf;
-        }
-    }
-}
-
-pub fn rl_begin(mode: i32) {
-    unsafe {
-        if let Some(batch_ptr) = RLGL.current_batch {
-            let batch = &mut *batch_ptr;
-            if batch.draw_counter > 0 && batch.draws[(batch.draw_counter - 1) as usize].mode != mode {
-                if batch.draws[(batch.draw_counter - 1) as usize].vertex_count > 0 {
-                    let last_draw = &mut batch.draws[(batch.draw_counter - 1) as usize];
-                    if last_draw.mode == RL_LINES {
-                        last_draw.vertex_alignment = if last_draw.vertex_count < 4 { last_draw.vertex_count } else { last_draw.vertex_count % 4 };
-                    } else if last_draw.mode == RL_TRIANGLES {
-                        last_draw.vertex_alignment = if last_draw.vertex_count < 4 { 1 } else { 4 - (last_draw.vertex_count % 4) };
-                    } else {
-                        last_draw.vertex_alignment = 0;
-                    }
-
-                    if !rl_check_render_batch_limit(last_draw.vertex_alignment) {
-                        RLGL.vertex_counter += last_draw.vertex_alignment;
-                    }
-                    
-                    if batch.draw_counter >= RL_DEFAULT_BATCH_DRAWCALLS {
-                        rl_draw_render_batch(batch_ptr);
-                    }
-                    
-                    batch.draws.push(DrawCall {
-                        mode,
-                        vertex_count: 0,
-                        vertex_alignment: 0,
-                        texture_id: RLGL.active_texture_id,
-                    });
-                    batch.draw_counter += 1;
-                } else {
-                    // If last draw call has no vertices, just change its mode
-                    batch.draws[(batch.draw_counter - 1) as usize].mode = mode;
-                    batch.draws[(batch.draw_counter - 1) as usize].texture_id = RLGL.active_texture_id;
+            if !rlCheckRenderBatchLimit(last_draw.vertexAlignment) {
+                RLGL.State.vertexCounter += last_draw.vertexAlignment;
+                batch.draws.add(last_draw_idx).write(last_draw);
+                
+                if batch.drawCounter >= RL_DEFAULT_BATCH_DRAWCALLS {
+                    rlDrawRenderBatch(RLGL.currentBatch);
                 }
-            } else if batch.draw_counter == 0 {
-                batch.draws.push(DrawCall {
+                
+                batch.draws.add(batch.drawCounter as usize).write(rlDrawCall {
                     mode,
-                    vertex_count: 0,
-                    vertex_alignment: 0,
-                    texture_id: RLGL.active_texture_id,
+                    vertexCount: 0,
+                    vertexAlignment: 0,
+                    textureId: RLGL.State.activeTextureId[0],
                 });
-                batch.draw_counter += 1;
+                batch.drawCounter += 1;
             }
+        } else {
+            (*batch.draws.add(last_draw_idx)).mode = mode;
+            (*batch.draws.add(last_draw_idx)).textureId = RLGL.State.activeTextureId[0];
         }
     }
 }
 
-pub fn rl_end() {
-    unsafe {
-        if let Some(batch_ptr) = RLGL.current_batch {
-            let batch = &mut *batch_ptr;
-            batch.current_depth += 1.0 / 20000.0;
+pub unsafe fn rlEnd() {
+    let batch = &mut *RLGL.currentBatch;
+    batch.currentDepth += 1.0/20000.0;
+}
+
+pub unsafe fn rlVertex3f(x: f32, y: f32, z: f32) {
+    let mut tx = x;
+    let mut ty = y;
+    let mut tz = z;
+
+    if RLGL.State.transformRequired {
+        let v = RLGL.State.transform.transform_point3(Vec3::new(x, y, z));
+        tx = v.x; ty = v.y; tz = v.z;
+    }
+
+    let batch = &mut *RLGL.currentBatch;
+    let buffer = &mut *batch.vertexBuffer.add(batch.currentBuffer as usize);
+    
+    if RLGL.State.vertexCounter >= buffer.elementCount * 4 {
+        rlCheckRenderBatchLimit(4);
+    }
+
+    let vc = RLGL.State.vertexCounter as usize;
+    buffer.vertices.add(vc * 3).write(tx);
+    buffer.vertices.add(vc * 3 + 1).write(ty);
+    buffer.vertices.add(vc * 3 + 2).write(tz);
+
+    buffer.texcoords.add(vc * 2).write(RLGL.State.texcoordx);
+    buffer.texcoords.add(vc * 2 + 1).write(RLGL.State.texcoordy);
+
+    buffer.normals.add(vc * 3).write(RLGL.State.normalx);
+    buffer.normals.add(vc * 3 + 1).write(RLGL.State.normaly);
+    buffer.normals.add(vc * 3 + 2).write(RLGL.State.normalz);
+
+    buffer.colors.add(vc * 4).write(RLGL.State.colorr);
+    buffer.colors.add(vc * 4 + 1).write(RLGL.State.colorg);
+    buffer.colors.add(vc * 4 + 2).write(RLGL.State.colorb);
+    buffer.colors.add(vc * 4 + 3).write(RLGL.State.colora);
+
+    RLGL.State.vertexCounter += 1;
+    (*batch.draws.add((batch.drawCounter - 1) as usize)).vertexCount += 1;
+}
+
+pub unsafe fn rlVertex2f(x: f32, y: f32) { rlVertex3f(x, y, 0.0); }
+pub unsafe fn rlTexCoord2f(x: f32, y: f32) { RLGL.State.texcoordx = x; RLGL.State.texcoordy = y; }
+pub unsafe fn rlNormal3f(x: f32, y: f32, z: f32) { RLGL.State.normalx = x; RLGL.State.normaly = y; RLGL.State.normalz = z; }
+pub unsafe fn rlColor4ub(r: u8, g: u8, b: u8, a: u8) { RLGL.State.colorr = r; RLGL.State.colorg = g; RLGL.State.colorb = b; RLGL.State.colora = a; }
+
+// Render Batch Management
+pub unsafe fn rlLoadRenderBatch(numBuffers: i32, bufferElements: i32) -> rlRenderBatch {
+    let mut batch: rlRenderBatch = std::mem::zeroed();
+    batch.bufferCount = numBuffers;
+    batch.vertexBuffer = libc::malloc(numBuffers as usize * std::mem::size_of::<rlVertexBuffer>()) as *mut rlVertexBuffer;
+    
+    for i in 0..numBuffers {
+        let buffer = &mut *batch.vertexBuffer.add(i as usize);
+        buffer.elementCount = bufferElements;
+        buffer.vertices = libc::malloc(bufferElements as usize * 4 * 3 * 4) as *mut f32;
+        buffer.texcoords = libc::malloc(bufferElements as usize * 4 * 2 * 4) as *mut f32;
+        buffer.normals = libc::malloc(bufferElements as usize * 4 * 3 * 4) as *mut f32;
+        buffer.colors = libc::malloc(bufferElements as usize * 4 * 4) as *mut u8;
+        buffer.indices = libc::malloc(bufferElements as usize * 6 * 4) as *mut u32;
+
+        // Initialize indices for quads (2 triangles)
+        for j in 0..bufferElements {
+            let base = (j * 6) as isize;
+            let v = (j * 4) as u32;
+            buffer.indices.offset(base).write(v);
+            buffer.indices.offset(base + 1).write(v + 1);
+            buffer.indices.offset(base + 2).write(v + 2);
+            buffer.indices.offset(base + 3).write(v);
+            buffer.indices.offset(base + 4).write(v + 2);
+            buffer.indices.offset(base + 5).write(v + 3);
         }
-    }
-}
 
-pub fn rl_tex_coord2f(x: f32, y: f32) {
-    unsafe {
-        RLGL.texcoordx = x;
-        RLGL.texcoordy = y;
-    }
-}
-
-pub fn rl_normal3f(x: f32, y: f32, z: f32) {
-    unsafe {
-        RLGL.normalx = x;
-        RLGL.normaly = y;
-        RLGL.normalz = z;
-    }
-}
-
-pub fn rl_color4ub(r: u8, g: u8, b: u8, a: u8) {
-    unsafe {
-        RLGL.colorr = r;
-        RLGL.colorg = g;
-        RLGL.colorb = b;
-        RLGL.colora = a;
-    }
-}
-
-pub fn rl_color3f(x: f32, y: f32, z: f32) {
-    rl_color4ub((x * 255.0) as u8, (y * 255.0) as u8, (z * 255.0) as u8, 255);
-}
-
-pub fn rl_color4f(x: f32, y: f32, z: f32, w: f32) {
-    rl_color4ub((x * 255.0) as u8, (y * 255.0) as u8, (z * 255.0) as u8, (w * 255.0) as u8);
-}
-
-pub fn rl_vertex2i(x: i32, y: i32) {
-    rl_vertex3f(x as f32, y as f32, 0.0);
-}
-
-pub fn rl_vertex2f(x: f32, y: f32) {
-    rl_vertex3f(x, y, 0.0);
-}
-
-pub fn rl_vertex3f(x: f32, y: f32, z: f32) {
-    unsafe {
-        let mut tx = x;
-        let mut ty = y;
-        let mut tz = z;
-
-        if RLGL.transform_required {
-            let v = RLGL.transform.transform_point3(Vec3::new(x, y, z));
-            tx = v.x; ty = v.y; tz = v.z;
+        if RLGL.ExtSupported.vao {
+            gl::GenVertexArrays(1, &mut buffer.vaoId);
+            gl::BindVertexArray(buffer.vaoId);
         }
 
-        if let Some(batch_ptr) = RLGL.current_batch {
-            let batch = &mut *batch_ptr;
-            let current_buffer = batch.current_buffer as usize;
-            let buffer = &mut batch.vertex_buffer[current_buffer];
+        gl::GenBuffers(5, buffer.vboId.as_mut_ptr());
+        
+        // Position
+        gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vboId[0]);
+        gl::BufferData(gl::ARRAY_BUFFER, (bufferElements * 4 * 3 * 4) as isize, std::ptr::null(), gl::DYNAMIC_DRAW);
+        gl::EnableVertexAttribArray(RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION);
+        gl::VertexAttribPointer(RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, 3, gl::FLOAT, gl::FALSE as u8, 0, std::ptr::null());
+
+        // TexCoord
+        gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vboId[1]);
+        gl::BufferData(gl::ARRAY_BUFFER, (bufferElements * 4 * 2 * 4) as isize, std::ptr::null(), gl::DYNAMIC_DRAW);
+        gl::EnableVertexAttribArray(RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD);
+        gl::VertexAttribPointer(RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD, 2, gl::FLOAT, gl::FALSE as u8, 0, std::ptr::null());
+
+        // Normal
+        gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vboId[2]);
+        gl::BufferData(gl::ARRAY_BUFFER, (bufferElements * 4 * 3 * 4) as isize, std::ptr::null(), gl::DYNAMIC_DRAW);
+        gl::EnableVertexAttribArray(RL_DEFAULT_SHADER_ATTRIB_LOCATION_NORMAL);
+        gl::VertexAttribPointer(RL_DEFAULT_SHADER_ATTRIB_LOCATION_NORMAL, 3, gl::FLOAT, gl::FALSE as u8, 0, std::ptr::null());
+
+        // Color
+        gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vboId[3]);
+        gl::BufferData(gl::ARRAY_BUFFER, (bufferElements * 4 * 4) as isize, std::ptr::null(), gl::DYNAMIC_DRAW);
+        gl::EnableVertexAttribArray(RL_DEFAULT_SHADER_ATTRIB_LOCATION_COLOR);
+        gl::VertexAttribPointer(RL_DEFAULT_SHADER_ATTRIB_LOCATION_COLOR, 4, gl::UNSIGNED_BYTE, gl::TRUE as u8, 0, std::ptr::null());
+
+        // Indices
+        gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, buffer.vboId[4]);
+        gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, (bufferElements * 6 * 4) as isize, buffer.indices as *const _, gl::STATIC_DRAW);
+
+        if RLGL.ExtSupported.vao { gl::BindVertexArray(0); }
+    }
+
+    batch.draws = libc::malloc(RL_DEFAULT_BATCH_DRAWCALLS as usize * std::mem::size_of::<rlDrawCall>()) as *mut rlDrawCall;
+    batch.drawCounter = 1;
+    (*batch.draws).mode = RL_QUADS;
+    (*batch.draws).textureId = RLGL.State.defaultTextureId;
+    batch.currentDepth = -1.0;
+
+    batch
+}
+
+pub unsafe fn rlUnloadRenderBatch(batch: &mut rlRenderBatch) {
+    for i in 0..batch.bufferCount {
+        let buffer = &mut *batch.vertexBuffer.add(i as usize);
+        gl::DeleteBuffers(5, buffer.vboId.as_ptr());
+        if RLGL.ExtSupported.vao { gl::DeleteVertexArrays(1, &buffer.vaoId); }
+        libc::free(buffer.vertices as *mut _);
+        libc::free(buffer.texcoords as *mut _);
+        libc::free(buffer.normals as *mut _);
+        libc::free(buffer.colors as *mut _);
+        libc::free(buffer.indices as *mut _);
+    }
+    libc::free(batch.vertexBuffer as *mut _);
+    libc::free(batch.draws as *mut _);
+}
+
+pub unsafe fn rlDrawRenderBatchActive() {
+    rlDrawRenderBatch(RLGL.currentBatch);
+}
+
+pub unsafe fn rlDrawRenderBatch(batch: *mut rlRenderBatch) {
+    if RLGL.State.vertexCounter == 0 { return; }
+    
+    let b = &mut *batch;
+    let buffer = &mut *b.vertexBuffer.add(b.currentBuffer as usize);
+
+    if RLGL.ExtSupported.vao { gl::BindVertexArray(buffer.vaoId); }
+    else {
+        // Fallback for non-VAO (GLES2)
+        gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vboId[0]);
+        // ... set pointers ...
+    }
+
+    gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vboId[0]);
+    gl::BufferSubData(gl::ARRAY_BUFFER, 0, (RLGL.State.vertexCounter * 3 * 4) as isize, buffer.vertices as *const _);
+    gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vboId[1]);
+    gl::BufferSubData(gl::ARRAY_BUFFER, 0, (RLGL.State.vertexCounter * 2 * 4) as isize, buffer.texcoords as *const _);
+    gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vboId[2]);
+    gl::BufferSubData(gl::ARRAY_BUFFER, 0, (RLGL.State.vertexCounter * 3 * 4) as isize, buffer.normals as *const _);
+    gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vboId[3]);
+    gl::BufferSubData(gl::ARRAY_BUFFER, 0, (RLGL.State.vertexCounter * 4) as isize, buffer.colors as *const _);
+
+    rlEnableShader(RLGL.State.currentShaderId);
+    
+    // Set MVP
+    let mvp = RLGL.State.projection * RLGL.State.modelview;
+    let mvp_loc = gl::GetUniformLocation(RLGL.State.currentShaderId, "mvp\0".as_ptr() as *const i8);
+    gl::UniformMatrix4fv(mvp_loc, 1, gl::FALSE as u8, mvp.to_cols_array().as_ptr());
+    
+    let mut vertex_offset = 0;
+    for i in 0..b.drawCounter {
+        let draw = *b.draws.add(i as usize);
+        if draw.vertexCount > 0 {
+            gl::BindTexture(gl::TEXTURE_2D, draw.textureId);
             
-            if RLGL.vertex_counter > (buffer.element_count * 4 - 4) {
-                if batch.draw_counter > 0 {
-                    let last_draw = &batch.draws[(batch.draw_counter - 1) as usize];
-                    if last_draw.mode == RL_LINES && last_draw.vertex_count % 2 == 0 {
-                        rl_check_render_batch_limit(3);
-                    } else if last_draw.mode == RL_TRIANGLES && last_draw.vertex_count % 3 == 0 {
-                        rl_check_render_batch_limit(4);
-                    } else if last_draw.mode == RL_QUADS && last_draw.vertex_count % 4 == 0 {
-                        rl_check_render_batch_limit(5);
-                    }
-                }
+            if draw.mode == RL_QUADS {
+                gl::DrawElements(gl::TRIANGLES, (draw.vertexCount / 4) * 6, gl::UNSIGNED_INT, (vertex_offset / 4 * 6 * 4) as *const _);
+            } else {
+                gl::DrawArrays(draw.mode as u32, vertex_offset, draw.vertexCount);
             }
-
-            let vc = RLGL.vertex_counter as usize;
-            
-            if buffer.vertices.len() <= vc * 3 + 2 {
-                buffer.vertices.resize(vc * 3 + 3, 0.0);
-            }
-            buffer.vertices[vc * 3] = tx;
-            buffer.vertices[vc * 3 + 1] = ty;
-            buffer.vertices[vc * 3 + 2] = tz;
-
-            if buffer.texcoords.len() <= vc * 2 + 1 {
-                buffer.texcoords.resize(vc * 2 + 2, 0.0);
-            }
-            buffer.texcoords[vc * 2] = RLGL.texcoordx;
-            buffer.texcoords[vc * 2 + 1] = RLGL.texcoordy;
-
-            if buffer.normals.len() <= vc * 3 + 2 {
-                buffer.normals.resize(vc * 3 + 3, 0.0);
-            }
-            buffer.normals[vc * 3] = RLGL.normalx;
-            buffer.normals[vc * 3 + 1] = RLGL.normaly;
-            buffer.normals[vc * 3 + 2] = RLGL.normalz;
-
-            if buffer.colors.len() <= vc * 4 + 3 {
-                buffer.colors.resize(vc * 4 + 4, 255);
-            }
-            buffer.colors[vc * 4] = RLGL.colorr;
-            buffer.colors[vc * 4 + 1] = RLGL.colorg;
-            buffer.colors[vc * 4 + 2] = RLGL.colorb;
-            buffer.colors[vc * 4 + 3] = RLGL.colora;
-
-            RLGL.vertex_counter += 1;
-            if batch.draw_counter > 0 {
-                batch.draws[(batch.draw_counter - 1) as usize].vertex_count += 1;
-            }
+            vertex_offset += draw.vertexCount + draw.vertexAlignment;
         }
     }
+
+    RLGL.State.vertexCounter = 0;
+    b.drawCounter = 1;
+    (*b.draws).vertexCount = 0;
+    (*b.draws).vertexAlignment = 0;
+    (*b.draws).mode = RL_QUADS;
+    (*b.draws).textureId = RLGL.State.defaultTextureId;
+    b.currentDepth = -1.0;
 }
 
-pub fn rl_check_render_batch_limit(v_count: i32) -> bool {
-    unsafe {
-        let mut overflow = false;
-        if let Some(batch_ptr) = RLGL.current_batch {
-            let batch = &mut *batch_ptr;
-            let current_buffer = batch.current_buffer as usize;
-            let buffer = &batch.vertex_buffer[current_buffer];
-            if (RLGL.vertex_counter + v_count) >= (buffer.element_count * 4) {
-                overflow = true;
-                
-                // Store current primitive state
-                let mut current_mode = RL_QUADS;
-                let mut current_texture = RLGL.active_texture_id;
-                
-                if batch.draw_counter > 0 {
-                    let last_draw = &batch.draws[(batch.draw_counter - 1) as usize];
-                    current_mode = last_draw.mode;
-                    current_texture = last_draw.texture_id;
-                }
-
-                rl_draw_render_batch(batch_ptr);
-
-                // Restore state
-                if batch.draw_counter == 0 {
-                    batch.draws.push(DrawCall {
-                        mode: current_mode,
-                        vertex_count: 0,
-                        vertex_alignment: 0,
-                        texture_id: current_texture,
-                    });
-                    batch.draw_counter += 1;
-                }
-            }
-        }
-        overflow
+pub unsafe fn rlCheckRenderBatchLimit(vCount: i32) -> bool {
+    let batch = &mut *RLGL.currentBatch;
+    let buffer = &*batch.vertexBuffer.add(batch.currentBuffer as usize);
+    if (RLGL.State.vertexCounter + vCount) >= buffer.elementCount * 4 {
+        rlDrawRenderBatch(RLGL.currentBatch);
+        return true;
     }
+    false
 }
 
-pub fn rl_draw_render_batch(batch_ptr: *mut RenderBatch) {
-    unsafe {
-        let batch = &mut *batch_ptr;
-        if batch.draw_counter == 0 {
-            return;
-        }
-
-        let buffer = &mut batch.vertex_buffer[batch.current_buffer as usize];
-        
-        gl::UseProgram(RLGL.default_shader_id);
-        
-        let texture_loc = gl::GetUniformLocation(RLGL.default_shader_id, "texture0\0".as_ptr() as *const i8);
-        gl::Uniform1i(texture_loc, 0);
-
-        gl::Enable(gl::BLEND);
-        gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-        
-        // Update buffers
-        gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vbo_id[0]);
-        gl::BufferSubData(gl::ARRAY_BUFFER, 0, (RLGL.vertex_counter * 3 * 4) as isize, buffer.vertices.as_ptr() as *const _);
-        
-        gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vbo_id[1]);
-        gl::BufferSubData(gl::ARRAY_BUFFER, 0, (RLGL.vertex_counter * 2 * 4) as isize, buffer.texcoords.as_ptr() as *const _);
-        
-        gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vbo_id[3]);
-        gl::BufferSubData(gl::ARRAY_BUFFER, 0, (RLGL.vertex_counter * 4) as isize, buffer.colors.as_ptr() as *const _);
-
-        // Set uniform MVP
-        let mvp = RLGL.projection * RLGL.modelview;
-        let mvp_loc = gl::GetUniformLocation(RLGL.default_shader_id, "mvp\0".as_ptr() as *const i8);
-        let mvp_array = mvp.to_cols_array();
-        gl::UniformMatrix4fv(mvp_loc, 1, gl::FALSE as gl::types::GLboolean, mvp_array.as_ptr());
-        
-        let col_diffuse_loc = gl::GetUniformLocation(RLGL.default_shader_id, "colDiffuse\0".as_ptr() as *const i8);
-        gl::Uniform4f(col_diffuse_loc, 1.0, 1.0, 1.0, 1.0);
-
-        gl::BindVertexArray(buffer.vao_id);
-
-        let mut vertex_offset = 0;
-        for i in 0..batch.draw_counter {
-            let draw = &batch.draws[i as usize];
-            if draw.vertex_count > 0 {
-                let mode = if draw.mode == RL_QUADS { gl::TRIANGLES } else { draw.mode as u32 };
-                
-                gl::BindTexture(gl::TEXTURE_2D, draw.texture_id);
-                
-                if draw.mode == RL_QUADS {
-                    // Quads are not supported in core profile, we need to use indices or convert to triangles.
-                    // For simplicity in this direct port, we'll assume the batcher handles quads as 2 triangles if needed,
-                    // but raylib's rlgl handles quads natively if supported or uses an index buffer.
-                    // Here we'll just draw as triangles if mode is RL_QUADS, but we need 6 indices per quad.
-                    // Wait, rlgl usually has an index buffer for quads.
-                    // Let's just use glDrawArrays and assume the user passed triangles if they want core profile compatibility,
-                    // or we use GL_QUADS if we are in compatibility profile.
-                    // Since I set Core 3.3 in core.rs, GL_QUADS is NOT available.
-                    // I should use an index buffer for quads.
-                    
-                    // But wait, the vertex_count for quads is 4. If I draw as triangles, I need 6.
-                    // I'll just use GL_TRIANGLES and assume the batcher was supposed to handle it.
-                    // Actually, let's just use GL_TRIANGLE_FAN or similar? No.
-                    
-                    // For now, let's just use draw.mode and hope for the best, or fix core.rs to use compatibility profile.
-                    gl::DrawArrays(draw.mode as u32, vertex_offset, draw.vertex_count);
-                } else {
-                    gl::DrawArrays(draw.mode as u32, vertex_offset, draw.vertex_count);
-                }
-                vertex_offset += draw.vertex_count + draw.vertex_alignment;
-            }
-        }
-
-        gl::BindVertexArray(0);
-        gl::UseProgram(0);
-
-        RLGL.vertex_counter = 0;
-        batch.draw_counter = 0;
-        batch.draws.clear();
-        batch.current_depth = -1.0;
-    }
-}
-
-pub fn rl_draw_render_batch_active() {
-    unsafe {
-        if let Some(batch_ptr) = RLGL.current_batch {
-            rl_draw_render_batch(batch_ptr);
-        }
-    }
-}
-
-pub fn rl_load_texture(data: *const std::ffi::c_void, width: i32, height: i32, format: i32, mipmaps: i32) -> u32 {
+// Resource management
+pub unsafe fn rlLoadTexture(data: *const std::ffi::c_void, width: i32, height: i32, format: i32, mipmapCount: i32) -> u32 {
     let mut id: u32 = 0;
-    unsafe {
-        // Minimal stub to create texture ID using glad
+    gl::GenTextures(1, &mut id);
+    gl::BindTexture(gl::TEXTURE_2D, id);
+    
+    // Simplification: assume RGBA8 for now, but should use rlGetGlTextureFormats
+    gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as i32, width, height, 0, gl::RGBA, gl::UNSIGNED_BYTE, data);
+    
+    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+    gl::BindTexture(gl::TEXTURE_2D, 0);
+    id
+}
+
+pub unsafe fn rlUnloadTexture(id: u32) {
+    gl::DeleteTextures(1, &id);
+}
+
+pub unsafe fn rlEnableShader(id: u32) {
+    gl::UseProgram(id);
+    RLGL.State.currentShaderId = id;
+}
+
+unsafe fn rlLoadShaderDefault() {
+    let vs = rlLoadShader(crate::core::DEFAULT_VSHADER, RL_VERTEX_SHADER as i32);
+    let fs = rlLoadShader(crate::core::DEFAULT_FSHADER, RL_FRAGMENT_SHADER as i32);
+    let program = gl::CreateProgram();
+    gl::AttachShader(program, vs);
+    gl::AttachShader(program, fs);
+    
+    gl::BindAttribLocation(program, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, "vertexPosition\0".as_ptr() as *const i8);
+    gl::BindAttribLocation(program, RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD, "vertexTexCoord\0".as_ptr() as *const i8);
+    gl::BindAttribLocation(program, RL_DEFAULT_SHADER_ATTRIB_LOCATION_COLOR, "vertexColor\0".as_ptr() as *const i8);
+    
+    gl::LinkProgram(program);
+    RLGL.State.defaultShaderId = program;
+    RLGL.State.currentShaderId = program;
+}
+
+unsafe fn rlUnloadShaderDefault() {
+    gl::DeleteProgram(RLGL.State.defaultShaderId);
+}
+
+pub unsafe fn rlLoadShader(code: &str, shaderType: i32) -> u32 {
+    let shader = gl::CreateShader(shaderType as u32);
+    let c_str = std::ffi::CString::new(code).unwrap();
+    gl::ShaderSource(shader, 1, &c_str.as_ptr(), std::ptr::null());
+    gl::CompileShader(shader);
+    shader
+}
+
+pub unsafe fn rlSetTexture(id: u32) {
+    if RLGL.State.activeTextureId[0] != id {
+        rlCheckRenderBatchLimit(0);
+        let batch = &mut *RLGL.currentBatch;
+        let last_draw = &mut *batch.draws.add((batch.drawCounter - 1) as usize);
+        if last_draw.vertexCount > 0 {
+            batch.draws.add(batch.drawCounter as usize).write(rlDrawCall {
+                mode: last_draw.mode,
+                vertexCount: 0,
+                vertexAlignment: 0,
+                textureId: id,
+            });
+            batch.drawCounter += 1;
+        } else {
+            last_draw.textureId = id;
+        }
+        RLGL.State.activeTextureId[0] = id;
+    }
+}
+
+pub unsafe fn rlActiveTextureSlot(slot: i32) {
+    gl::ActiveTexture(gl::TEXTURE0 + slot as u32);
+}
+
+pub unsafe fn rlEnableTexture(id: u32) {
+    gl::BindTexture(gl::TEXTURE_2D, id);
+}
+
+pub unsafe fn rlDisableTexture() {
+    gl::BindTexture(gl::TEXTURE_2D, 0);
+}
+
+pub unsafe fn rlEnableTextureCubemap(id: u32) {
+    gl::BindTexture(gl::TEXTURE_CUBE_MAP, id);
+}
+
+pub unsafe fn rlDisableTextureCubemap() {
+    gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0);
+}
+
+pub unsafe fn rlTextureParameters(id: u32, param: i32, value: i32) {
+    gl::BindTexture(gl::TEXTURE_2D, id);
+    gl::TexParameteri(gl::TEXTURE_2D, param as u32, value);
+    gl::BindTexture(gl::TEXTURE_2D, 0);
+}
+
+pub unsafe fn rlCubemapParameters(id: u32, param: i32, value: i32) {
+    gl::BindTexture(gl::TEXTURE_CUBE_MAP, id);
+    gl::TexParameteri(gl::TEXTURE_CUBE_MAP, param as u32, value);
+    gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0);
+}
+
+pub unsafe fn rlDisableShader() {
+    gl::UseProgram(0);
+}
+
+pub unsafe fn rlEnableFramebuffer(id: u32) {
+    gl::BindFramebuffer(gl::FRAMEBUFFER, id);
+}
+
+pub unsafe fn rlDisableFramebuffer() {
+    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+}
+
+pub unsafe fn rlGetActiveFramebuffer() -> u32 {
+    let mut fbo_id: i32 = 0;
+    gl::GetIntegerv(gl::DRAW_FRAMEBUFFER_BINDING, &mut fbo_id);
+    fbo_id as u32
+}
+
+pub unsafe fn rlBlitFramebuffer(srcX: i32, srcY: i32, srcWidth: i32, srcHeight: i32, dstX: i32, dstY: i32, dstWidth: i32, dstHeight: i32, bufferMask: i32) {
+    gl::BlitFramebuffer(srcX, srcY, srcWidth, srcHeight, dstX, dstY, dstWidth, dstHeight, bufferMask as u32, gl::NEAREST);
+}
+
+pub unsafe fn rlBindFramebuffer(target: u32, framebuffer: u32) {
+    gl::BindFramebuffer(target, framebuffer);
+}
+
+// Render state configuration
+pub unsafe fn rlEnableColorBlend() { gl::Enable(gl::BLEND); }
+pub unsafe fn rlDisableColorBlend() { gl::Disable(gl::BLEND); }
+pub unsafe fn rlEnableDepthTest() { gl::Enable(gl::DEPTH_TEST); }
+pub unsafe fn rlDisableDepthTest() { gl::Disable(gl::DEPTH_TEST); }
+pub unsafe fn rlEnableDepthMask() { gl::DepthMask(gl::TRUE); }
+pub unsafe fn rlDisableDepthMask() { gl::DepthMask(gl::FALSE); }
+pub unsafe fn rlEnableBackfaceCulling() { gl::Enable(gl::CULL_FACE); }
+pub unsafe fn rlDisableBackfaceCulling() { gl::Disable(gl::CULL_FACE); }
+pub unsafe fn rlColorMask(r: bool, g: bool, b: bool, a: bool) { gl::ColorMask(r as u8, g as u8, b as u8, a as u8); }
+
+pub unsafe fn rlSetCullFace(mode: i32) {
+    match mode {
+        RL_CULL_FACE_BACK => gl::CullFace(gl::BACK),
+        RL_CULL_FACE_FRONT => gl::CullFace(gl::FRONT),
+        _ => {}
+    }
+}
+
+pub unsafe fn rlEnableScissorTest() { gl::Enable(gl::SCISSOR_TEST); }
+pub unsafe fn rlDisableScissorTest() { gl::Disable(gl::SCISSOR_TEST); }
+pub unsafe fn rlScissor(x: i32, y: i32, width: i32, height: i32) { gl::Scissor(x, y, width, height); }
+
+pub unsafe fn rlEnableWireMode() {
+    gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
+}
+
+pub unsafe fn rlDisableWireMode() {
+    gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
+}
+
+pub unsafe fn rlSetLineWidth(width: f32) {
+    gl::LineWidth(width);
+}
+
+pub unsafe fn rlGetLineWidth() -> f32 {
+    let mut width: f32 = 0.0;
+    gl::GetFloatv(gl::LINE_WIDTH, &mut width);
+    width
+}
+
+pub unsafe fn rlEnablePointMode() {
+    gl::PolygonMode(gl::FRONT_AND_BACK, gl::POINT);
+}
+
+pub unsafe fn rlDisablePointMode() {
+    gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
+}
+
+pub unsafe fn rlSetPointSize(size: f32) {
+    gl::PointSize(size);
+}
+
+pub unsafe fn rlGetPointSize() -> f32 {
+    let mut size: f32 = 0.0;
+    gl::GetFloatv(gl::POINT_SIZE, &mut size);
+    size
+}
+
+pub unsafe fn rlEnableSmoothLines() {
+    gl::Enable(gl::LINE_SMOOTH);
+}
+
+pub unsafe fn rlDisableSmoothLines() {
+    gl::Disable(gl::LINE_SMOOTH);
+}
+
+pub unsafe fn rlClearColor(r: u8, g: u8, b: u8, a: u8) {
+    gl::ClearColor(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, a as f32 / 255.0);
+}
+
+pub unsafe fn rlClearScreenBuffers() {
+    gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+}
+
+pub unsafe fn rlCheckErrors() {
+    let err = gl::GetError();
+    if err != gl::NO_ERROR {
+        // Log error
+    }
+}
+
+pub unsafe fn rlSetBlendMode(mode: i32) {
+    rlDrawRenderBatch(RLGL.currentBatch);
+    match mode {
+        0 => { // Alpha
+            gl::BlendEquation(gl::FUNC_ADD);
+            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+        }
+        1 => { // Additive
+            gl::BlendEquation(gl::FUNC_ADD);
+            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE);
+        }
+        2 => { // Multiplied
+            gl::BlendEquation(gl::FUNC_ADD);
+            gl::BlendFunc(gl::DST_COLOR, gl::ZERO);
+        }
+        3 => { // Add Colors
+            gl::BlendEquation(gl::FUNC_ADD);
+            gl::BlendFunc(gl::ONE, gl::ONE);
+        }
+        4 => { // Subtract Colors
+            gl::BlendEquation(gl::FUNC_REVERSE_SUBTRACT);
+            gl::BlendFunc(gl::ONE, gl::ONE);
+        }
+        5 => { // Alpha Premultiply
+            gl::BlendEquation(gl::FUNC_ADD);
+            gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
+        }
+        _ => {}
+    }
+}
+
+pub unsafe fn rlGetGlTextureFormats(format: i32, glInternalFormat: &mut u32, glFormat: &mut u32, glType: &mut u32) {
+    *glInternalFormat = 0;
+    *glFormat = 0;
+    *glType = 0;
+
+    match format {
+        1 => { // GRAYSCALE
+            *glInternalFormat = gl::R8;
+            *glFormat = gl::RED;
+            *glType = gl::UNSIGNED_BYTE;
+        }
+        2 => { // GRAY_ALPHA
+            *glInternalFormat = gl::RG8;
+            *glFormat = gl::RG;
+            *glType = gl::UNSIGNED_BYTE;
+        }
+        7 => { // R8G8B8A8
+            *glInternalFormat = gl::RGBA8;
+            *glFormat = gl::RGBA;
+            *glType = gl::UNSIGNED_BYTE;
+        }
+        _ => {
+            // Simplified for now, add others as needed
+        }
+    }
+}
+
+pub unsafe fn rlGetPixelDataSize(width: i32, height: i32, format: i32) -> i32 {
+    let mut bpp = 0;
+    match format {
+        1 => bpp = 8,
+        2 => bpp = 16,
+        3 => bpp = 16,
+        4 => bpp = 24,
+        5 => bpp = 16,
+        6 => bpp = 16,
+        7 => bpp = 32,
+        _ => {}
+    }
+    (width * height * bpp) / 8
+}
+
+pub unsafe fn rlLoadTextureDepth(width: i32, height: i32, useRenderBuffer: bool) -> u32 {
+    let mut id = 0;
+    if useRenderBuffer {
+        gl::GenRenderbuffers(1, &mut id);
+        gl::BindRenderbuffer(gl::RENDERBUFFER, id);
+        gl::RenderbufferStorage(gl::RENDERBUFFER, gl::DEPTH_COMPONENT24, width, height);
+        gl::BindRenderbuffer(gl::RENDERBUFFER, 0);
+    } else {
         gl::GenTextures(1, &mut id);
         gl::BindTexture(gl::TEXTURE_2D, id);
-        
-        let mut gl_internal_format = gl::RGBA as i32;
-        let mut gl_format = gl::RGBA;
-        let gl_type = gl::UNSIGNED_BYTE;
-        
-        if format == 1 {
-            gl_internal_format = gl::RED as i32;
-            gl_format = gl::RED;
-        } else if format == 2 {
-            gl_internal_format = gl::RG as i32;
-            gl_format = gl::RG;
-        } else if format == 4 {
-            gl_internal_format = gl::RGB as i32;
-            gl_format = gl::RGB;
-        }
-        
-        gl::TexImage2D(
-            gl::TEXTURE_2D,
-            0,
-            gl_internal_format,
-            width,
-            height,
-            0,
-            gl_format,
-            gl_type,
-            data,
-        );
-        
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
-        
+        gl::TexImage2D(gl::TEXTURE_2D, 0, gl::DEPTH_COMPONENT as i32, width, height, 0, gl::DEPTH_COMPONENT, gl::UNSIGNED_INT, std::ptr::null());
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
         gl::BindTexture(gl::TEXTURE_2D, 0);
     }
     id
 }
 
-pub fn rl_unload_texture(id: u32) {
-    unsafe {
-        gl::DeleteTextures(1, &id);
+pub unsafe fn rlLoadFramebuffer() -> u32 {
+    let mut id = 0;
+    gl::GenFramebuffers(1, &mut id);
+    id
+}
+
+pub unsafe fn rlFramebufferAttach(id: u32, texId: u32, attachType: i32, texType: i32, mipLevel: i32) {
+    gl::BindFramebuffer(gl::FRAMEBUFFER, id);
+    if attachType < 100 { // Color
+        let attachment = gl::COLOR_ATTACHMENT0 + attachType as u32;
+        if texType == 100 { // Texture2D
+            gl::FramebufferTexture2D(gl::FRAMEBUFFER, attachment, gl::TEXTURE_2D, texId, mipLevel);
+        } else if texType == 200 { // Renderbuffer
+            gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, attachment, gl::RENDERBUFFER, texId);
+        }
+    } else if attachType == 100 { // Depth
+        if texType == 100 {
+            gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, gl::TEXTURE_2D, texId, mipLevel);
+        } else if texType == 200 {
+            gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, gl::RENDERBUFFER, texId);
+        }
+    }
+    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+}
+
+pub unsafe fn rlFramebufferComplete(id: u32) -> bool {
+    gl::BindFramebuffer(gl::FRAMEBUFFER, id);
+    let status = gl::CheckFramebufferStatus(gl::FRAMEBUFFER);
+    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+    status == gl::FRAMEBUFFER_COMPLETE
+}
+
+pub unsafe fn rlUnloadFramebuffer(id: u32) {
+    gl::DeleteFramebuffers(1, &id);
+}
+
+pub unsafe fn rlLoadVertexBuffer(buffer: *const std::ffi::c_void, size: i32, dynamic: bool) -> u32 {
+    let mut id = 0;
+    gl::GenBuffers(1, &mut id);
+    gl::BindBuffer(gl::ARRAY_BUFFER, id);
+    gl::BufferData(gl::ARRAY_BUFFER, size as isize, buffer, if dynamic { gl::DYNAMIC_DRAW } else { gl::STATIC_DRAW });
+    id
+}
+
+pub unsafe fn rlLoadVertexBufferElement(buffer: *const std::ffi::c_void, size: i32, dynamic: bool) -> u32 {
+    let mut id = 0;
+    gl::GenBuffers(1, &mut id);
+    gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, id);
+    gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, size as isize, buffer, if dynamic { gl::DYNAMIC_DRAW } else { gl::STATIC_DRAW });
+    id
+}
+
+pub unsafe fn rlUpdateVertexBuffer(id: u32, data: *const std::ffi::c_void, size: i32, offset: i32) {
+    gl::BindBuffer(gl::ARRAY_BUFFER, id);
+    gl::BufferSubData(gl::ARRAY_BUFFER, offset as isize, size as isize, data);
+}
+
+pub unsafe fn rlUnloadVertexBuffer(id: u32) {
+    gl::DeleteBuffers(1, &id);
+}
+
+pub unsafe fn rlLoadVertexArray() -> u32 {
+    let mut id = 0;
+    gl::GenVertexArrays(1, &mut id);
+    id
+}
+
+pub unsafe fn rlUnloadVertexArray(id: u32) {
+    gl::DeleteVertexArrays(1, &id);
+}
+
+pub unsafe fn rlSetVertexAttribute(index: u32, size: i32, type_: i32, normalized: bool, stride: i32, pointer: *const std::ffi::c_void) {
+    gl::VertexAttribPointer(index, size, type_ as u32, normalized as u8, stride, pointer);
+}
+
+pub unsafe fn rlEnableVertexAttribute(index: u32) {
+    gl::EnableVertexAttribArray(index);
+}
+
+pub unsafe fn rlDisableVertexAttribute(index: u32) {
+    gl::DisableVertexAttribArray(index);
+}
+
+pub unsafe fn rlSetVertexAttributeDivisor(index: u32, divisor: u32) {
+    gl::VertexAttribDivisor(index, divisor);
+}
+
+pub unsafe fn rlSetUniform(locIndex: i32, value: *const std::ffi::c_void, uniformType: i32, count: i32) {
+    match uniformType {
+        0 => gl::Uniform1fv(locIndex, count, value as *const f32),
+        1 => gl::Uniform2fv(locIndex, count, value as *const f32),
+        2 => gl::Uniform3fv(locIndex, count, value as *const f32),
+        3 => gl::Uniform4fv(locIndex, count, value as *const f32),
+        4 => gl::Uniform1iv(locIndex, count, value as *const i32),
+        _ => {}
     }
 }
 
-pub fn rl_set_texture(id: u32) {
-    unsafe {
-        if RLGL.active_texture_id != id {
-            // Check if we need to launch a draw call
-            if let Some(batch_ptr) = RLGL.current_batch {
-                let batch = &mut *batch_ptr;
-                if batch.draw_counter > 0 {
-                    let last_draw = &batch.draws[(batch.draw_counter - 1) as usize];
-                    if last_draw.texture_id != id && last_draw.vertex_count > 0 {
-                        // Create a new draw call
-                        let mode = last_draw.mode;
-                        let vertex_alignment = last_draw.vertex_alignment;
-                        
-                        if !rl_check_render_batch_limit(vertex_alignment) {
-                            RLGL.vertex_counter += vertex_alignment;
-                        }
-                        
-                        if batch.draw_counter >= RL_DEFAULT_BATCH_DRAWCALLS {
-                            rl_draw_render_batch(batch_ptr);
-                        }
-                        
-                        batch.draws.push(DrawCall {
-                            mode,
-                            vertex_count: 0,
-                            vertex_alignment: 0,
-                            texture_id: id,
-                        });
-                        batch.draw_counter += 1;
-                    } else if last_draw.vertex_count == 0 {
-                        // If last draw call has no vertices, just change its texture
-                        batch.draws[(batch.draw_counter - 1) as usize].texture_id = id;
-                    }
-                }
-            }
-            RLGL.active_texture_id = id;
+pub unsafe fn rlSetUniformMatrix(locIndex: i32, mat: Matrix) {
+    gl::UniformMatrix4fv(locIndex, 1, gl::FALSE as u8, mat.to_cols_array().as_ptr());
+}
+
+pub unsafe fn rlSetUniformSampler(locIndex: i32, textureId: u32) {
+    for i in 0..RL_DEFAULT_BATCH_MAX_TEXTURE_UNITS as usize {
+        if RLGL.State.activeTextureId[i] == textureId {
+            gl::Uniform1i(locIndex, (1 + i) as i32);
+            return;
         }
     }
-}pub fn rl_get_texture_id_default() -> u32 {
-    unsafe { RLGL.default_texture_id }
+    for i in 0..RL_DEFAULT_BATCH_MAX_TEXTURE_UNITS as usize {
+        if RLGL.State.activeTextureId[i] == 0 {
+            gl::Uniform1i(locIndex, (1 + i) as i32);
+            RLGL.State.activeTextureId[i] = textureId;
+            break;
+        }
+    }
 }
+
+pub unsafe fn rlSetShader(id: u32, _locs: *mut i32) {
+    if RLGL.State.currentShaderId != id {
+        rlDrawRenderBatch(RLGL.currentBatch);
+        RLGL.State.currentShaderId = id;
+    }
+}
+
+pub unsafe fn rlGetMatrixModelview() -> Matrix { RLGL.State.modelview }
+pub unsafe fn rlGetMatrixProjection() -> Matrix { RLGL.State.projection }
+pub unsafe fn rlGetMatrixTransform() -> Matrix { RLGL.State.transform }
+
+pub unsafe fn rlSetMatrixModelview(view: Matrix) { RLGL.State.modelview = view; }
+pub unsafe fn rlSetMatrixProjection(proj: Matrix) { RLGL.State.projection = proj; }
