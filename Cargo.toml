@@ -8,6 +8,9 @@ glam = "0.27"
 sdl3 = { version = "0.18.3", features = ["use-pkg-config"] }
 libc = "0.2"
 gl = "0.14.0"
+log = { version = "0.4" }
+env_logger = { version = "0.11" }
+
 [features]
 default = ["opengl_33"]
 opengl_33 = []
