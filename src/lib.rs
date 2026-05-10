@@ -13,3 +13,4 @@ pub mod rlgl;
 pub mod rtextures;
 pub mod rshapes;
 pub mod rtext;
+pub mod rcamera;

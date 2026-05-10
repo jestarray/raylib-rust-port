@@ -425,7 +425,6 @@ pub fn rl_begin(mode: i32) {
                     batch.draws[(batch.draw_counter - 1) as usize].mode = mode;
                     batch.draws[(batch.draw_counter - 1) as usize].texture_id = RLGL.active_texture_id;
                 }
-                RLGL.active_texture_id = RLGL.default_texture_id;
             } else if batch.draw_counter == 0 {
                 batch.draws.push(DrawCall {
                     mode,
@@ -473,11 +472,11 @@ pub fn rl_color4ub(r: u8, g: u8, b: u8, a: u8) {
 }
 
 pub fn rl_color3f(x: f32, y: f32, z: f32) {
-    rl_color4ub((x * 255.0) as gl::types::GLboolean, (y * 255.0) as gl::types::GLboolean, (z * 255.0) as gl::types::GLboolean, 255);
+    rl_color4ub((x * 255.0) as u8, (y * 255.0) as u8, (z * 255.0) as u8, 255);
 }
 
 pub fn rl_color4f(x: f32, y: f32, z: f32, w: f32) {
-    rl_color4ub((x * 255.0) as gl::types::GLboolean, (y * 255.0) as gl::types::GLboolean, (z * 255.0) as gl::types::GLboolean, (w * 255.0) as gl::types::GLboolean);
+    rl_color4ub((x * 255.0) as u8, (y * 255.0) as u8, (z * 255.0) as u8, (w * 255.0) as u8);
 }
 
 pub fn rl_vertex2i(x: i32, y: i32) {
@@ -673,6 +672,14 @@ pub fn rl_draw_render_batch(batch_ptr: *mut RenderBatch) {
     }
 }
 
+pub fn rl_draw_render_batch_active() {
+    unsafe {
+        if let Some(batch_ptr) = RLGL.current_batch {
+            rl_draw_render_batch(batch_ptr);
+        }
+    }
+}
+
 pub fn rl_load_texture(data: *const std::ffi::c_void, width: i32, height: i32, format: i32, mipmaps: i32) -> u32 {
     let mut id: u32 = 0;
     unsafe {
@@ -758,4 +765,6 @@ pub fn rl_set_texture(id: u32) {
             RLGL.active_texture_id = id;
         }
     }
+}pub fn rl_get_texture_id_default() -> u32 {
+    unsafe { RLGL.default_texture_id }
 }

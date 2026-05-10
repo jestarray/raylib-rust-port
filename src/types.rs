@@ -107,6 +107,23 @@ pub struct RenderTexture {
 }
 pub type RenderTexture2D = RenderTexture;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(C)]
+pub enum CameraProjection {
+    Perspective = 0,
+    Orthographic,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(C)]
+pub enum CameraMode {
+    Custom = 0,
+    Free,
+    Orbital,
+    FirstPerson,
+    ThirdPerson,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(C)]
 pub struct Camera3D {
@@ -185,7 +202,7 @@ pub struct GlyphInfo {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Font {
     pub base_size: i32,
     pub glyph_count: i32,

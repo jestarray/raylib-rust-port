@@ -205,7 +205,6 @@ pub fn draw_texture_pro(
         rlgl::rl_vertex2f(top_left.x, top_left.y);
 
         rlgl::rl_end();
-        rlgl::rl_set_texture(0);
     }
 }
 
@@ -393,7 +392,6 @@ pub fn draw_texture_n_patch(
 
             rlgl::rl_end();
             rlgl::rl_pop_matrix();
-            rlgl::rl_set_texture(0);
         }
     }
 }

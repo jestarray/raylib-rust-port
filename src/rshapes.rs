@@ -47,6 +47,7 @@ pub fn draw_rectangle_pro(rec: Rectangle, origin: Vector2, rotation: f32, color:
         bottom_right.y = rec.y + (dx + rec.width) * sin + (dy + rec.height) * cos;
     }
 
+    rlgl::rl_set_texture(rlgl::rl_get_texture_id_default());
     rlgl::rl_begin(RL_QUADS);
     rlgl::rl_color4ub(color.r, color.g, color.b, color.a);
     rlgl::rl_vertex2f(top_left.x, top_left.y);
@@ -57,6 +58,7 @@ pub fn draw_rectangle_pro(rec: Rectangle, origin: Vector2, rotation: f32, color:
 }
 
 pub fn draw_rectangle_gradient_v(x: i32, y: i32, width: i32, height: i32, color1: Color, color2: Color) {
+    rlgl::rl_set_texture(rlgl::rl_get_texture_id_default());
     rlgl::rl_begin(RL_QUADS);
     rlgl::rl_color4ub(color1.r, color1.g, color1.b, color1.a);
     rlgl::rl_vertex2f(x as f32, y as f32);
@@ -69,6 +71,7 @@ pub fn draw_rectangle_gradient_v(x: i32, y: i32, width: i32, height: i32, color1
 }
 
 pub fn draw_rectangle_gradient_h(x: i32, y: i32, width: i32, height: i32, color1: Color, color2: Color) {
+    rlgl::rl_set_texture(rlgl::rl_get_texture_id_default());
     rlgl::rl_begin(RL_QUADS);
     rlgl::rl_color4ub(color1.r, color1.g, color1.b, color1.a);
     rlgl::rl_vertex2f(x as f32, y as f32);
@@ -80,6 +83,7 @@ pub fn draw_rectangle_gradient_h(x: i32, y: i32, width: i32, height: i32, color1
 }
 
 pub fn draw_line(start_pos_x: i32, start_pos_y: i32, end_pos_x: i32, end_pos_y: i32, color: Color) {
+    rlgl::rl_set_texture(rlgl::rl_get_texture_id_default());
     rlgl::rl_begin(RL_LINES);
     rlgl::rl_color4ub(color.r, color.g, color.b, color.a);
     rlgl::rl_vertex2f(start_pos_x as f32, start_pos_y as f32);
@@ -123,5 +127,29 @@ pub fn draw_circle_sector(center: Vector2, radius: f32, start_angle: f32, end_an
 
         angle += step_length;
     }
+    rlgl::rl_end();
+}
+
+pub fn draw_rectangle_rec(rec: Rectangle, color: Color) {
+    draw_rectangle_pro(rec, Vector2::new(0.0, 0.0), 0.0, color);
+}
+
+pub fn draw_rectangle_lines(pos_x: i32, pos_y: i32, width: i32, height: i32, color: Color) {
+    rlgl::rl_set_texture(rlgl::rl_get_texture_id_default());
+    rlgl::rl_begin(RL_LINES);
+    rlgl::rl_color4ub(color.r, color.g, color.b, color.a);
+    
+    rlgl::rl_vertex2f(pos_x as f32, pos_y as f32);
+    rlgl::rl_vertex2f((pos_x + width) as f32, pos_y as f32);
+    
+    rlgl::rl_vertex2f((pos_x + width) as f32, pos_y as f32);
+    rlgl::rl_vertex2f((pos_x + width) as f32, (pos_y + height) as f32);
+    
+    rlgl::rl_vertex2f((pos_x + width) as f32, (pos_y + height) as f32);
+    rlgl::rl_vertex2f(pos_x as f32, (pos_y + height) as f32);
+    
+    rlgl::rl_vertex2f(pos_x as f32, (pos_y + height) as f32);
+    rlgl::rl_vertex2f(pos_x as f32, pos_y as f32);
+    
     rlgl::rl_end();
 }
