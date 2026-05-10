@@ -1,5 +1,6 @@
 use crate::types::{Matrix, Color};
 use glam::{Mat4, Vec3};
+use gl;
 
 // Constants
 pub const RL_DEFAULT_BATCH_BUFFER_ELEMENTS: i32 = 8192;
@@ -191,36 +192,36 @@ pub fn rlgl_init(width: i32, height: i32) {
         rl_matrix_mode(RL_MODELVIEW);
         rl_load_identity();
         
-        crate::external::glad_glDisable.unwrap()(crate::external::GL_CULL_FACE);
-        crate::external::glad_glDisable.unwrap()(crate::external::GL_DEPTH_TEST);
+        gl::Disable(gl::CULL_FACE);
+        gl::Disable(gl::DEPTH_TEST);
         
         // Create VAO/VBOs for the batch
         if let Some(batch) = &mut RLGL.default_batch {
             for buffer in &mut batch.vertex_buffer {
-                crate::external::glad_glGenVertexArrays.unwrap()(1, &mut buffer.vao_id);
-                crate::external::glad_glBindVertexArray.unwrap()(buffer.vao_id);
+                gl::GenVertexArrays(1, &mut buffer.vao_id);
+                gl::BindVertexArray(buffer.vao_id);
                 
-                crate::external::glad_glGenBuffers.unwrap()(5, buffer.vbo_id.as_mut_ptr());
+                gl::GenBuffers(5, buffer.vbo_id.as_mut_ptr());
                 
                 // Position
-                crate::external::glad_glBindBuffer.unwrap()(crate::external::GL_ARRAY_BUFFER, buffer.vbo_id[0]);
-                crate::external::glad_glBufferData.unwrap()(crate::external::GL_ARRAY_BUFFER, (buffer.element_count * 4 * 3 * 4) as i64, std::ptr::null(), crate::external::GL_DYNAMIC_DRAW);
-                crate::external::glad_glEnableVertexAttribArray.unwrap()(0);
-                crate::external::glad_glVertexAttribPointer.unwrap()(0, 3, crate::external::GL_FLOAT, crate::external::GL_FALSE as u8, 0, std::ptr::null());
+                gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vbo_id[0]);
+                gl::BufferData(gl::ARRAY_BUFFER, (buffer.element_count * 4 * 3 * 4) as isize, std::ptr::null(), gl::DYNAMIC_DRAW);
+                gl::EnableVertexAttribArray(0);
+                gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE as gl::types::GLboolean, 0, std::ptr::null());
                 
                 // TexCoord
-                crate::external::glad_glBindBuffer.unwrap()(crate::external::GL_ARRAY_BUFFER, buffer.vbo_id[1]);
-                crate::external::glad_glBufferData.unwrap()(crate::external::GL_ARRAY_BUFFER, (buffer.element_count * 4 * 2 * 4) as i64, std::ptr::null(), crate::external::GL_DYNAMIC_DRAW);
-                crate::external::glad_glEnableVertexAttribArray.unwrap()(1);
-                crate::external::glad_glVertexAttribPointer.unwrap()(1, 2, crate::external::GL_FLOAT, crate::external::GL_FALSE as u8, 0, std::ptr::null());
+                gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vbo_id[1]);
+                gl::BufferData(gl::ARRAY_BUFFER, (buffer.element_count * 4 * 2 * 4) as isize, std::ptr::null(), gl::DYNAMIC_DRAW);
+                gl::EnableVertexAttribArray(1);
+                gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE as gl::types::GLboolean, 0, std::ptr::null());
                 
                 // Color
-                crate::external::glad_glBindBuffer.unwrap()(crate::external::GL_ARRAY_BUFFER, buffer.vbo_id[3]);
-                crate::external::glad_glBufferData.unwrap()(crate::external::GL_ARRAY_BUFFER, (buffer.element_count * 4 * 4) as i64, std::ptr::null(), crate::external::GL_DYNAMIC_DRAW);
-                crate::external::glad_glEnableVertexAttribArray.unwrap()(2);
-                crate::external::glad_glVertexAttribPointer.unwrap()(2, 4, crate::external::GL_UNSIGNED_BYTE, crate::external::GL_TRUE as u8, 0, std::ptr::null());
+                gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vbo_id[3]);
+                gl::BufferData(gl::ARRAY_BUFFER, (buffer.element_count * 4 * 4) as isize, std::ptr::null(), gl::DYNAMIC_DRAW);
+                gl::EnableVertexAttribArray(2);
+                gl::VertexAttribPointer(2, 4, gl::UNSIGNED_BYTE, gl::TRUE as gl::types::GLboolean, 0, std::ptr::null());
                 
-                crate::external::glad_glBindVertexArray.unwrap()(0);
+                gl::BindVertexArray(0);
             }
         }
     }
@@ -228,45 +229,45 @@ pub fn rlgl_init(width: i32, height: i32) {
 
 fn load_shader(vs_source: &str, fs_source: &str) -> u32 {
     unsafe {
-        let vs = crate::external::glad_glCreateShader.unwrap()(crate::external::GL_VERTEX_SHADER);
+        let vs = gl::CreateShader(gl::VERTEX_SHADER);
         let vs_ptr = vs_source.as_ptr() as *const i8;
-        crate::external::glad_glShaderSource.unwrap()(vs, 1, &vs_ptr, std::ptr::null());
-        crate::external::glad_glCompileShader.unwrap()(vs);
+        gl::ShaderSource(vs, 1, &vs_ptr, std::ptr::null());
+        gl::CompileShader(vs);
         
         let mut success: i32 = 0;
-        crate::external::glad_glGetShaderiv.unwrap()(vs, crate::external::GL_COMPILE_STATUS, &mut success);
+        gl::GetShaderiv(vs, gl::COMPILE_STATUS, &mut success);
         if success == 0 {
             let mut info_log = [0u8; 512];
-            crate::external::glad_glGetShaderInfoLog.unwrap()(vs, 512, std::ptr::null_mut(), info_log.as_mut_ptr() as *mut i8);
+            gl::GetShaderInfoLog(vs, 512, std::ptr::null_mut(), info_log.as_mut_ptr() as *mut i8);
             println!("Vertex Shader Error: {}", std::str::from_utf8(&info_log).unwrap_or("Unknown"));
         }
         
-        let fs = crate::external::glad_glCreateShader.unwrap()(crate::external::GL_FRAGMENT_SHADER);
+        let fs = gl::CreateShader(gl::FRAGMENT_SHADER);
         let fs_ptr = fs_source.as_ptr() as *const i8;
-        crate::external::glad_glShaderSource.unwrap()(fs, 1, &fs_ptr, std::ptr::null());
-        crate::external::glad_glCompileShader.unwrap()(fs);
+        gl::ShaderSource(fs, 1, &fs_ptr, std::ptr::null());
+        gl::CompileShader(fs);
         
-        crate::external::glad_glGetShaderiv.unwrap()(fs, crate::external::GL_COMPILE_STATUS, &mut success);
+        gl::GetShaderiv(fs, gl::COMPILE_STATUS, &mut success);
         if success == 0 {
             let mut info_log = [0u8; 512];
-            crate::external::glad_glGetShaderInfoLog.unwrap()(fs, 512, std::ptr::null_mut(), info_log.as_mut_ptr() as *mut i8);
+            gl::GetShaderInfoLog(fs, 512, std::ptr::null_mut(), info_log.as_mut_ptr() as *mut i8);
             println!("Fragment Shader Error: {}", std::str::from_utf8(&info_log).unwrap_or("Unknown"));
         }
         
-        let program = crate::external::glad_glCreateProgram.unwrap()();
-        crate::external::glad_glAttachShader.unwrap()(program, vs);
-        crate::external::glad_glAttachShader.unwrap()(program, fs);
+        let program = gl::CreateProgram();
+        gl::AttachShader(program, vs);
+        gl::AttachShader(program, fs);
         
-        crate::external::glad_glBindAttribLocation.unwrap()(program, 0, "vertexPosition\0".as_ptr() as *const i8);
-        crate::external::glad_glBindAttribLocation.unwrap()(program, 1, "vertexTexCoord\0".as_ptr() as *const i8);
-        crate::external::glad_glBindAttribLocation.unwrap()(program, 2, "vertexColor\0".as_ptr() as *const i8);
+        gl::BindAttribLocation(program, 0, "vertexPosition\0".as_ptr() as *const i8);
+        gl::BindAttribLocation(program, 1, "vertexTexCoord\0".as_ptr() as *const i8);
+        gl::BindAttribLocation(program, 2, "vertexColor\0".as_ptr() as *const i8);
         
-        crate::external::glad_glLinkProgram.unwrap()(program);
+        gl::LinkProgram(program);
         
-        crate::external::glad_glGetProgramiv.unwrap()(program, crate::external::GL_LINK_STATUS, &mut success);
+        gl::GetProgramiv(program, gl::LINK_STATUS, &mut success);
         if success == 0 {
             let mut info_log = [0u8; 512];
-            crate::external::glad_glGetProgramInfoLog.unwrap()(program, 512, std::ptr::null_mut(), info_log.as_mut_ptr() as *mut i8);
+            gl::GetProgramInfoLog(program, 512, std::ptr::null_mut(), info_log.as_mut_ptr() as *mut i8);
             println!("Shader Link Error: {}", std::str::from_utf8(&info_log).unwrap_or("Unknown"));
         }
         
@@ -276,7 +277,7 @@ fn load_shader(vs_source: &str, fs_source: &str) -> u32 {
 
 pub fn rl_viewport(x: i32, y: i32, width: i32, height: i32) {
     unsafe {
-        crate::external::glad_glViewport.unwrap()(x, y, width, height);
+        gl::Viewport(x, y, width, height);
     }
 }
 
@@ -472,11 +473,11 @@ pub fn rl_color4ub(r: u8, g: u8, b: u8, a: u8) {
 }
 
 pub fn rl_color3f(x: f32, y: f32, z: f32) {
-    rl_color4ub((x * 255.0) as u8, (y * 255.0) as u8, (z * 255.0) as u8, 255);
+    rl_color4ub((x * 255.0) as gl::types::GLboolean, (y * 255.0) as gl::types::GLboolean, (z * 255.0) as gl::types::GLboolean, 255);
 }
 
 pub fn rl_color4f(x: f32, y: f32, z: f32, w: f32) {
-    rl_color4ub((x * 255.0) as u8, (y * 255.0) as u8, (z * 255.0) as u8, (w * 255.0) as u8);
+    rl_color4ub((x * 255.0) as gl::types::GLboolean, (y * 255.0) as gl::types::GLboolean, (z * 255.0) as gl::types::GLboolean, (w * 255.0) as gl::types::GLboolean);
 }
 
 pub fn rl_vertex2i(x: i32, y: i32) {
@@ -601,42 +602,42 @@ pub fn rl_draw_render_batch(batch_ptr: *mut RenderBatch) {
 
         let buffer = &mut batch.vertex_buffer[batch.current_buffer as usize];
         
-        crate::external::glad_glUseProgram.unwrap()(RLGL.default_shader_id);
+        gl::UseProgram(RLGL.default_shader_id);
         
-        let texture_loc = crate::external::glad_glGetUniformLocation.unwrap()(RLGL.default_shader_id, "texture0\0".as_ptr() as *const i8);
-        crate::external::glad_glUniform1i.unwrap()(texture_loc, 0);
+        let texture_loc = gl::GetUniformLocation(RLGL.default_shader_id, "texture0\0".as_ptr() as *const i8);
+        gl::Uniform1i(texture_loc, 0);
 
-        crate::external::glad_glEnable.unwrap()(crate::external::GL_BLEND);
-        crate::external::glad_glBlendFunc.unwrap()(crate::external::GL_SRC_ALPHA, crate::external::GL_ONE_MINUS_SRC_ALPHA);
+        gl::Enable(gl::BLEND);
+        gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
         
         // Update buffers
-        crate::external::glad_glBindBuffer.unwrap()(crate::external::GL_ARRAY_BUFFER, buffer.vbo_id[0]);
-        crate::external::glad_glBufferSubData.unwrap()(crate::external::GL_ARRAY_BUFFER, 0, (RLGL.vertex_counter * 3 * 4) as i64, buffer.vertices.as_ptr() as *const _);
+        gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vbo_id[0]);
+        gl::BufferSubData(gl::ARRAY_BUFFER, 0, (RLGL.vertex_counter * 3 * 4) as isize, buffer.vertices.as_ptr() as *const _);
         
-        crate::external::glad_glBindBuffer.unwrap()(crate::external::GL_ARRAY_BUFFER, buffer.vbo_id[1]);
-        crate::external::glad_glBufferSubData.unwrap()(crate::external::GL_ARRAY_BUFFER, 0, (RLGL.vertex_counter * 2 * 4) as i64, buffer.texcoords.as_ptr() as *const _);
+        gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vbo_id[1]);
+        gl::BufferSubData(gl::ARRAY_BUFFER, 0, (RLGL.vertex_counter * 2 * 4) as isize, buffer.texcoords.as_ptr() as *const _);
         
-        crate::external::glad_glBindBuffer.unwrap()(crate::external::GL_ARRAY_BUFFER, buffer.vbo_id[3]);
-        crate::external::glad_glBufferSubData.unwrap()(crate::external::GL_ARRAY_BUFFER, 0, (RLGL.vertex_counter * 4) as i64, buffer.colors.as_ptr() as *const _);
+        gl::BindBuffer(gl::ARRAY_BUFFER, buffer.vbo_id[3]);
+        gl::BufferSubData(gl::ARRAY_BUFFER, 0, (RLGL.vertex_counter * 4) as isize, buffer.colors.as_ptr() as *const _);
 
         // Set uniform MVP
         let mvp = RLGL.projection * RLGL.modelview;
-        let mvp_loc = crate::external::glad_glGetUniformLocation.unwrap()(RLGL.default_shader_id, "mvp\0".as_ptr() as *const i8);
+        let mvp_loc = gl::GetUniformLocation(RLGL.default_shader_id, "mvp\0".as_ptr() as *const i8);
         let mvp_array = mvp.to_cols_array();
-        crate::external::glad_glUniformMatrix4fv.unwrap()(mvp_loc, 1, crate::external::GL_FALSE as u8, mvp_array.as_ptr());
+        gl::UniformMatrix4fv(mvp_loc, 1, gl::FALSE as gl::types::GLboolean, mvp_array.as_ptr());
         
-        let col_diffuse_loc = crate::external::glad_glGetUniformLocation.unwrap()(RLGL.default_shader_id, "colDiffuse\0".as_ptr() as *const i8);
-        crate::external::glad_glUniform4f.unwrap()(col_diffuse_loc, 1.0, 1.0, 1.0, 1.0);
+        let col_diffuse_loc = gl::GetUniformLocation(RLGL.default_shader_id, "colDiffuse\0".as_ptr() as *const i8);
+        gl::Uniform4f(col_diffuse_loc, 1.0, 1.0, 1.0, 1.0);
 
-        crate::external::glad_glBindVertexArray.unwrap()(buffer.vao_id);
+        gl::BindVertexArray(buffer.vao_id);
 
         let mut vertex_offset = 0;
         for i in 0..batch.draw_counter {
             let draw = &batch.draws[i as usize];
             if draw.vertex_count > 0 {
-                let mode = if draw.mode == RL_QUADS { crate::external::GL_TRIANGLES } else { draw.mode as u32 };
+                let mode = if draw.mode == RL_QUADS { gl::TRIANGLES } else { draw.mode as u32 };
                 
-                crate::external::glad_glBindTexture.unwrap()(crate::external::GL_TEXTURE_2D, draw.texture_id);
+                gl::BindTexture(gl::TEXTURE_2D, draw.texture_id);
                 
                 if draw.mode == RL_QUADS {
                     // Quads are not supported in core profile, we need to use indices or convert to triangles.
@@ -654,16 +655,16 @@ pub fn rl_draw_render_batch(batch_ptr: *mut RenderBatch) {
                     // Actually, let's just use GL_TRIANGLE_FAN or similar? No.
                     
                     // For now, let's just use draw.mode and hope for the best, or fix core.rs to use compatibility profile.
-                    crate::external::glad_glDrawArrays.unwrap()(draw.mode as u32, vertex_offset, draw.vertex_count);
+                    gl::DrawArrays(draw.mode as u32, vertex_offset, draw.vertex_count);
                 } else {
-                    crate::external::glad_glDrawArrays.unwrap()(draw.mode as u32, vertex_offset, draw.vertex_count);
+                    gl::DrawArrays(draw.mode as u32, vertex_offset, draw.vertex_count);
                 }
                 vertex_offset += draw.vertex_count + draw.vertex_alignment;
             }
         }
 
-        crate::external::glad_glBindVertexArray.unwrap()(0);
-        crate::external::glad_glUseProgram.unwrap()(0);
+        gl::BindVertexArray(0);
+        gl::UseProgram(0);
 
         RLGL.vertex_counter = 0;
         batch.draw_counter = 0;
@@ -676,26 +677,26 @@ pub fn rl_load_texture(data: *const std::ffi::c_void, width: i32, height: i32, f
     let mut id: u32 = 0;
     unsafe {
         // Minimal stub to create texture ID using glad
-        crate::external::glad_glGenTextures.unwrap()(1, &mut id);
-        crate::external::glad_glBindTexture.unwrap()(crate::external::GL_TEXTURE_2D, id);
+        gl::GenTextures(1, &mut id);
+        gl::BindTexture(gl::TEXTURE_2D, id);
         
-        let mut gl_internal_format = crate::external::GL_RGBA as i32;
-        let mut gl_format = crate::external::GL_RGBA;
-        let gl_type = crate::external::GL_UNSIGNED_BYTE;
+        let mut gl_internal_format = gl::RGBA as i32;
+        let mut gl_format = gl::RGBA;
+        let gl_type = gl::UNSIGNED_BYTE;
         
         if format == 1 {
-            gl_internal_format = crate::external::GL_RED as i32;
-            gl_format = crate::external::GL_RED;
+            gl_internal_format = gl::RED as i32;
+            gl_format = gl::RED;
         } else if format == 2 {
-            gl_internal_format = crate::external::GL_RG as i32;
-            gl_format = crate::external::GL_RG;
+            gl_internal_format = gl::RG as i32;
+            gl_format = gl::RG;
         } else if format == 4 {
-            gl_internal_format = crate::external::GL_RGB as i32;
-            gl_format = crate::external::GL_RGB;
+            gl_internal_format = gl::RGB as i32;
+            gl_format = gl::RGB;
         }
         
-        crate::external::glad_glTexImage2D.unwrap()(
-            crate::external::GL_TEXTURE_2D,
+        gl::TexImage2D(
+            gl::TEXTURE_2D,
             0,
             gl_internal_format,
             width,
@@ -706,17 +707,17 @@ pub fn rl_load_texture(data: *const std::ffi::c_void, width: i32, height: i32, f
             data,
         );
         
-        crate::external::glad_glTexParameteri.unwrap()(crate::external::GL_TEXTURE_2D, crate::external::GL_TEXTURE_MIN_FILTER, crate::external::GL_LINEAR as i32);
-        crate::external::glad_glTexParameteri.unwrap()(crate::external::GL_TEXTURE_2D, crate::external::GL_TEXTURE_MAG_FILTER, crate::external::GL_LINEAR as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
         
-        crate::external::glad_glBindTexture.unwrap()(crate::external::GL_TEXTURE_2D, 0);
+        gl::BindTexture(gl::TEXTURE_2D, 0);
     }
     id
 }
 
 pub fn rl_unload_texture(id: u32) {
     unsafe {
-        crate::external::glad_glDeleteTextures.unwrap()(1, &id);
+        gl::DeleteTextures(1, &id);
     }
 }
 
