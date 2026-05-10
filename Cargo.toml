@@ -1,0 +1,13 @@
+[package]
+name = "raylib-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+glam = "0.27"
+sdl3 = { version = "0.18.3", features = ["use-pkg-config"] }
+libc = "0.2"
+
+[build-dependencies]
+cc = "1.0"
+bindgen = "0.69"
