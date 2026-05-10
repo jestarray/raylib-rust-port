@@ -17,6 +17,17 @@ pub fn load_image(file_name: &str) -> Image {
             0,
         );
 
+        if data.is_null() {
+            println!("ERROR: Failed to load image: {}", file_name);
+            return Image {
+                data: std::ptr::null_mut(),
+                width: 0,
+                height: 0,
+                mipmaps: 0,
+                format: 0,
+            };
+        }
+
         let format = if channels == 1 {
             1 // UNCOMPRESSED_GRAYSCALE
         } else if channels == 2 {

@@ -1,4 +1,5 @@
 use std::ffi::CString;
+use crate::types::Color;
 
 pub struct CoreData {
     pub sdl_context: Option<sdl3::Sdl>,
@@ -97,6 +98,19 @@ pub fn begin_drawing() {
             crate::external::glad_glClear.unwrap()(crate::external::GL_COLOR_BUFFER_BIT | crate::external::GL_DEPTH_BUFFER_BIT);
         }
     }
+}
+
+pub fn clear_background(color: Color) {
+    unsafe {
+        if let Some(f) = crate::external::glad_glClearColor {
+            f(color.r as f32 / 255.0, color.g as f32 / 255.0, color.b as f32 / 255.0, color.a as f32 / 255.0);
+            crate::external::glad_glClear.unwrap()(crate::external::GL_COLOR_BUFFER_BIT | crate::external::GL_DEPTH_BUFFER_BIT);
+        }
+    }
+}
+
+pub fn set_target_fps(_fps: i32) {
+    // Stub for now, in a real port we would track time
 }
 
 pub fn end_drawing() {

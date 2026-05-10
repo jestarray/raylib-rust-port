@@ -131,3 +131,6 @@ pub fn draw_text_ex(font: &Font, text: &str, position: Vector2, font_size: f32, 
         }
     }
 }
+pub fn draw_text(_text: &str, _x: i32, _y: i32, _font_size: i32, _color: Color) {
+    // Stub for now, requires a default font
+}
