@@ -2,7 +2,7 @@
 use crate::types::{Color, Matrix, Rectangle, Vector2};
 use gl;
 use glam::{Mat4, Vec3};
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 
 // --- Constants ---
 
@@ -399,8 +399,8 @@ pub struct rlglData {
 }
 
 static mut IS_GPU_READY: bool = false;
-pub static rlCullDistanceNear: f64 = RL_CULL_DISTANCE_NEAR;
-pub static rlCullDistanceFar: f64 = RL_CULL_DISTANCE_FAR;
+pub static mut rlCullDistanceNear: f64 = RL_CULL_DISTANCE_NEAR;
+pub static mut rlCullDistanceFar: f64 = RL_CULL_DISTANCE_FAR;
 pub static mut RLGL: rlglData = unsafe { std::mem::zeroed() };
 
 pub unsafe fn rlglInit(width: i32, height: i32) {
@@ -410,8 +410,6 @@ pub unsafe fn rlglInit(width: i32, height: i32) {
 
     // Initialize state
     RLGL.State.currentMatrixMode = RL_PROJECTION;
-    RLGL.State.projection =
-        Mat4::orthographic_rh_gl(0.0, width as f32, height as f32, 0.0, -1.0, 1.0);
 
     RLGL.State.currentMatrixMode = RL_MODELVIEW;
     RLGL.State.modelview = Matrix::IDENTITY;
@@ -479,172 +477,211 @@ pub unsafe fn rlLoadExtensions() {
 }
 
 // Matrix operations
+/// Choose the current matrix to be transformed
 pub unsafe fn rlMatrixMode(mode: i32) {
-    if RLGL.State.currentMatrixMode != mode {
-        rlDrawRenderBatchActive();
-        RLGL.State.currentMatrixMode = mode;
+    if (mode == RL_PROJECTION) {
+        RLGL.State.currentMatrix = &raw mut RLGL.State.projection;
+    } else if (mode == RL_MODELVIEW) {
+        RLGL.State.currentMatrix = &raw mut RLGL.State.modelview;
     }
+    //else if (mode == RL_TEXTURE) // Not supported
+
+    RLGL.State.currentMatrixMode = mode;
 }
 
+/// Push the current matrix into RLGL.State.stack
 pub unsafe fn rlPushMatrix() {
-    if RLGL.State.stackCounter >= RL_MAX_MATRIX_STACK_SIZE as i32 {
-        return;
+    if (RLGL.State.stackCounter >= RL_MAX_MATRIX_STACK_SIZE as i32) {
+        error!("RLGL: Matrix stack overflow (RL_MAX_MATRIX_STACK_SIZE)");
     }
 
-    let mat = match RLGL.State.currentMatrixMode {
-        RL_MODELVIEW => {
-            RLGL.State.transformRequired = true;
-            RLGL.State.modelview
-        }
-        RL_PROJECTION => RLGL.State.projection,
-        _ => Matrix::IDENTITY,
-    };
+    if (RLGL.State.currentMatrixMode == RL_MODELVIEW) {
+        RLGL.State.transformRequired = true;
+        RLGL.State.currentMatrix = &raw mut RLGL.State.transform;
+    }
 
-    RLGL.State.stack[RLGL.State.stackCounter as usize] = mat;
+    RLGL.State.stack[RLGL.State.stackCounter as usize] = *RLGL.State.currentMatrix;
     RLGL.State.stackCounter += 1;
-
-    if RLGL.State.currentMatrixMode == RL_MODELVIEW {
-        RLGL.State.transform = mat;
-    }
 }
 
+/// Pop latest inserted matrix from RLGL.State.stack
 pub unsafe fn rlPopMatrix() {
-    if RLGL.State.stackCounter > 0 {
+    if (RLGL.State.stackCounter > 0) {
+        let mat = RLGL.State.stack[(RLGL.State.stackCounter - 1) as usize];
+        *RLGL.State.currentMatrix = mat;
         RLGL.State.stackCounter -= 1;
-        let mat = RLGL.State.stack[RLGL.State.stackCounter as usize];
+    }
 
-        match RLGL.State.currentMatrixMode {
-            RL_MODELVIEW => {
-                RLGL.State.transform = mat;
-            }
-            RL_PROJECTION => RLGL.State.projection = mat,
-            _ => {}
-        }
-
-        if RLGL.State.stackCounter == 0 {
-            RLGL.State.transformRequired = false;
-        }
+    if ((RLGL.State.stackCounter == 0) && (RLGL.State.currentMatrixMode == RL_MODELVIEW)) {
+        RLGL.State.currentMatrix = &raw mut RLGL.State.modelview;
+        RLGL.State.transformRequired = false;
     }
 }
 
+// Reset current matrix to identity matrix
 pub unsafe fn rlLoadIdentity() {
-    if !RLGL.State.transformRequired || RLGL.State.currentMatrixMode == RL_PROJECTION {
-        rlDrawRenderBatchActive();
-    }
-    match RLGL.State.currentMatrixMode {
-        RL_MODELVIEW => {
-            if RLGL.State.transformRequired {
-                RLGL.State.transform = Matrix::IDENTITY;
-            } else {
-                RLGL.State.modelview = Matrix::IDENTITY;
-            }
-        }
-        RL_PROJECTION => RLGL.State.projection = Matrix::IDENTITY,
-        _ => {}
-    }
+    *RLGL.State.currentMatrix = Matrix::IDENTITY;
 }
 
 pub unsafe fn rlTranslatef(x: f32, y: f32, z: f32) {
-    if !RLGL.State.transformRequired || RLGL.State.currentMatrixMode == RL_PROJECTION {
-        rlDrawRenderBatchActive();
-    }
-    let mat = Mat4::from_translation(Vec3::new(x, y, z));
-    match RLGL.State.currentMatrixMode {
-        RL_MODELVIEW => {
-            if RLGL.State.transformRequired {
-                RLGL.State.transform = RLGL.State.transform * mat;
-            } else {
-                RLGL.State.modelview = RLGL.State.modelview * mat;
-            }
-        }
-        RL_PROJECTION => RLGL.State.projection = RLGL.State.projection * mat,
-        _ => {}
-    }
+    let mut matTranslation = Matrix::IDENTITY;
+
+    // Set translation component of matrix
+    matTranslation.m12 = x;
+    matTranslation.m13 = y;
+    matTranslation.m14 = z;
+
+    // NOTE: Transposing matrix by multiplication order
+    *RLGL.State.currentMatrix = matTranslation * *RLGL.State.currentMatrix;
 }
 
-pub unsafe fn rlRotatef(angle: f32, x: f32, y: f32, z: f32) {
-    if !RLGL.State.transformRequired || RLGL.State.currentMatrixMode == RL_PROJECTION {
-        rlDrawRenderBatchActive();
+/// Multiply the current matrix by a rotation matrix
+/// NOTE: The provided angle must be in degrees
+pub unsafe fn rlRotatef(angle: f32, mut x: f32, mut y: f32, mut z: f32) {
+    let mut matRotation = Matrix::IDENTITY;
+
+    // Axis vector (x, y, z) normalization
+    let lengthSquared = x * x + y * y + z * z;
+    if ((lengthSquared != 1.0) && (lengthSquared != 0.0)) {
+        let inverseLength = 1.0 / (lengthSquared).sqrt();
+        x *= inverseLength;
+        y *= inverseLength;
+        z *= inverseLength;
     }
-    let axis = Vec3::new(x, y, z).normalize_or_zero();
-    let mat = Mat4::from_axis_angle(axis, angle * crate::math::DEG2RAD);
-    match RLGL.State.currentMatrixMode {
-        RL_MODELVIEW => {
-            if RLGL.State.transformRequired {
-                RLGL.State.transform = RLGL.State.transform * mat;
-            } else {
-                RLGL.State.modelview = RLGL.State.modelview * mat;
-            }
-        }
-        RL_PROJECTION => RLGL.State.projection = RLGL.State.projection * mat,
-        _ => {}
-    }
+
+    // Rotation matrix generation
+    let sinres = angle.to_radians().sin();
+    let cosres = angle.to_radians().cos();
+    let t = 1.0 - cosres;
+
+    matRotation.m0 = x * x * t + cosres;
+    matRotation.m1 = y * x * t + z * sinres;
+    matRotation.m2 = z * x * t - y * sinres;
+    matRotation.m3 = 0.0;
+
+    matRotation.m4 = x * y * t - z * sinres;
+    matRotation.m5 = y * y * t + cosres;
+    matRotation.m6 = z * y * t + x * sinres;
+    matRotation.m7 = 0.0;
+
+    matRotation.m8 = x * z * t + y * sinres;
+    matRotation.m9 = y * z * t - x * sinres;
+    matRotation.m10 = z * z * t + cosres;
+    matRotation.m11 = 0.0;
+
+    matRotation.m12 = 0.0;
+    matRotation.m13 = 0.0;
+    matRotation.m14 = 0.0;
+    matRotation.m15 = 1.0;
+
+    // NOTE: Transposing matrix by multiplication order
+    *RLGL.State.currentMatrix = (matRotation * *RLGL.State.currentMatrix);
 }
 
+/// Multiply the current matrix by a scaling matrix
 pub unsafe fn rlScalef(x: f32, y: f32, z: f32) {
-    if !RLGL.State.transformRequired || RLGL.State.currentMatrixMode == RL_PROJECTION {
-        rlDrawRenderBatchActive();
-    }
-    let mat = Mat4::from_scale(Vec3::new(x, y, z));
-    match RLGL.State.currentMatrixMode {
-        RL_MODELVIEW => {
-            if RLGL.State.transformRequired {
-                RLGL.State.transform = RLGL.State.transform * mat;
-            } else {
-                RLGL.State.modelview = RLGL.State.modelview * mat;
-            }
-        }
-        RL_PROJECTION => RLGL.State.projection = RLGL.State.projection * mat,
-        _ => {}
-    }
+    let mut matScale = Matrix::IDENTITY;
+
+    // Set scale component of matrix
+    matScale.m0 = x;
+    matScale.m5 = y;
+    matScale.m10 = z;
+
+    // NOTE: Transposing matrix by multiplication order
+    *RLGL.State.currentMatrix = (matScale * *RLGL.State.currentMatrix);
 }
 
-pub unsafe fn rlMultMatrixf(matf: *const f32) {
-    if !RLGL.State.transformRequired || RLGL.State.currentMatrixMode == RL_PROJECTION {
-        rlDrawRenderBatchActive();
-    }
-    let slice = std::slice::from_raw_parts(matf, 16);
-    let mat = Matrix::from_cols_array(slice.try_into().unwrap());
-    match RLGL.State.currentMatrixMode {
-        RL_MODELVIEW => {
-            if RLGL.State.transformRequired {
-                RLGL.State.transform = RLGL.State.transform * mat;
-            } else {
-                RLGL.State.modelview = RLGL.State.modelview * mat;
-            }
-        }
-        RL_PROJECTION => RLGL.State.projection = RLGL.State.projection * mat,
-        _ => {}
-    }
-}
-
-pub unsafe fn rlOrtho(left: f64, right: f64, bottom: f64, top: f64, znear: f64, zfar: f64) {
-    if !RLGL.State.transformRequired || RLGL.State.currentMatrixMode == RL_PROJECTION {
-        rlDrawRenderBatchActive();
-    }
-    let mat = Mat4::orthographic_rh_gl(
-        left as f32,
-        right as f32,
-        bottom as f32,
-        top as f32,
-        znear as f32,
-        zfar as f32,
+// Multiply the current matrix by another matrix
+pub unsafe fn rlMultMatrixf(matf: &[f32; 16]) {
+    // Matrix creation from array
+    // Conversion from column-major to row-major memory order
+    let mat = Matrix::new(
+        matf[0], matf[4], matf[8], matf[12], matf[1], matf[5], matf[9], matf[13], matf[2], matf[6],
+        matf[10], matf[14], matf[3], matf[7], matf[11], matf[15],
     );
-    match RLGL.State.currentMatrixMode {
-        RL_MODELVIEW => {
-            if RLGL.State.transformRequired {
-                RLGL.State.transform = RLGL.State.transform * mat;
-            } else {
-                RLGL.State.modelview = RLGL.State.modelview * mat;
-            }
-        }
-        RL_PROJECTION => RLGL.State.projection = RLGL.State.projection * mat,
-        _ => {}
-    }
+
+    *RLGL.State.currentMatrix = (mat * *RLGL.State.currentMatrix);
 }
 
+/// Multiply the current matrix by a perspective matrix generated by parameters
+pub unsafe fn rlFrustum(left: f64, right: f64, bottom: f64, top: f64, znear: f64, zfar: f64) {
+    let mut matFrustum = Matrix::IDENTITY;
+
+    let rl = (right - left) as f32;
+    let tb = (top - bottom) as f32;
+    let fnn = (zfar - znear) as f32;
+
+    matFrustum.m0 = (znear as f32 * 2.0) / rl;
+    matFrustum.m1 = 0.0;
+    matFrustum.m2 = 0.0;
+    matFrustum.m3 = 0.0;
+
+    matFrustum.m4 = 0.0;
+    matFrustum.m5 = (znear as f32 * 2.0) / tb;
+    matFrustum.m6 = 0.0;
+    matFrustum.m7 = 0.0;
+
+    matFrustum.m8 = (right as f32 + left as f32) / rl;
+    matFrustum.m9 = (top as f32 + bottom as f32) / tb;
+    matFrustum.m10 = -(zfar as f32 + znear as f32) / fnn;
+    matFrustum.m11 = -1.0;
+
+    matFrustum.m12 = 0.0;
+    matFrustum.m13 = 0.0;
+    matFrustum.m14 = -(zfar as f32 * znear as f32 * 2.0) / fnn;
+    matFrustum.m15 = 0.0;
+
+    *RLGL.State.currentMatrix = (*RLGL.State.currentMatrix * matFrustum);
+}
+
+/// Multiply the current matrix by an orthographic matrix generated by parameters
+pub unsafe fn rlOrtho(left: f64, right: f64, bottom: f64, top: f64, znear: f64, zfar: f64) {
+    // NOTE: If left-right and top-botton values are equal it could create a division by zero,
+    // response to it is platform/compiler dependent
+    let mut matOrtho = Matrix::IDENTITY;
+
+    let rl = (right - left) as f32;
+    let tb = (top - bottom) as f32;
+    let fnn = (zfar - znear) as f32;
+
+    matOrtho.m0 = 2.0 / rl;
+    matOrtho.m1 = 0.0;
+    matOrtho.m2 = 0.0;
+    matOrtho.m3 = 0.0;
+    matOrtho.m4 = 0.0;
+    matOrtho.m5 = 2.0 / tb;
+    matOrtho.m6 = 0.0;
+    matOrtho.m7 = 0.0;
+    matOrtho.m8 = 0.0;
+    matOrtho.m9 = 0.0;
+    matOrtho.m10 = -2.0 / fnn;
+    matOrtho.m11 = 0.0;
+    matOrtho.m12 = -(left as f32 + right as f32) / rl;
+    matOrtho.m13 = -(top as f32 + bottom as f32) / tb;
+    matOrtho.m14 = -(zfar as f32 + znear as f32) / fnn;
+    matOrtho.m15 = 1.0;
+
+    *RLGL.State.currentMatrix = (*RLGL.State.currentMatrix * matOrtho);
+}
+
+/// Set the viewport area (transformation from normalized device coordinates to window coordinates)
 pub unsafe fn rlViewport(x: i32, y: i32, width: i32, height: i32) {
     gl::Viewport(x, y, width, height);
+}
+
+pub unsafe fn rlSetClipPlanes(nearPlane: f64, farPlane: f64) {
+    rlCullDistanceNear = nearPlane;
+    rlCullDistanceFar = farPlane;
+}
+
+/// Get cull plane distance near
+pub unsafe fn rlGetCullDistanceNear() -> f64 {
+    return rlCullDistanceNear;
+}
+
+/// Get cull plane distance far
+pub unsafe fn rlGetCullDistanceFar() -> f64 {
+    return rlCullDistanceFar;
 }
 
 // Vertex level operations
