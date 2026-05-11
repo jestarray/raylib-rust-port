@@ -282,17 +282,29 @@ pub struct rlVertexBuffer {
     pub texcoords: *mut f32,
     pub normals: *mut f32,
     pub colors: *mut u8,
-    pub indices: *mut u32,
+    #[cfg(feature = "opengl_33")]
+    pub indices: *mut u32, // Vertex indices (in case vertex data comes indexed) (6 indices per quad)
+    #[cfg(feature = "gles2")]
+    pub indices: *mut i16, // Vertex indices (in case vertex data comes indexed) (6 indices per quad)
     pub vaoId: u32,
     pub vboId: [u32; 5],
 }
 
 #[derive(Debug, Clone, Copy)]
+// Draw call type
+// NOTE: Only texture changes register a new draw, other state-change-related elements are not
+// used at this moment (vaoId, shaderId, matrices), raylib forces a batch draw call if any
+// of those state-change happens (this is done in core module)
 pub struct rlDrawCall {
-    pub mode: i32,
-    pub vertexCount: i32,
-    pub vertexAlignment: i32,
-    pub textureId: u32,
+    pub mode: i32,            // Drawing mode: LINES, TRIANGLES, QUADS
+    pub vertexCount: i32,     // Number of vertex of the draw
+    pub vertexAlignment: i32, // Number of vertex required for index alignment (LINES, TRIANGLES)
+    //unsigned int vaoId;       // Vertex array id to be used on the draw -> Using RLGL.currentBatch->vertexBuffer.vaoId
+    //unsigned int shaderId;    // Shader id to be used on the draw -> Using RLGL.currentShaderId
+    pub textureId: i32, // Texture id to be used on the draw -> Use to create new draw call if changes
+
+                        //Matrix projection;        // Projection matrix for this draw -> Using RLGL.projection by default
+                        //Matrix modelview;         // Modelview matrix for this draw -> Using RLGL.modelview by default
 }
 
 #[derive(Debug)]
@@ -666,13 +678,13 @@ pub unsafe fn rlBegin(mode: i32) {
                         mode,
                         vertexCount: 0,
                         vertexAlignment: 0,
-                        textureId: RLGL.State.activeTextureId[0],
+                        textureId: RLGL.State.activeTextureId[0] as i32,
                     });
                 batch.drawCounter += 1;
             }
         } else {
             (*batch.draws.add(last_draw_idx)).mode = mode;
-            (*batch.draws.add(last_draw_idx)).textureId = RLGL.State.activeTextureId[0];
+            (*batch.draws.add(last_draw_idx)).textureId = RLGL.State.activeTextureId[0] as i32;
         }
     }
 }
@@ -867,7 +879,9 @@ pub unsafe fn rlLoadRenderBatch(numBuffers: i32, bufferElements: i32) -> rlRende
             as *mut rlDrawCall;
     batch.drawCounter = 1;
     (*batch.draws).mode = RL_QUADS;
-    (*batch.draws).textureId = RLGL.State.defaultTextureId;
+    (*batch.draws).textureId = RLGL.State.defaultTextureId as i32;
+    (*batch.draws).vertexCount = 0;
+    (*batch.draws).vertexAlignment = 0;
     batch.currentDepth = -1.0;
 
     batch
@@ -950,7 +964,7 @@ pub unsafe fn rlDrawRenderBatch(batch: *mut rlRenderBatch) {
     for i in 0..b.drawCounter {
         let draw = *b.draws.add(i as usize);
         if draw.vertexCount > 0 {
-            gl::BindTexture(gl::TEXTURE_2D, draw.textureId);
+            gl::BindTexture(gl::TEXTURE_2D, draw.textureId as u32);
 
             if draw.mode == RL_QUADS {
                 gl::DrawElements(
@@ -971,7 +985,7 @@ pub unsafe fn rlDrawRenderBatch(batch: *mut rlRenderBatch) {
     (*b.draws).vertexCount = 0;
     (*b.draws).vertexAlignment = 0;
     (*b.draws).mode = RL_QUADS;
-    (*b.draws).textureId = RLGL.State.defaultTextureId;
+    (*b.draws).textureId = RLGL.State.defaultTextureId as i32;
     b.currentDepth = -1.0;
 }
 
@@ -1327,11 +1341,11 @@ pub unsafe fn rlSetTexture(id: u32) {
                     mode: last_draw.mode,
                     vertexCount: 0,
                     vertexAlignment: 0,
-                    textureId: id,
+                    textureId: id as i32,
                 });
             batch.drawCounter += 1;
         } else {
-            last_draw.textureId = id;
+            last_draw.textureId = id as i32;
         }
         RLGL.State.activeTextureId[0] = id;
     }
