@@ -356,6 +356,7 @@ pub struct rlglState {
     pub colora: u8,
 
     pub currentMatrixMode: i32,
+    pub currentMatrix: *mut Matrix,
     pub modelview: Matrix,
     pub projection: Matrix,
     pub transform: Matrix,
@@ -363,21 +364,35 @@ pub struct rlglState {
     pub stack: [Matrix; RL_MAX_MATRIX_STACK_SIZE],
     pub stackCounter: i32,
 
+    pub currentTextureId: u32,
     pub defaultTextureId: u32,
     pub activeTextureId: [u32; RL_DEFAULT_BATCH_MAX_TEXTURE_UNITS as usize],
+    pub defaultVShaderId: u32,
+    pub defaultFShaderId: u32,
     pub defaultShaderId: u32,
-    pub defaultShaderLocs: [i32; RL_MAX_SHADER_LOCATIONS],
+    pub defaultShaderLocs: *mut i32,
     pub currentShaderId: u32,
-    pub currentShaderLocs: [i32; RL_MAX_SHADER_LOCATIONS],
+    pub currentShaderLocs: *mut i32,
 
-    pub framebufferWidth: i32,
-    pub framebufferHeight: i32,
+    pub stereoRender: u32,             // Stereo rendering flag
+    pub projectionStereo: [Matrix; 2], // VR stereo rendering eyes projection matrices
+    pub viewOffsetStereo: [Matrix; 2], // VR stereo rendering eyes view offset matrices
 
-    pub currentBlendMode: i32,
-    pub glBlendSrcFactor: i32,
-    pub glBlendDstFactor: i32,
-    pub glBlendEquation: i32,
-    pub currentTextureId: u32,
+    // Blending variables
+    pub currentBlendMode: u32,           // Blending mode active
+    pub glBlendSrcFactor: u32,           // Blending source factor
+    pub glBlendDstFactor: u32,           // Blending destination factor
+    pub glBlendEquation: u32,            // Blending equation
+    pub glBlendSrcFactorRGB: u32,        // Blending source RGB factor
+    pub glBlendDestFactorRGB: u32,       // Blending destination RGB factor
+    pub glBlendSrcFactorAlpha: u32,      // Blending source alpha factor
+    pub glBlendDestFactorAlpha: u32,     // Blending destination alpha factor
+    pub glBlendEquationRGB: u32,         // Blending equation for RGB
+    pub glBlendEquationAlpha: u32,       // Blending equation for alpha
+    pub glCustomBlendModeModified: bool, // Custom blending factor and equation modification status
+
+    pub framebufferWidth: i32,  // Current framebuffer width
+    pub framebufferHeight: i32, // Current framebuffer height
 }
 
 pub struct rlglData {
