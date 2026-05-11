@@ -903,6 +903,326 @@ pub unsafe fn rlColor3f(x: f32, y: f32, z: f32) {
     rlColor4ub((x * 255.0) as u8, (y * 255.0) as u8, (z * 255.0) as u8, 255);
 }
 
+pub unsafe fn rlSetTexture(id: u32) {
+    if id == 0 {
+        // NOTE: If quads batch limit is reached, force a draw call and next batch starts
+        if RLGL.State.vertexCounter
+            >= (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize]
+                .elementCount
+                * 4
+        {
+            rlDrawRenderBatch(RLGL.currentBatch);
+        }
+        RLGL.State.currentTextureId = RLGL.State.defaultTextureId;
+    } else {
+        RLGL.State.currentTextureId = id;
+        if (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].textureId
+            != id as i32
+        {
+            if (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount
+                > 0
+            {
+                // Make sure current RLGL.currentBatch.draws[i].vertexCount is aligned a multiple of 4,
+                // that way, following QUADS drawing will keep aligned with index processing
+                // It implies adding some extra alignment vertex at the end of the draw,
+                // those vertex are not processed but they are considered as an additional offset
+                // for the next set of vertex to be drawn
+                if (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode
+                    == RL_LINES
+                {
+                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                        .vertexAlignment = if (*RLGL.currentBatch).draws
+                        [(*RLGL.currentBatch).drawCounter as usize - 1]
+                        .vertexCount
+                        < 4
+                    {
+                        (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                            .vertexCount
+                    } else {
+                        (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                            .vertexCount
+                            % 4
+                    };
+                } else if (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                    .mode
+                    == RL_TRIANGLES
+                {
+                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                        .vertexAlignment = if (*RLGL.currentBatch).draws
+                        [(*RLGL.currentBatch).drawCounter as usize - 1]
+                        .vertexCount
+                        < 4
+                    {
+                        1
+                    } else {
+                        4 - ((*RLGL.currentBatch).draws
+                            [(*RLGL.currentBatch).drawCounter as usize - 1]
+                            .vertexCount
+                            % 4)
+                    };
+                } else {
+                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                        .vertexAlignment = 0;
+                }
+
+                if !rlCheckRenderBatchLimit(
+                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                        .vertexAlignment,
+                ) {
+                    RLGL.State.vertexCounter += (*RLGL.currentBatch).draws
+                        [(*RLGL.currentBatch).drawCounter as usize - 1]
+                        .vertexAlignment;
+
+                    (*RLGL.currentBatch).drawCounter += 1;
+
+                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                        .mode = (*RLGL.currentBatch).draws
+                        [(*RLGL.currentBatch).drawCounter as usize - 2]
+                        .mode;
+                }
+            }
+
+            if (*RLGL.currentBatch).drawCounter >= RL_DEFAULT_BATCH_DRAWCALLS {
+                rlDrawRenderBatch(RLGL.currentBatch);
+            }
+
+            (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].textureId =
+                id as i32;
+            (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount =
+                0;
+        }
+    }
+}
+
+pub unsafe fn rlActiveTextureSlot(slot: i32) {
+    gl::ActiveTexture(gl::TEXTURE0 + slot as u32);
+}
+
+pub unsafe fn rlEnableTexture(id: u32) {
+    gl::BindTexture(gl::TEXTURE_2D, id);
+}
+
+pub unsafe fn rlDisableTexture() {
+    gl::BindTexture(gl::TEXTURE_2D, 0);
+}
+
+pub unsafe fn rlEnableTextureCubemap(id: u32) {
+    gl::BindTexture(gl::TEXTURE_CUBE_MAP, id);
+}
+
+pub unsafe fn rlDisableTextureCubemap() {
+    gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0);
+}
+
+pub const GL_TEXTURE_MAX_ANISOTROPY_EXT: u32 = 0x84FE;
+/// Set texture parameters (wrap mode/filter mode)
+pub unsafe fn rlTextureParameters(id: u32, param: i32, value: i32) {
+    gl::BindTexture(gl::TEXTURE_2D, id);
+    match param as u32 {
+        RL_TEXTURE_WRAP_S | RL_TEXTURE_WRAP_T => {
+            if value as u32 == RL_TEXTURE_WRAP_MIRROR_CLAMP {
+                if RLGL.ExtSupported.texMirrorClamp {
+                    gl::TexParameteri(gl::TEXTURE_2D, param as u32, value);
+                } else {
+                    warn!("GL: Clamp mirror wrap mode not supported (GL_MIRROR_CLAMP_EXT)",);
+                }
+            } else {
+                gl::TexParameteri(gl::TEXTURE_2D, param as u32, value);
+            }
+        }
+
+        RL_TEXTURE_MAG_FILTER | RL_TEXTURE_MIN_FILTER => {
+            gl::TexParameteri(gl::TEXTURE_2D, param as u32, value);
+        }
+
+        RL_TEXTURE_FILTER_ANISOTROPIC => {
+            // Reset anisotropy filter, in case it was set
+            gl::TexParameterf(gl::TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1.0);
+
+            if (value as f32) <= RLGL.ExtSupported.maxAnisotropyLevel {
+                gl::TexParameterf(gl::TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, value as f32);
+            } else if RLGL.ExtSupported.maxAnisotropyLevel > 0.0 {
+                warn!(
+                    "GL: Maximum anisotropic filter level supported is {}X level {}",
+                    id, RLGL.ExtSupported.maxAnisotropyLevel as i32,
+                );
+
+                gl::TexParameterf(gl::TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, value as f32);
+            } else {
+                warn!("GL: Anisotropic filtering not supported");
+            }
+        }
+
+        #[cfg(feature = "opengl_33")]
+        RL_TEXTURE_MIPMAP_BIAS_RATIO => {
+            gl::TexParameterf(gl::TEXTURE_2D, gl::TEXTURE_LOD_BIAS, value as f32 / 100.0);
+        }
+
+        _ => {}
+    }
+
+    gl::BindTexture(gl::TEXTURE_2D, 0);
+}
+
+pub unsafe fn rlCubemapParameters(id: u32, param: i32, value: i32) {
+    gl::BindTexture(gl::TEXTURE_CUBE_MAP, id);
+
+    // Reset anisotropy filter, in case it was set
+    gl::TexParameterf(gl::TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1.0);
+
+    match param as u32 {
+        RL_TEXTURE_WRAP_S | RL_TEXTURE_WRAP_T => {
+            if value == RL_TEXTURE_WRAP_MIRROR_CLAMP as i32 {
+                if RLGL.ExtSupported.texMirrorClamp {
+                    gl::TexParameteri(gl::TEXTURE_CUBE_MAP, param as u32, value);
+                } else {
+                    warn!("GL: Clamp mirror wrap mode not supported (GL_MIRROR_CLAMP_EXT)");
+                }
+            } else {
+                gl::TexParameteri(gl::TEXTURE_CUBE_MAP, param as u32, value);
+            }
+        }
+
+        RL_TEXTURE_MAG_FILTER | RL_TEXTURE_MIN_FILTER => {
+            gl::TexParameteri(gl::TEXTURE_CUBE_MAP, param as u32, value);
+        }
+
+        RL_TEXTURE_FILTER_ANISOTROPIC => {
+            if (value as f32) <= RLGL.ExtSupported.maxAnisotropyLevel {
+                gl::TexParameterf(
+                    gl::TEXTURE_CUBE_MAP,
+                    GL_TEXTURE_MAX_ANISOTROPY_EXT,
+                    value as f32,
+                );
+            } else if RLGL.ExtSupported.maxAnisotropyLevel > 0.0 {
+                warn!(
+                    "GL: Maximum anisotropic filter level supported is {}X, level {}",
+                    id, RLGL.ExtSupported.maxAnisotropyLevel as i32,
+                );
+
+                gl::TexParameterf(
+                    gl::TEXTURE_CUBE_MAP,
+                    GL_TEXTURE_MAX_ANISOTROPY_EXT,
+                    value as f32,
+                );
+            } else {
+                warn!("GL: Anisotropic filtering not supported");
+            }
+        }
+
+        #[cfg(feature = "opengl_33")]
+        RL_TEXTURE_MIPMAP_BIAS_RATIO => {
+            gl::TexParameterf(
+                gl::TEXTURE_CUBE_MAP,
+                gl::TEXTURE_LOD_BIAS,
+                value as f32 / 100.0,
+            );
+        }
+
+        _ => {}
+    }
+
+    gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0);
+}
+
+pub unsafe fn rlEnableShader(id: u32) {
+    gl::UseProgram(id);
+}
+
+// Disable shader program
+pub unsafe fn rlDisableShader() {
+    gl::UseProgram(0);
+}
+
+// Enable rendering to texture (fbo)
+pub unsafe fn rlEnableFramebuffer(id: u32) {
+    gl::BindFramebuffer(gl::FRAMEBUFFER, id);
+}
+
+// return the active render texture (fbo)
+pub unsafe fn rlGetActiveFramebuffer() -> u32 {
+    let mut fboId: i32 = 0;
+
+    #[cfg(any(feature = "opengl_33", feature = "opengl_es3",))]
+    {
+        gl::GetIntegerv(gl::DRAW_FRAMEBUFFER_BINDING, &mut fboId);
+    }
+
+    fboId as u32
+}
+
+// Disable rendering to texture
+pub unsafe fn rlDisableFramebuffer() {
+    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+}
+
+// Blit active framebuffer to main framebuffer
+pub unsafe fn rlBlitFramebuffer(
+    srcX: i32,
+    srcY: i32,
+    srcWidth: i32,
+    srcHeight: i32,
+    dstX: i32,
+    dstY: i32,
+    dstWidth: i32,
+    dstHeight: i32,
+    bufferMask: i32,
+) {
+    #[cfg(any(feature = "opengl_33", feature = "opengl_es3"))]
+    {
+        gl::BlitFramebuffer(
+            srcX,
+            srcY,
+            srcWidth,
+            srcHeight,
+            dstX,
+            dstY,
+            dstWidth,
+            dstHeight,
+            bufferMask as u32,
+            gl::NEAREST,
+        );
+    }
+}
+
+// Bind framebuffer object (fbo)
+pub unsafe fn rlBindFramebuffer(target: u32, framebuffer: u32) {
+    gl::BindFramebuffer(target, framebuffer);
+}
+
+// Activate multiple draw color buffers
+// NOTE: One color buffer is always active by default
+pub unsafe fn rlActiveDrawBuffers(count: i32) {
+    #[cfg(any(feature = "opengl_33", feature = "opengl_es3"))]
+    {
+        // NOTE: Maximum number of draw buffers supported is implementation dependent,
+        // it can be queried with glGet*() but it must be at least 8
+        //GLint maxDrawBuffers = 0;
+        //glGetIntegerv(GL_MAX_DRAW_BUFFERS, &maxDrawBuffers);
+
+        if (count > 0) {
+            if (count > 8) {
+                warn!("GL: Max color buffers limited to 8");
+            } else {
+                let buffers = [
+                    gl::COLOR_ATTACHMENT0,
+                    gl::COLOR_ATTACHMENT1,
+                    gl::COLOR_ATTACHMENT2,
+                    gl::COLOR_ATTACHMENT3,
+                    gl::COLOR_ATTACHMENT4,
+                    gl::COLOR_ATTACHMENT5,
+                    gl::COLOR_ATTACHMENT6,
+                    gl::COLOR_ATTACHMENT7,
+                ];
+
+                gl::DrawBuffers(count, buffers.as_ptr());
+            }
+        } else {
+            warn!("GL: One color buffer active by default");
+        }
+    }
+}
+
 // Render Batch Management
 pub unsafe fn rlLoadRenderBatch(numBuffers: i32, bufferElements: i32) -> rlRenderBatch {
     let mut batch: rlRenderBatch = std::mem::zeroed();
@@ -1433,11 +1753,6 @@ pub unsafe fn rlUnloadTexture(id: u32) {
     gl::DeleteTextures(1, &id);
 }
 
-pub unsafe fn rlEnableShader(id: u32) {
-    gl::UseProgram(id);
-    RLGL.State.currentShaderId = id;
-}
-
 unsafe fn rlLoadShaderDefault() {
     let vs = rlLoadShader(crate::core::DEFAULT_VSHADER, RL_VERTEX_SHADER as i32);
     let fs = rlLoadShader(crate::core::DEFAULT_FSHADER, RL_FRAGMENT_SHADER as i32);
@@ -1476,108 +1791,6 @@ pub unsafe fn rlLoadShader(code: &str, shaderType: i32) -> u32 {
     gl::ShaderSource(shader, 1, &c_str.as_ptr(), std::ptr::null());
     gl::CompileShader(shader);
     shader
-}
-
-pub unsafe fn rlSetTexture(id: u32) {
-    if RLGL.State.activeTextureId[0] != id {
-        rlCheckRenderBatchLimit(0);
-        let batch = &mut *RLGL.currentBatch;
-        let last_draw = &mut *batch.draws.add((batch.drawCounter - 1) as usize);
-        if last_draw.vertexCount > 0 {
-            batch
-                .draws
-                .add(batch.drawCounter as usize)
-                .write(rlDrawCall {
-                    mode: last_draw.mode,
-                    vertexCount: 0,
-                    vertexAlignment: 0,
-                    textureId: id as i32,
-                });
-            batch.drawCounter += 1;
-        } else {
-            last_draw.textureId = id as i32;
-        }
-        RLGL.State.activeTextureId[0] = id;
-    }
-}
-
-pub unsafe fn rlActiveTextureSlot(slot: i32) {
-    gl::ActiveTexture(gl::TEXTURE0 + slot as u32);
-}
-
-pub unsafe fn rlEnableTexture(id: u32) {
-    gl::BindTexture(gl::TEXTURE_2D, id);
-}
-
-pub unsafe fn rlDisableTexture() {
-    gl::BindTexture(gl::TEXTURE_2D, 0);
-}
-
-pub unsafe fn rlEnableTextureCubemap(id: u32) {
-    gl::BindTexture(gl::TEXTURE_CUBE_MAP, id);
-}
-
-pub unsafe fn rlDisableTextureCubemap() {
-    gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0);
-}
-
-pub unsafe fn rlTextureParameters(id: u32, param: i32, value: i32) {
-    gl::BindTexture(gl::TEXTURE_2D, id);
-    gl::TexParameteri(gl::TEXTURE_2D, param as u32, value);
-    gl::BindTexture(gl::TEXTURE_2D, 0);
-}
-
-pub unsafe fn rlCubemapParameters(id: u32, param: i32, value: i32) {
-    gl::BindTexture(gl::TEXTURE_CUBE_MAP, id);
-    gl::TexParameteri(gl::TEXTURE_CUBE_MAP, param as u32, value);
-    gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0);
-}
-
-pub unsafe fn rlDisableShader() {
-    gl::UseProgram(0);
-}
-
-pub unsafe fn rlEnableFramebuffer(id: u32) {
-    gl::BindFramebuffer(gl::FRAMEBUFFER, id);
-}
-
-pub unsafe fn rlDisableFramebuffer() {
-    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-}
-
-pub unsafe fn rlGetActiveFramebuffer() -> u32 {
-    let mut fbo_id: i32 = 0;
-    gl::GetIntegerv(gl::DRAW_FRAMEBUFFER_BINDING, &mut fbo_id);
-    fbo_id as u32
-}
-
-pub unsafe fn rlBlitFramebuffer(
-    srcX: i32,
-    srcY: i32,
-    srcWidth: i32,
-    srcHeight: i32,
-    dstX: i32,
-    dstY: i32,
-    dstWidth: i32,
-    dstHeight: i32,
-    bufferMask: i32,
-) {
-    gl::BlitFramebuffer(
-        srcX,
-        srcY,
-        srcWidth,
-        srcHeight,
-        dstX,
-        dstY,
-        dstWidth,
-        dstHeight,
-        bufferMask as u32,
-        gl::NEAREST,
-    );
-}
-
-pub unsafe fn rlBindFramebuffer(target: u32, framebuffer: u32) {
-    gl::BindFramebuffer(target, framebuffer);
 }
 
 // Render state configuration
