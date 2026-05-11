@@ -277,11 +277,13 @@ pub enum rlCullMode {
 
 #[derive(Debug)]
 pub struct rlVertexBuffer {
-    pub elementCount: i32,
-    pub vertices: *mut f32,
-    pub texcoords: *mut f32,
-    pub normals: *mut f32,
-    pub colors: *mut u8,
+    pub elementCount: i32, // Number of elements in the buffer (QUADS)
+
+    pub vertices: Vec<f32>, // Vertex position (XYZ - 3 components per vertex) (shader-location = 0)
+    pub texcoords: Vec<f32>, // Vertex texture coordinates (UV - 2 components per vertex) (shader-location = 1)
+    pub normals: Vec<f32>,   // Vertex normal (XYZ - 3 components per vertex) (shader-location = 2)
+    pub colors: Vec<u8>,     // Vertex colors (RGBA - 4 components per vertex) (shader-location = 3)
+
     #[cfg(feature = "opengl_33")]
     pub indices: *mut u32, // Vertex indices (in case vertex data comes indexed) (6 indices per quad)
     #[cfg(feature = "gles2")]
@@ -311,8 +313,10 @@ pub struct rlDrawCall {
 pub struct rlRenderBatch {
     pub bufferCount: i32,
     pub currentBuffer: i32,
-    pub vertexBuffer: *mut rlVertexBuffer,
-    pub draws: *mut rlDrawCall,
+    //pub vertexBuffer: *mut rlVertexBuffer,
+    pub vertexBuffer: Vec<rlVertexBuffer>,
+    //pub draws: *mut rlDrawCall,
+    pub draws: Vec<rlDrawCall>,
     pub drawCounter: i32,
     pub currentDepth: f32,
 }
@@ -685,109 +689,218 @@ pub unsafe fn rlGetCullDistanceFar() -> f64 {
 }
 
 // Vertex level operations
+// Initialize drawing mode (how to organize vertex)
 pub unsafe fn rlBegin(mode: i32) {
-    let batch = &mut *RLGL.currentBatch;
-    let last_draw_idx = (batch.drawCounter - 1) as usize;
-
-    if batch.draws.add(last_draw_idx).read().mode != mode {
-        if batch.draws.add(last_draw_idx).read().vertexCount > 0 {
-            let mut last_draw = batch.draws.add(last_draw_idx).read();
-            if last_draw.mode == RL_LINES {
-                last_draw.vertexAlignment = last_draw.vertexCount % 2;
-            } else if last_draw.mode == RL_TRIANGLES {
-                last_draw.vertexAlignment = (3 - (last_draw.vertexCount % 3)) % 3;
+    // Draw mode can be RL_LINES, RL_TRIANGLES and RL_QUADS
+    // NOTE: In all three cases, vertex are accumulated over default internal vertex buffer
+    if ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode != mode) {
+        if ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount
+            > 0)
+        {
+            // Make sure current RLGL.currentBatch.draws[i].vertexCount is aligned a multiple of 4,
+            // that way, following QUADS drawing will keep aligned with index processing
+            // It implies adding some extra alignment vertex at the end of the draw,
+            // those vertex are not processed but they are considered as an additional offset
+            // for the next set of vertex to be drawn
+            if ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode
+                == RL_LINES)
+            {
+                (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                    .vertexAlignment = if ((*RLGL.currentBatch).draws
+                    [(*RLGL.currentBatch).drawCounter as usize - 1]
+                    .vertexCount
+                    < 4)
+                {
+                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                        .vertexCount
+                } else {
+                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                        .vertexCount
+                        % 4
+                };
+            } else if ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                .mode
+                == RL_TRIANGLES)
+            {
+                (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                    .vertexAlignment = if ((*RLGL.currentBatch).draws
+                    [(*RLGL.currentBatch).drawCounter as usize - 1]
+                    .vertexCount
+                    < 4)
+                {
+                    1
+                } else {
+                    4 - ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                        .vertexCount
+                        % 4)
+                };
             } else {
-                last_draw.vertexAlignment = 0;
+                (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                    .vertexAlignment = 0;
             }
 
-            if !rlCheckRenderBatchLimit(last_draw.vertexAlignment) {
-                RLGL.State.vertexCounter += last_draw.vertexAlignment;
-                batch.draws.add(last_draw_idx).write(last_draw);
-
-                if batch.drawCounter >= RL_DEFAULT_BATCH_DRAWCALLS {
-                    rlDrawRenderBatch(RLGL.currentBatch);
-                }
-
-                batch
-                    .draws
-                    .add(batch.drawCounter as usize)
-                    .write(rlDrawCall {
-                        mode,
-                        vertexCount: 0,
-                        vertexAlignment: 0,
-                        textureId: RLGL.State.activeTextureId[0] as i32,
-                    });
-                batch.drawCounter += 1;
+            if (!rlCheckRenderBatchLimit(
+                (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                    .vertexAlignment,
+            )) {
+                RLGL.State.vertexCounter += (*RLGL.currentBatch).draws
+                    [(*RLGL.currentBatch).drawCounter as usize - 1]
+                    .vertexAlignment;
+                (*RLGL.currentBatch).drawCounter += 1;
             }
-        } else {
-            (*batch.draws.add(last_draw_idx)).mode = mode;
-            (*batch.draws.add(last_draw_idx)).textureId = RLGL.State.activeTextureId[0] as i32;
         }
+
+        if ((*RLGL.currentBatch).drawCounter >= RL_DEFAULT_BATCH_DRAWCALLS) {
+            rlDrawRenderBatch(RLGL.currentBatch);
+        }
+
+        (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode = mode;
+        (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].textureId =
+            RLGL.State.currentTextureId as i32;
+        RLGL.State.currentTextureId = RLGL.State.defaultTextureId;
     }
 }
 
 pub unsafe fn rlEnd() {
-    let batch = &mut *RLGL.currentBatch;
-    batch.currentDepth += 1.0 / 20000.0;
+    // NOTE: Depth increment is dependent on rlOrtho(): z-near and z-far values,
+    // as well as depth buffer bit-depth (16bit or 24bit or 32bit)
+    // Correct increment formula would be: depthInc = (zfar - znear)/pow(2, bits)
+    (*RLGL.currentBatch).currentDepth += (1.0 / 20000.0);
 }
 
-pub unsafe fn rlVertex3f(x: f32, y: f32, z: f32) {
+// NOTE: Vertex position data is the basic information required for drawing
+#[rustfmt::skip]
+pub unsafe fn rlVertex3f(x: f32, y: f32, z: f32)
+{
     let mut tx = x;
     let mut ty = y;
     let mut tz = z;
 
-    if RLGL.State.transformRequired {
-        let v = RLGL.State.transform.transform_point3(Vec3::new(x, y, z));
-        tx = v.x;
-        ty = v.y;
-        tz = v.z;
+    // Transform provided vector if required
+    if (RLGL.State.transformRequired)
+    {
+        tx = RLGL.State.transform.m0*x + RLGL.State.transform.m4*y + RLGL.State.transform.m8*z + RLGL.State.transform.m12;
+        ty = RLGL.State.transform.m1*x + RLGL.State.transform.m5*y + RLGL.State.transform.m9*z + RLGL.State.transform.m13;
+        tz = RLGL.State.transform.m2*x + RLGL.State.transform.m6*y + RLGL.State.transform.m10*z + RLGL.State.transform.m14;
     }
 
-    let batch = &mut *RLGL.currentBatch;
-    let buffer = &mut *batch.vertexBuffer.add(batch.currentBuffer as usize);
-
-    if RLGL.State.vertexCounter >= buffer.elementCount * 4 {
-        rlCheckRenderBatchLimit(4);
+    // WARNING: Be careful with primitives breaking when launching a new batch!
+    // RL_LINES comes in pairs, RL_TRIANGLES come in groups of 3 vertices and RL_QUADS come in groups of 4 vertices
+    // Checking current draw.mode when a new vertex is required and finish the batch only if the draw.mode draw.vertexCount is %2, %3 or %4
+    if (RLGL.State.vertexCounter > ((*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].elementCount*4 - 4))
+    {
+        if (((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode == RL_LINES) &&
+            ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount%2 == 0))
+        {
+            // Reached the maximum number of vertices for RL_LINES drawing
+            // Launch a draw call but keep current state for next vertices comming
+            // NOTE: Adding +1 vertex to the check for some safety
+            rlCheckRenderBatchLimit(2 + 1);
+        }
+        else if (((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode == RL_TRIANGLES) &&
+            ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount%3 == 0))
+        {
+            rlCheckRenderBatchLimit(3 + 1);
+        }
+        else if (((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode == RL_QUADS) &&
+            ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount%4 == 0))
+        {
+            rlCheckRenderBatchLimit(4 + 1);
+        }
     }
 
-    let vc = RLGL.State.vertexCounter as usize;
-    buffer.vertices.add(vc * 3).write(tx);
-    buffer.vertices.add(vc * 3 + 1).write(ty);
-    buffer.vertices.add(vc * 3 + 2).write(tz);
+    // Add vertices
+    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize] = tx;
+    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize + 1] = ty;
+    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize + 2] = tz;
 
-    buffer.texcoords.add(vc * 2).write(RLGL.State.texcoordx);
-    buffer.texcoords.add(vc * 2 + 1).write(RLGL.State.texcoordy);
+    // Add current texcoord
+    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].texcoords[2* RLGL.State.vertexCounter as usize] = RLGL.State.texcoordx;
+    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].texcoords[2* RLGL.State.vertexCounter as usize + 1] = RLGL.State.texcoordy;
 
-    buffer.normals.add(vc * 3).write(RLGL.State.normalx);
-    buffer.normals.add(vc * 3 + 1).write(RLGL.State.normaly);
-    buffer.normals.add(vc * 3 + 2).write(RLGL.State.normalz);
+    // Add current normal
+    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize] = RLGL.State.normalx;
+    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize + 1] = RLGL.State.normaly;
+    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize + 2] = RLGL.State.normalz;
 
-    buffer.colors.add(vc * 4).write(RLGL.State.colorr);
-    buffer.colors.add(vc * 4 + 1).write(RLGL.State.colorg);
-    buffer.colors.add(vc * 4 + 2).write(RLGL.State.colorb);
-    buffer.colors.add(vc * 4 + 3).write(RLGL.State.colora);
+    // Add current color
+    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize] = RLGL.State.colorr;
+    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 1] = RLGL.State.colorg;
+    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 2] = RLGL.State.colorb;
+    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 3] = RLGL.State.colora;
 
-    RLGL.State.vertexCounter += 1;
-    (*batch.draws.add((batch.drawCounter - 1) as usize)).vertexCount += 1;
+    RLGL.State.vertexCounter+=1;
+    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount+=1;
 }
 
+// Define one vertex (position)
 pub unsafe fn rlVertex2f(x: f32, y: f32) {
-    rlVertex3f(x, y, 0.0);
+    rlVertex3f(x, y, (*RLGL.currentBatch).currentDepth);
 }
+pub unsafe fn rlVertex2i(x: i32, y: i32) {
+    rlVertex3f(x as f32, y as f32, (*RLGL.currentBatch).currentDepth);
+}
+
+// Define one vertex (texture coordinate)
+// NOTE: Texture coordinates are limited to QUADS only
 pub unsafe fn rlTexCoord2f(x: f32, y: f32) {
     RLGL.State.texcoordx = x;
     RLGL.State.texcoordy = y;
 }
+
+// Define one vertex (normal)
+// NOTE: Normals limited to TRIANGLES only?
 pub unsafe fn rlNormal3f(x: f32, y: f32, z: f32) {
-    RLGL.State.normalx = x;
-    RLGL.State.normaly = y;
-    RLGL.State.normalz = z;
+    let mut normalx = x;
+    let mut normaly = y;
+    let mut normalz = z;
+    if (RLGL.State.transformRequired) {
+        normalx =
+            RLGL.State.transform.m0 * x + RLGL.State.transform.m4 * y + RLGL.State.transform.m8 * z;
+        normaly =
+            RLGL.State.transform.m1 * x + RLGL.State.transform.m5 * y + RLGL.State.transform.m9 * z;
+        normalz = RLGL.State.transform.m2 * x
+            + RLGL.State.transform.m6 * y
+            + RLGL.State.transform.m10 * z;
+    }
+
+    // NOTE: Default behavior assumes the normal vector is in the correct space for what the shader expects,
+    // it could be not normalized to 0.0f..1.0f, magnitud can be useed for some effects
+    /*
+    // WARNING: Vector normalization if required
+    float length = sqrtf(normalx*normalx + normaly*normaly + normalz*normalz);
+    if (length != 0.0f)
+    {
+        float ilength = 1.0f/length;
+        normalx *= ilength;
+        normaly *= ilength;
+        normalz *= ilength;
+    }
+    */
+    RLGL.State.normalx = normalx;
+    RLGL.State.normaly = normaly;
+    RLGL.State.normalz = normalz;
 }
-pub unsafe fn rlColor4ub(r: u8, g: u8, b: u8, a: u8) {
-    RLGL.State.colorr = r;
-    RLGL.State.colorg = g;
-    RLGL.State.colorb = b;
-    RLGL.State.colora = a;
+
+pub unsafe fn rlColor4ub(x: u8, y: u8, z: u8, w: u8) {
+    RLGL.State.colorr = x;
+    RLGL.State.colorg = y;
+    RLGL.State.colorb = z;
+    RLGL.State.colora = w;
+}
+
+pub unsafe fn rlColor4f(r: f32, g: f32, b: f32, a: f32) {
+    rlColor4ub(
+        (r * 255.0) as u8,
+        (g * 255.0) as u8,
+        (b * 255.0) as u8,
+        (a * 255.0) as u8,
+    );
+}
+
+// Define one vertex (color)
+pub unsafe fn rlColor3f(x: f32, y: f32, z: f32) {
+    rlColor4ub((x * 255.0) as u8, (y * 255.0) as u8, (z * 255.0) as u8, 255);
 }
 
 // Render Batch Management
