@@ -111,34 +111,33 @@ pub const RL_BACK: u32 = 0x0405;
 pub const RL_FRONT_AND_BACK: u32 = 0x0408;
 
 // --- Enums ---
-
 #[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum PixelFormat {
-    UncompressedGrayscale = 1,
-    UncompressedGrayAlpha,
-    UncompressedR5G6B5,
-    UncompressedR8G8B8,
-    UncompressedR5G5B5A1,
-    UncompressedR4G4B4A4,
-    UncompressedR8G8B8A8,
-    UncompressedR32,
-    UncompressedR32G32B32,
-    UncompressedR32G32B32A32,
-    UncompressedR16,
-    UncompressedR16G16B16,
-    UncompressedR16G16B16A16,
-    CompressedDxt1Rgb,
-    CompressedDxt1Rgba,
-    CompressedDxt3Rgba,
-    CompressedDxt5Rgba,
-    CompressedEtc1Rgb,
-    CompressedEtc2Rgb,
-    CompressedEtc2EacRgba,
-    CompressedPvrtRgb,
-    CompressedPvrtRgba,
-    CompressedAstc4x4Rgba,
-    CompressedAstc8x8Rgba,
+    PIXELFORMAT_UNCOMPRESSED_GRAYSCALE = 1,
+    PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA = 2,
+    PIXELFORMAT_UNCOMPRESSED_R5G6B5 = 3,
+    PIXELFORMAT_UNCOMPRESSED_R8G8B8 = 4,
+    PIXELFORMAT_UNCOMPRESSED_R5G5B5A1 = 5,
+    PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 = 6,
+    PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 = 7,
+    PIXELFORMAT_UNCOMPRESSED_R32 = 8,
+    PIXELFORMAT_UNCOMPRESSED_R32G32B32 = 9,
+    PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 = 10,
+    PIXELFORMAT_UNCOMPRESSED_R16 = 11,
+    PIXELFORMAT_UNCOMPRESSED_R16G16B16 = 12,
+    PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 = 13,
+    PIXELFORMAT_COMPRESSED_DXT1_RGB = 14,
+    PIXELFORMAT_COMPRESSED_DXT1_RGBA = 15,
+    PIXELFORMAT_COMPRESSED_DXT3_RGBA = 16,
+    PIXELFORMAT_COMPRESSED_DXT5_RGBA = 17,
+    PIXELFORMAT_COMPRESSED_ETC1_RGB = 18,
+    PIXELFORMAT_COMPRESSED_ETC2_RGB = 19,
+    PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA = 20,
+    PIXELFORMAT_COMPRESSED_PVRT_RGB = 21,
+    PIXELFORMAT_COMPRESSED_PVRT_RGBA = 22,
+    PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA = 23,
+    PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA = 24,
 }
 
 #[repr(i32)]
@@ -402,12 +401,10 @@ pub struct rlglData {
     pub ExtSupported: ExtSupported,
 }
 
-pub static mut RLGL: rlglData = unsafe { std::mem::zeroed() };
-
-// Statics
 static mut IS_GPU_READY: bool = false;
-
-// --- Functions ---
+pub static rlCullDistanceNear: f64 = RL_CULL_DISTANCE_NEAR;
+pub static rlCullDistanceFar: f64 = RL_CULL_DISTANCE_FAR;
+pub static mut RLGL: rlglData = unsafe { std::mem::zeroed() };
 
 pub unsafe fn rlglInit(width: i32, height: i32) {
     if IS_GPU_READY {
@@ -439,7 +436,7 @@ pub unsafe fn rlglInit(width: i32, height: i32) {
         pixels.as_ptr() as *const _,
         1,
         1,
-        PixelFormat::UncompressedR8G8B8A8 as i32,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32,
         1,
     );
     RLGL.State.activeTextureId[0] = RLGL.State.defaultTextureId;
@@ -1019,38 +1016,40 @@ pub unsafe fn rlLoadTexture(
 
     // Check texture format support by OpenGL 1.1 (compressed textures not supported)
     if ((!RLGL.ExtSupported.texCompDXT)
-        && ((format == PixelFormat::CompressedDxt1Rgb as i32)
-            || (format == PixelFormat::CompressedDxt1Rgba as i32)
-            || (format == PixelFormat::CompressedDxt3Rgba as i32)
-            || (format == PixelFormat::CompressedDxt5Rgba as i32)))
+        && ((format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32)
+            || (format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGBA as i32)
+            || (format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT3_RGBA as i32)
+            || (format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT5_RGBA as i32)))
     {
         warn!("GL: DXT compressed texture format not supported");
         return id;
     }
-    if ((!RLGL.ExtSupported.texCompETC1) && (format == PixelFormat::CompressedEtc1Rgb as i32)) {
+    if ((!RLGL.ExtSupported.texCompETC1)
+        && (format == PixelFormat::PIXELFORMAT_COMPRESSED_ETC1_RGB as i32))
+    {
         warn!("GL: ETC1 compressed texture format not supported");
         return id;
     }
 
     if ((!RLGL.ExtSupported.texCompETC2)
-        && ((format == PixelFormat::CompressedEtc2Rgb as i32)
-            || (format == PixelFormat::CompressedEtc2EacRgba as i32)))
+        && ((format == PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB as i32)
+            || (format == PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA as i32)))
     {
         warn!("GL: ETC2 compressed texture format not supported");
         return id;
     }
 
     if ((!RLGL.ExtSupported.texCompPVRT)
-        && ((format == PixelFormat::CompressedPvrtRgb as i32)
-            || (format == PixelFormat::CompressedPvrtRgba as i32)))
+        && ((format == PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGB as i32)
+            || (format == PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGBA as i32)))
     {
         warn!("GL: PVRT compressed texture format not supported");
         return id;
     }
 
     if ((!RLGL.ExtSupported.texCompASTC)
-        && ((format == PixelFormat::CompressedAstc4x4Rgba as i32)
-            || (format == PixelFormat::CompressedAstc8x8Rgba as i32)))
+        && ((format == PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA as i32)
+            || (format == PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA as i32)))
     {
         warn!("GL: ASTC compressed texture format not supported");
         return id;
@@ -1087,7 +1086,7 @@ pub unsafe fn rlLoadTexture(
         );
 
         if (glInternalFormat != 0) {
-            if (format < PixelFormat::CompressedDxt1Rgb as i32) {
+            if (format < PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32) {
                 gl::TexImage2D(
                     gl::TEXTURE_2D,
                     i,
@@ -1114,14 +1113,14 @@ pub unsafe fn rlLoadTexture(
 
             #[cfg(feature = "opengl_33")]
             {
-                if (format == PixelFormat::UncompressedGrayscale as i32) {
+                if (format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32) {
                     let swizzleMask = [gl::RED, gl::RED, gl::RED, gl::ONE];
                     gl::TexParameteriv(
                         gl::TEXTURE_2D,
                         gl::TEXTURE_SWIZZLE_RGBA,
                         swizzleMask.as_ptr() as *const i32,
                     );
-                } else if (format == PixelFormat::UncompressedGrayAlpha as i32) {
+                } else if (format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA as i32) {
                     let swizzleMask = [gl::RED, gl::RED, gl::RED, gl::GREEN];
                     gl::TexParameteriv(
                         gl::TEXTURE_2D,
@@ -1228,53 +1227,53 @@ pub unsafe fn rlLoadTexture(
 }
 
 pub fn rlGetPixelFormatName(format: i32) -> &'static str {
-    if format == PixelFormat::UncompressedGrayscale as i32 {
+    if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32 {
         "GRAYSCALE"
-    } else if format == PixelFormat::UncompressedGrayAlpha as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA as i32 {
         "GRAY_ALPHA"
-    } else if format == PixelFormat::UncompressedR5G6B5 as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G6B5 as i32 {
         "R5G6B5"
-    } else if format == PixelFormat::UncompressedR8G8B8 as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8 as i32 {
         "R8G8B8"
-    } else if format == PixelFormat::UncompressedR5G5B5A1 as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G5B5A1 as i32 {
         "R5G5B5A1"
-    } else if format == PixelFormat::UncompressedR4G4B4A4 as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 as i32 {
         "R4G4B4A4"
-    } else if format == PixelFormat::UncompressedR8G8B8A8 as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 {
         "R8G8B8A8"
-    } else if format == PixelFormat::UncompressedR32 as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32 as i32 {
         "R32"
-    } else if format == PixelFormat::UncompressedR32G32B32 as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32 as i32 {
         "R32G32B32"
-    } else if format == PixelFormat::UncompressedR32G32B32A32 as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 as i32 {
         "R32G32B32A32"
-    } else if format == PixelFormat::UncompressedR16 as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16 as i32 {
         "R16"
-    } else if format == PixelFormat::UncompressedR16G16B16 as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16 as i32 {
         "R16G16B16"
-    } else if format == PixelFormat::UncompressedR16G16B16A16 as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 as i32 {
         "R16G16B16A16"
-    } else if format == PixelFormat::CompressedDxt1Rgb as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32 {
         "DXT1_RGB"
-    } else if format == PixelFormat::CompressedDxt1Rgba as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGBA as i32 {
         "DXT1_RGBA"
-    } else if format == PixelFormat::CompressedDxt3Rgba as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT3_RGBA as i32 {
         "DXT3_RGBA"
-    } else if format == PixelFormat::CompressedDxt5Rgba as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT5_RGBA as i32 {
         "DXT5_RGBA"
-    } else if format == PixelFormat::CompressedEtc1Rgb as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ETC1_RGB as i32 {
         "ETC1_RGB"
-    } else if format == PixelFormat::CompressedEtc2Rgb as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB as i32 {
         "ETC2_RGB"
-    } else if format == PixelFormat::CompressedEtc2EacRgba as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA as i32 {
         "ETC2_RGBA"
-    } else if format == PixelFormat::CompressedPvrtRgb as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGB as i32 {
         "PVRT_RGB"
-    } else if format == PixelFormat::CompressedPvrtRgba as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGBA as i32 {
         "PVRT_RGBA"
-    } else if format == PixelFormat::CompressedAstc4x4Rgba as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA as i32 {
         "ASTC_4x4_RGBA"
-    } else if format == PixelFormat::CompressedAstc8x8Rgba as i32 {
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA as i32 {
         "ASTC_8x8_RGBA"
     } else {
         "UNKNOWN"
