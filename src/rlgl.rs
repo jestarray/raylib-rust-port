@@ -110,7 +110,18 @@ pub const RL_FRONT: u32 = 0x0404;
 pub const RL_BACK: u32 = 0x0405;
 pub const RL_FRONT_AND_BACK: u32 = 0x0408;
 
-// --- Enums ---
+#[repr(i32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum rlGlVersion {
+    RL_OPENGL_SOFTWARE = 0, // Software rendering
+    RL_OPENGL_11,           // OpenGL 1.1
+    RL_OPENGL_21,           // OpenGL 2.1 (GLSL 120)
+    RL_OPENGL_33,           // OpenGL 3.3 (GLSL 330)
+    RL_OPENGL_43,           // OpenGL 4.3 (using GLSL 330)
+    RL_OPENGL_ES_20,        // OpenGL ES 2.0 (GLSL 100)
+    RL_OPENGL_ES_30,        // OpenGL ES 3.0 (GLSL 300 es)
+}
+
 #[repr(i32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum PixelFormat {
@@ -142,150 +153,124 @@ pub enum PixelFormat {
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FramebufferAttachment {
-    ColorChannel0 = 0,
-    ColorChannel1,
-    ColorChannel2,
-    ColorChannel3,
-    ColorChannel4,
-    ColorChannel5,
-    ColorChannel6,
-    ColorChannel7,
-    Depth = 100,
-    Stencil = 200,
+pub enum rlTextureFilter {
+    RL_TEXTURE_FILTER_POINT = 0,       // No filter, pixel approximation
+    RL_TEXTURE_FILTER_BILINEAR,        // Linear filtering
+    RL_TEXTURE_FILTER_TRILINEAR,       // Trilinear filtering (linear with mipmaps)
+    RL_TEXTURE_FILTER_ANISOTROPIC_4X,  // Anisotropic filtering 4x
+    RL_TEXTURE_FILTER_ANISOTROPIC_8X,  // Anisotropic filtering 8x
+    RL_TEXTURE_FILTER_ANISOTROPIC_16X, // Anisotropic filtering 16x
 }
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FramebufferAttachTexture {
-    CubemapPositiveX = 0,
-    CubemapNegativeX,
-    CubemapPositiveY,
-    CubemapNegativeY,
-    CubemapPositiveZ,
-    CubemapNegativeZ,
-    Texture2d = 100,
-    Renderbuffer = 200,
+pub enum rlBlendMode {
+    RL_BLEND_ALPHA = 0,         // Blend textures considering alpha (default)
+    RL_BLEND_ADDITIVE,          // Blend textures adding colors
+    RL_BLEND_MULTIPLIED,        // Blend textures multiplying colors
+    RL_BLEND_ADD_COLORS,        // Blend textures adding colors (alternative)
+    RL_BLEND_SUBTRACT_COLORS,   // Blend textures subtracting colors (alternative)
+    RL_BLEND_ALPHA_PREMULTIPLY, // Blend premultiplied textures considering alpha
+    RL_BLEND_CUSTOM, // Blend textures using custom src/dst factors (use rlSetBlendFactors())
+    RL_BLEND_CUSTOM_SEPARATE, // Blend textures using custom src/dst factors (use rlSetBlendFactorsSeparate())
 }
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextureFilter {
-    Point = 0,
-    Bilinear,
-    Trilinear,
-    Anisotropic4x,
-    Anisotropic8x,
-    Anisotropic16x,
+pub enum rlShaderLocationIndex {
+    RL_SHADER_LOC_VERTEX_POSITION = 0, // Shader location: vertex attribute: position
+    RL_SHADER_LOC_VERTEX_TEXCOORD01,   // Shader location: vertex attribute: texcoord01
+    RL_SHADER_LOC_VERTEX_TEXCOORD02,   // Shader location: vertex attribute: texcoord02
+    RL_SHADER_LOC_VERTEX_NORMAL,       // Shader location: vertex attribute: normal
+    RL_SHADER_LOC_VERTEX_TANGENT,      // Shader location: vertex attribute: tangent
+    RL_SHADER_LOC_VERTEX_COLOR,        // Shader location: vertex attribute: color
+    RL_SHADER_LOC_MATRIX_MVP,          // Shader location: matrix uniform: model-view-projection
+    RL_SHADER_LOC_MATRIX_VIEW,         // Shader location: matrix uniform: view (camera transform)
+    RL_SHADER_LOC_MATRIX_PROJECTION,   // Shader location: matrix uniform: projection
+    RL_SHADER_LOC_MATRIX_MODEL,        // Shader location: matrix uniform: model (transform)
+    RL_SHADER_LOC_MATRIX_NORMAL,       // Shader location: matrix uniform: normal
+    RL_SHADER_LOC_VECTOR_VIEW,         // Shader location: vector uniform: view
+    RL_SHADER_LOC_COLOR_DIFFUSE,       // Shader location: vector uniform: diffuse color
+    RL_SHADER_LOC_COLOR_SPECULAR,      // Shader location: vector uniform: specular color
+    RL_SHADER_LOC_COLOR_AMBIENT,       // Shader location: vector uniform: ambient color
+    RL_SHADER_LOC_MAP_ALBEDO, // Shader location: sampler2d texture: albedo (same as: RL_SHADER_LOC_MAP_DIFFUSE)
+    RL_SHADER_LOC_MAP_METALNESS, // Shader location: sampler2d texture: metalness (same as: RL_SHADER_LOC_MAP_SPECULAR)
+    RL_SHADER_LOC_MAP_NORMAL,    // Shader location: sampler2d texture: normal
+    RL_SHADER_LOC_MAP_ROUGHNESS, // Shader location: sampler2d texture: roughness
+    RL_SHADER_LOC_MAP_OCCLUSION, // Shader location: sampler2d texture: occlusion
+    RL_SHADER_LOC_MAP_EMISSION,  // Shader location: sampler2d texture: emission
+    RL_SHADER_LOC_MAP_HEIGHT,    // Shader location: sampler2d texture: height
+    RL_SHADER_LOC_MAP_CUBEMAP,   // Shader location: samplerCube texture: cubemap
+    RL_SHADER_LOC_MAP_IRRADIANCE, // Shader location: samplerCube texture: irradiance
+    RL_SHADER_LOC_MAP_PREFILTER, // Shader location: samplerCube texture: prefilter
+    RL_SHADER_LOC_MAP_BRDF,      // Shader location: sampler2d texture: brdf
+}
+
+pub const RL_SHADER_LOC_MAP_DIFFUSE: i32 = rlShaderLocationIndex::RL_SHADER_LOC_MAP_ALBEDO as i32;
+pub const RL_SHADER_LOC_MAP_SPECULAR: i32 =
+    rlShaderLocationIndex::RL_SHADER_LOC_MAP_METALNESS as i32;
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum rlShaderUniformDataType {
+    RL_SHADER_UNIFORM_FLOAT = 0, // Shader uniform type: float
+    RL_SHADER_UNIFORM_VEC2,      // Shader uniform type: vec2 (2 float)
+    RL_SHADER_UNIFORM_VEC3,      // Shader uniform type: vec3 (3 float)
+    RL_SHADER_UNIFORM_VEC4,      // Shader uniform type: vec4 (4 float)
+    RL_SHADER_UNIFORM_INT,       // Shader uniform type: int
+    RL_SHADER_UNIFORM_IVEC2,     // Shader uniform type: ivec2 (2 int)
+    RL_SHADER_UNIFORM_IVEC3,     // Shader uniform type: ivec3 (3 int)
+    RL_SHADER_UNIFORM_IVEC4,     // Shader uniform type: ivec4 (4 int)
+    RL_SHADER_UNIFORM_UINT,      // Shader uniform type: unsigned int
+    RL_SHADER_UNIFORM_UIVEC2,    // Shader uniform type: uivec2 (2 unsigned int)
+    RL_SHADER_UNIFORM_UIVEC3,    // Shader uniform type: uivec3 (3 unsigned int)
+    RL_SHADER_UNIFORM_UIVEC4,    // Shader uniform type: uivec4 (4 unsigned int)
+    RL_SHADER_UNIFORM_SAMPLER2D, // Shader uniform type: sampler2d
 }
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BlendMode {
-    Alpha = 0,
-    Additive,
-    Multiplied,
-    AddColors,
-    SubtractColors,
-    AlphaPremultiply,
-    Custom,
-    CustomSeparate,
+pub enum rlShaderAttributeDataType {
+    RL_SHADER_ATTRIB_FLOAT = 0, // Shader attribute type: float
+    RL_SHADER_ATTRIB_VEC2,      // Shader attribute type: vec2 (2 float)
+    RL_SHADER_ATTRIB_VEC3,      // Shader attribute type: vec3 (3 float)
+    RL_SHADER_ATTRIB_VEC4,      // Shader attribute type: vec4 (4 float)
 }
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShaderLocationIndex {
-    VertexPosition = 0,
-    VertexTexcoord01,
-    VertexTexcoord02,
-    VertexNormal,
-    VertexTangent,
-    VertexColor,
-    MatrixMvp,
-    MatrixView,
-    MatrixProjection,
-    MatrixModel,
-    MatrixNormal,
-    VectorView,
-    ColorDiffuse,
-    ColorSpecular,
-    ColorAmbient,
-    MapAlbedo,
-    MapMetalness,
-    MapNormal,
-    MapRoughness,
-    MapOcclusion,
-    MapEmission,
-    MapHeight,
-    MapCubemap,
-    MapIrradiance,
-    MapPrefilter,
-    MapBrdf,
-}
-
-pub const RL_SHADER_LOC_MAP_DIFFUSE: i32 = ShaderLocationIndex::MapAlbedo as i32;
-pub const RL_SHADER_LOC_MAP_SPECULAR: i32 = ShaderLocationIndex::MapMetalness as i32;
-
-#[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShaderUniformDataType {
-    Float = 0,
-    Vec2,
-    Vec3,
-    Vec4,
-    Int,
-    Ivec2,
-    Ivec3,
-    Ivec4,
-    Uint,
-    Uivec2,
-    Uivec3,
-    Uivec4,
-    Sampler2d,
+pub enum rlFramebufferAttachType {
+    RL_ATTACHMENT_COLOR_CHANNEL0 = 0, // Framebuffer attachment type: color 0
+    RL_ATTACHMENT_COLOR_CHANNEL1 = 1, // Framebuffer attachment type: color 1
+    RL_ATTACHMENT_COLOR_CHANNEL2 = 2, // Framebuffer attachment type: color 2
+    RL_ATTACHMENT_COLOR_CHANNEL3 = 3, // Framebuffer attachment type: color 3
+    RL_ATTACHMENT_COLOR_CHANNEL4 = 4, // Framebuffer attachment type: color 4
+    RL_ATTACHMENT_COLOR_CHANNEL5 = 5, // Framebuffer attachment type: color 5
+    RL_ATTACHMENT_COLOR_CHANNEL6 = 6, // Framebuffer attachment type: color 6
+    RL_ATTACHMENT_COLOR_CHANNEL7 = 7, // Framebuffer attachment type: color 7
+    RL_ATTACHMENT_DEPTH = 100,        // Framebuffer attachment type: depth
+    RL_ATTACHMENT_STENCIL = 200,      // Framebuffer attachment type: stencil
 }
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShaderAttributeDataType {
-    Float = 0,
-    Vec2,
-    Vec3,
-    Vec4,
+pub enum rlFramebufferAttachTextureType {
+    RL_ATTACHMENT_CUBEMAP_POSITIVE_X = 0, // Framebuffer texture attachment type: cubemap, +X side
+    RL_ATTACHMENT_CUBEMAP_NEGATIVE_X = 1, // Framebuffer texture attachment type: cubemap, -X side
+    RL_ATTACHMENT_CUBEMAP_POSITIVE_Y = 2, // Framebuffer texture attachment type: cubemap, +Y side
+    RL_ATTACHMENT_CUBEMAP_NEGATIVE_Y = 3, // Framebuffer texture attachment type: cubemap, -Y side
+    RL_ATTACHMENT_CUBEMAP_POSITIVE_Z = 4, // Framebuffer texture attachment type: cubemap, +Z side
+    RL_ATTACHMENT_CUBEMAP_NEGATIVE_Z = 5, // Framebuffer texture attachment type: cubemap, -Z side
+    RL_ATTACHMENT_TEXTURE2D = 100,        // Framebuffer texture attachment type: texture2d
+    RL_ATTACHMENT_RENDERBUFFER = 200,     // Framebuffer texture attachment type: renderbuffer
 }
 
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FramebufferAttachType {
-    ColorChannel0 = 0,
-    ColorChannel1 = 1,
-    ColorChannel2 = 2,
-    ColorChannel3 = 3,
-    ColorChannel4 = 4,
-    ColorChannel5 = 5,
-    ColorChannel6 = 6,
-    ColorChannel7 = 7,
-    Depth = 100,
-    Stencil = 200,
-}
 
-#[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FramebufferAttachTextureType {
-    CubemapPositiveX = 0,
-    CubemapNegativeX = 1,
-    CubemapPositiveY = 2,
-    CubemapNegativeY = 3,
-    CubemapPositiveZ = 4,
-    CubemapNegativeZ = 5,
-    Texture2d = 100,
-    Renderbuffer = 200,
-}
-
-#[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CullMode {
-    Front = 0,
-    Back,
+pub enum rlCullMode {
+    RL_CULL_FACE_FRONT = 0,
+    RL_CULL_FACE_BACK,
 }
 
 // --- Types ---
