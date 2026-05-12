@@ -11,10 +11,19 @@
 )]
 use std::ptr::null_mut;
 
-use crate::types::{Color, Matrix, Rectangle, Vector2};
+use crate::{
+    external::{
+        GL_COMPRESSED_RGBA_ASTC_4x4_KHR, GL_COMPRESSED_RGBA_ASTC_8x8_KHR, GL_COMPRESSED_RGB8_ETC2,
+        GL_COMPRESSED_RGBA8_ETC2_EAC, GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,
+        GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+        GL_COMPRESSED_RGB_S3TC_DXT1_EXT,
+    },
+    types::{Color, Matrix, Rectangle, Vector2},
+};
 use gl;
 use glam::{Mat4, Vec3};
 use log::{debug, error, info, warn};
+use strum_macros::FromRepr;
 
 // --- Constants ---
 
@@ -114,6 +123,31 @@ pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_INDICES: u32 = 6;
 pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_BONEINDICES: u32 = 7;
 pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_BONEWEIGHTS: u32 = 8;
 pub const RL_DEFAULT_SHADER_ATTRIB_LOCATION_INSTANCETRANSFORM: u32 = 9;
+
+// Default shader vertex attribute names to set location points
+pub const RL_DEFAULT_SHADER_ATTRIB_NAME_POSITION: &std::ffi::CStr = c"vertexPosition";      // RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION
+pub const RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD: &std::ffi::CStr = c"vertexTexCoord";      // RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD
+pub const RL_DEFAULT_SHADER_ATTRIB_NAME_NORMAL: &std::ffi::CStr = c"vertexNormal";          // RL_DEFAULT_SHADER_ATTRIB_LOCATION_NORMAL
+pub const RL_DEFAULT_SHADER_ATTRIB_NAME_COLOR: &std::ffi::CStr = c"vertexColor";            // RL_DEFAULT_SHADER_ATTRIB_LOCATION_COLOR
+pub const RL_DEFAULT_SHADER_ATTRIB_NAME_TANGENT: &std::ffi::CStr = c"vertexTangent";        // RL_DEFAULT_SHADER_ATTRIB_LOCATION_TANGENT
+pub const RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD2: &std::ffi::CStr = c"vertexTexCoord2";    // RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD2
+pub const RL_DEFAULT_SHADER_ATTRIB_NAME_BONEINDICES: &std::ffi::CStr = c"vertexBoneIndices"; // RL_DEFAULT_SHADER_ATTRIB_LOCATION_BONEINDICES
+pub const RL_DEFAULT_SHADER_ATTRIB_NAME_BONEWEIGHTS: &std::ffi::CStr = c"vertexBoneWeights"; // RL_DEFAULT_SHADER_ATTRIB_LOCATION_BONEWEIGHTS
+
+pub const RL_DEFAULT_SHADER_ATTRIB_NAME_INSTANCETRANSFORM: &std::ffi::CStr = c"instanceTransform"; // RL_DEFAULT_SHADER_ATTRIB_LOCATION_INSTANCETRANSFORM
+
+pub const RL_DEFAULT_SHADER_UNIFORM_NAME_MVP: &std::ffi::CStr = c"mvp";                     // model-view-projection matrix
+pub const RL_DEFAULT_SHADER_UNIFORM_NAME_VIEW: &std::ffi::CStr = c"matView";               // view matrix
+pub const RL_DEFAULT_SHADER_UNIFORM_NAME_PROJECTION: &std::ffi::CStr = c"matProjection";   // projection matrix
+pub const RL_DEFAULT_SHADER_UNIFORM_NAME_MODEL: &std::ffi::CStr = c"matModel";             // model matrix
+pub const RL_DEFAULT_SHADER_UNIFORM_NAME_NORMAL: &std::ffi::CStr = c"matNormal";           // normal matrix
+pub const RL_DEFAULT_SHADER_UNIFORM_NAME_COLOR: &std::ffi::CStr = c"colDiffuse";           // diffuse color
+
+pub const RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE0: &std::ffi::CStr = c"texture0";        // texture slot 0
+pub const RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE1: &std::ffi::CStr = c"texture1";        // texture slot 1
+pub const RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE2: &std::ffi::CStr = c"texture2";        // texture slot 2
+
+pub const RL_DEFAULT_SHADER_UNIFORM_NAME_BONEMATRICES: &std::ffi::CStr = c"boneMatrices";  // GPU skinning
 
 pub const RL_CULL_FACE_FRONT: i32 = 0;
 pub const RL_CULL_FACE_BACK: i32 = 1;
@@ -223,7 +257,7 @@ pub const RL_SHADER_LOC_MAP_SPECULAR: i32 =
     rlShaderLocationIndex::RL_SHADER_LOC_MAP_METALNESS as i32;
 
 #[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr)]
 pub enum rlShaderUniformDataType {
     RL_SHADER_UNIFORM_FLOAT = 0, // Shader uniform type: float
     RL_SHADER_UNIFORM_VEC2,      // Shader uniform type: vec2 (2 float)
@@ -241,7 +275,7 @@ pub enum rlShaderUniformDataType {
 }
 
 #[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr)]
 pub enum rlShaderAttributeDataType {
     RL_SHADER_ATTRIB_FLOAT = 0, // Shader attribute type: float
     RL_SHADER_ATTRIB_VEC2,      // Shader attribute type: vec2 (2 float)
@@ -250,7 +284,7 @@ pub enum rlShaderAttributeDataType {
 }
 
 #[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr)]
 pub enum rlFramebufferAttachType {
     RL_ATTACHMENT_COLOR_CHANNEL0 = 0, // Framebuffer attachment type: color 0
     RL_ATTACHMENT_COLOR_CHANNEL1 = 1, // Framebuffer attachment type: color 1
@@ -1435,15 +1469,15 @@ pub unsafe fn rlLoadTexture(
                     mipWidth,
                     mipHeight,
                     0,
-                    glFormat,
-                    glType,
+                    glFormat as u32,
+                    glType as u32,
                     dataPtr,
                 );
             } else {
                 gl::CompressedTexImage2D(
                     gl::TEXTURE_2D,
                     i,
-                    glInternalFormat,
+                    glInternalFormat as u32,
                     mipWidth,
                     mipHeight,
                     0,
@@ -1659,8 +1693,8 @@ pub unsafe fn rlUpdateTexture(
             offsetY,
             width,
             height,
-            glFormat,
-            glType,
+            glFormat as u32,
+            glType as u32,
             data,
         );
     } else {
@@ -1668,6 +1702,1486 @@ pub unsafe fn rlUpdateTexture(
             "TEXTURE: [ID {}] Failed to update for current texture format ({})",
             id, format
         );
+    }
+}
+pub const GL_ETC1_RGB8_OES: u32 = 0x8D64;
+pub const GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG: u32 = 0x8C00;
+pub const GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG: u32 = 0x8C02;
+// Get OpenGL internal formats and data type from raylib PixelFormat
+#[rustfmt::skip]
+pub unsafe fn rlGetGlTextureFormats(format: i32, glInternalFormat: *mut i32, glFormat: *mut i32, glType: *mut i32)
+{
+    *glInternalFormat = 0;
+    *glFormat = 0;
+    *glType = 0;
+
+    #[cfg(feature = "opengl_33")]
+    match (format)
+    {
+       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32 => { *glInternalFormat = gl::R8 as i32; *glFormat = gl::RED as i32; *glType = gl::UNSIGNED_BYTE as i32;  }
+       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA as i32 => { *glInternalFormat = gl::RG8 as i32; *glFormat = gl::RG as i32; *glType = gl::UNSIGNED_BYTE as i32;  }
+       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G6B5 as i32 => { *glInternalFormat = gl::RGB565 as i32; *glFormat = gl::RGB as i32; *glType = gl::UNSIGNED_SHORT_5_6_5 as i32;  }
+       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8 as i32 => { *glInternalFormat = gl::RGB8 as i32; *glFormat = gl::RGB as i32; *glType = gl::UNSIGNED_BYTE as i32;  }
+       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G5B5A1 as i32 => { *glInternalFormat = gl::RGB5_A1 as i32; *glFormat = gl::RGBA as i32; *glType = gl::UNSIGNED_SHORT_5_5_5_1 as i32;  }
+       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 as i32 => { *glInternalFormat = gl::RGBA4 as i32; *glFormat = gl::RGBA as i32; *glType = gl::UNSIGNED_SHORT_4_4_4_4 as i32;  }
+       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 => { *glInternalFormat = gl::RGBA8 as i32; *glFormat = gl::RGBA as i32; *glType = gl::UNSIGNED_BYTE as i32;  }
+       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32 as i32 => { if (RLGL.ExtSupported.texFloat32) { *glInternalFormat = gl::R32F as i32; *glFormat = gl::RED as i32; *glType = gl::FLOAT as i32; } }
+       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32 as i32 => { if (RLGL.ExtSupported.texFloat32) { *glInternalFormat = gl::RGB32F as i32; *glFormat = gl::RGB as i32; *glType = gl::FLOAT as i32; } }
+       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 as i32 => { if (RLGL.ExtSupported.texFloat32) { *glInternalFormat = gl::RGBA32F as i32; *glFormat = gl::RGBA as i32; *glType = gl::FLOAT as i32; } }
+       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16 as i32 => { if (RLGL.ExtSupported.texFloat16) { *glInternalFormat = gl::R16F as i32; *glFormat = gl::RED as i32; *glType = gl::HALF_FLOAT as i32; } }
+       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16 as i32 => { if (RLGL.ExtSupported.texFloat16) { *glInternalFormat = gl::RGB16F as i32; *glFormat = gl::RGB as i32; *glType = gl::HALF_FLOAT as i32; } }
+       _ => {}
+    }
+
+    match (format) {
+        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32 => { if (RLGL.ExtSupported.texCompDXT) { *glInternalFormat = GL_COMPRESSED_RGB_S3TC_DXT1_EXT as i32; 
+        }}
+
+        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGBA as i32 => { if (RLGL.ExtSupported.texCompDXT) { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT1_EXT as i32; 
+        }}
+
+        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_DXT3_RGBA as i32 => { if (RLGL.ExtSupported.texCompDXT) { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT as i32; 
+        }}
+
+        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_DXT5_RGBA as i32 => { if (RLGL.ExtSupported.texCompDXT) { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT as i32; 
+        }}
+
+        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_ETC1_RGB as i32 => { if (RLGL.ExtSupported.texCompETC1) { *glInternalFormat = GL_ETC1_RGB8_OES as i32;                       // NOTE: Requires OpenGL ES 2.0 or OpenGL 4.3
+        }}
+
+        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB as i32 => { if (RLGL.ExtSupported.texCompETC2) { *glInternalFormat = GL_COMPRESSED_RGB8_ETC2 as i32;                // NOTE: Requires OpenGL ES 3.0 or OpenGL 4.3
+        }}
+
+        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA as i32 => { if (RLGL.ExtSupported.texCompETC2) { *glInternalFormat = GL_COMPRESSED_RGBA8_ETC2_EAC as i32;      // NOTE: Requires OpenGL ES 3.0 or OpenGL 4.3
+        }}
+
+        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGB as i32 => { if (RLGL.ExtSupported.texCompPVRT) { *glInternalFormat = GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG as i32;     // NOTE: Requires PowerVR GPU
+        }}
+
+        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGBA as i32 => { if (RLGL.ExtSupported.texCompPVRT) { *glInternalFormat = GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG as i32;   // NOTE: Requires PowerVR GPU
+        }}
+
+        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA as i32 => { if (RLGL.ExtSupported.texCompASTC) { *glInternalFormat = GL_COMPRESSED_RGBA_ASTC_4x4_KHR as i32;   // NOTE: Requires OpenGL ES 3.1 or OpenGL 4.3
+        }}
+
+        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA as i32 => { if (RLGL.ExtSupported.texCompASTC) { *glInternalFormat = GL_COMPRESSED_RGBA_ASTC_8x8_KHR as i32;   // NOTE: Requires OpenGL ES 3.1 or OpenGL 4.3
+        }}
+        _ => {
+            warn!("TEXTURE: Current format not supported ({})", format)
+        }
+    }
+
+}
+
+// Unload texture from GPU memory
+pub unsafe fn rlUnloadTexture(id: u32) {
+    gl::DeleteTextures(1, &id);
+}
+
+// Generate mipmap data for selected texture
+// NOTE: Only supports GPU mipmap generation
+pub unsafe fn rlGenTextureMipmaps(
+    id: u32,
+    width: i32,
+    height: i32,
+    format: i32,
+    mipmaps: *mut i32,
+) {
+    if !IS_GPU_READY {
+        warn!("GL: GPU is not ready to load data, trying to load before InitWindow()?");
+        return;
+    }
+
+    gl::BindTexture(gl::TEXTURE_2D, id);
+
+    // Check if texture is power-of-two (POT)
+    let mut texIsPOT = false;
+
+    if ((width > 0) && ((width & (width - 1)) == 0))
+        && ((height > 0) && ((height & (height - 1)) == 0))
+    {
+        texIsPOT = true;
+    }
+
+    if (texIsPOT) || (RLGL.ExtSupported.texNPOT) {
+        //gl::Hint(gl::GENERATE_MIPMAP_HINT, gl::DONT_CARE);   // Hint for mipmaps generation algorithm: GL_FASTEST, GL_NICEST, GL_DONT_CARE
+        gl::GenerateMipmap(gl::TEXTURE_2D); // Generate mipmaps automatically
+
+        *mipmaps = 1 + (((width.max(height) as f32).ln() / 2.0f32.ln()).floor() as i32);
+
+        info!(
+            "TEXTURE: [ID {}] Mipmaps generated automatically, total: {}",
+            id, *mipmaps
+        );
+    } else {
+        warn!("TEXTURE: [ID {}] Failed to generate mipmaps", id);
+    }
+
+    gl::BindTexture(gl::TEXTURE_2D, 0);
+}
+
+// Read texture pixel data
+pub unsafe fn rlReadTexturePixels(
+    id: u32,
+    width: i32,
+    height: i32,
+    format: i32,
+) -> *mut std::ffi::c_void {
+    let mut pixels: *mut std::ffi::c_void = std::ptr::null_mut();
+
+    #[cfg(feature = "opengl_33")]
+    {
+        gl::BindTexture(gl::TEXTURE_2D, id);
+
+        // NOTE: Using texture id, some texture info can be retrieved (but not on OpenGL ES 2.0)
+        // Possible texture info: GL_TEXTURE_RED_SIZE, GL_TEXTURE_GREEN_SIZE, GL_TEXTURE_BLUE_SIZE, GL_TEXTURE_ALPHA_SIZE
+        //int width, height, format;
+        //gl::GetTexLevelParameteriv(gl::TEXTURE_2D, 0, gl::TEXTURE_WIDTH, &width);
+        //gl::GetTexLevelParameteriv(gl::TEXTURE_2D, 0, gl::TEXTURE_HEIGHT, &height);
+        //gl::GetTexLevelParameteriv(gl::TEXTURE_2D, 0, gl::TEXTURE_INTERNAL_FORMAT, &format);
+
+        // NOTE: Each row written to or read from by OpenGL pixel operations like glGetTexImage are aligned to a 4 byte boundary by default, which may add some padding
+        // Use glPixelStorei to modify padding with the GL_[UN]PACK_ALIGNMENT setting
+        // GL_PACK_ALIGNMENT affects operations that read from OpenGL memory (glReadPixels, glGetTexImage, etc.)
+        // GL_UNPACK_ALIGNMENT affects operations that write to OpenGL memory (glTexImage, etc.)
+        gl::PixelStorei(gl::PACK_ALIGNMENT, 1);
+
+        let mut glInternalFormat = 0;
+        let mut glFormat = 0;
+        let mut glType = 0;
+
+        rlGetGlTextureFormats(format, &mut glInternalFormat, &mut glFormat, &mut glType);
+
+        let size: u32 = rlGetPixelDataSize(width, height, format) as u32;
+
+        if (glInternalFormat != 0) && (format < PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32)
+        {
+            pixels = libc::calloc(size as usize, 1);
+
+            gl::GetTexImage(gl::TEXTURE_2D, 0, glFormat as u32, glType as u32, pixels);
+        } else {
+            warn!(
+                "TEXTURE: [ID {}] Data retrieval not suported for pixel format ({})",
+                id, format
+            );
+        }
+
+        gl::BindTexture(gl::TEXTURE_2D, 0);
+    }
+
+    #[cfg(feature = "gles2")]
+    {
+        // glGetTexImage() is not available on OpenGL ES 2.0
+        // Texture width and height are required on OpenGL ES 2.0, there is no way to get it from texture id
+        // Two possible Options:
+        // 1 - Bind texture to color fbo attachment and glReadPixels()
+        // 2 - Create an fbo, activate it, render quad with texture, glReadPixels()
+        // Using Option 1, care for texture format on retrieval
+        // NOTE: This behaviour could be conditioned by graphic driver...
+
+        let fboId: u32 = rlLoadFramebuffer();
+
+        gl::BindFramebuffer(gl::FRAMEBUFFER, fboId);
+        gl::BindTexture(gl::TEXTURE_2D, 0);
+
+        // Attach our texture to FBO
+        gl::FramebufferTexture2D(
+            gl::FRAMEBUFFER,
+            gl::COLOR_ATTACHMENT0,
+            gl::TEXTURE_2D,
+            id,
+            0,
+        );
+
+        // Reading data as RGBA because FBO texture is configured as RGBA, despite binding another texture format
+        pixels = libc::calloc(
+            rlGetPixelDataSize(width, height, RL_PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) as usize,
+            1,
+        );
+
+        gl::ReadPixels(0, 0, width, height, gl::RGBA, gl::UNSIGNED_BYTE, pixels);
+
+        gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+
+        // Clean up temporal fbo
+        rlUnloadFramebuffer(fboId);
+    }
+
+    return pixels;
+}
+
+// Copy framebuffer pixel data to internal buffer
+pub fn rlCopyFramebuffer(x: i32, y: i32, width: i32, height: i32, format: i32, pixels: *mut u8) {}
+
+// Resize internal framebuffer
+pub fn rlResizeFramebuffer(width: i32, height: i32) {}
+
+// Read screen pixel data (color buffer)
+pub unsafe fn rlReadScreenPixels(width: i32, height: i32) -> *mut u8 {
+    let imgData = libc::calloc((width * height * 4) as usize, std::mem::size_of::<u8>()) as *mut u8;
+
+    // NOTE: glReadPixels() returns image flipped vertically -> (0,0) is the bottom left corner of the framebuffer
+    // WARNING: Getting alpha channel! Be careful, it can be transparent if not cleared properly!
+    gl::ReadPixels(
+        0,
+        0,
+        width,
+        height,
+        gl::RGBA,
+        gl::UNSIGNED_BYTE,
+        imgData as *mut std::ffi::c_void,
+    );
+
+    // Flip image vertically
+    // NOTE: Alpha value has already been applied to RGB in framebuffer, not needed anymore
+    for y in (height / 2..height).rev() {
+        for x in (0..(width * 4)).step_by(4) {
+            let s = (((height - 1) - y) * width * 4 + x) as usize;
+            let e = (y * width * 4 + x) as usize;
+
+            let r = *imgData.add(s);
+            let g = *imgData.add(s + 1);
+            let b = *imgData.add(s + 2);
+
+            *imgData.add(s) = *imgData.add(e);
+            *imgData.add(s + 1) = *imgData.add(e + 1);
+            *imgData.add(s + 2) = *imgData.add(e + 2);
+            *imgData.add(s + 3) = 255; // Set alpha component value to 255 (no trasparent image retrieval)
+
+            *imgData.add(e) = r;
+            *imgData.add(e + 1) = g;
+            *imgData.add(e + 2) = b;
+            *imgData.add(e + 3) = 255; // Ditto
+        }
+    }
+
+    imgData // NOTE: image data should be freed
+}
+
+// Framebuffer management (fbo)
+//-----------------------------------------------------------------------------------------
+// Load a framebuffer to be used for rendering
+// NOTE: No textures attached
+pub unsafe fn rlLoadFramebuffer() -> u32 {
+    let mut fboId = 0;
+    if (!IS_GPU_READY) {
+        warn!("GL: GPU is not ready to load data, trying to load before InitWindow()?",);
+        return fboId;
+    }
+
+    gl::GenFramebuffers(1, &mut fboId); // Create the framebuffer object
+    gl::BindFramebuffer(gl::FRAMEBUFFER, 0); // Unbind any framebuffer
+
+    return fboId;
+}
+
+// Attach color buffer texture to a framebuffer object (unloads previous attachment)
+// NOTE: Attach type: 0-Color, 1-Depth renderbuffer, 2-Depth texture
+#[rustfmt::skip]
+pub unsafe fn rlFramebufferAttach(id: u32, texId: u32, attachType: i32, texType: i32, mipLevel: i32) {
+    gl::BindFramebuffer(gl::FRAMEBUFFER, id);
+    let attachType = rlFramebufferAttachType::from_repr(attachType).unwrap();
+    match (attachType)
+    {
+       rlFramebufferAttachType::RL_ATTACHMENT_COLOR_CHANNEL0 |
+       rlFramebufferAttachType::RL_ATTACHMENT_COLOR_CHANNEL1 |
+       rlFramebufferAttachType::RL_ATTACHMENT_COLOR_CHANNEL2 |
+       rlFramebufferAttachType::RL_ATTACHMENT_COLOR_CHANNEL3 |
+       rlFramebufferAttachType::RL_ATTACHMENT_COLOR_CHANNEL4 |
+       rlFramebufferAttachType::RL_ATTACHMENT_COLOR_CHANNEL5 |
+       rlFramebufferAttachType::RL_ATTACHMENT_COLOR_CHANNEL6 |
+       rlFramebufferAttachType::RL_ATTACHMENT_COLOR_CHANNEL7 =>
+        {
+            if (texType == rlFramebufferAttachTextureType::RL_ATTACHMENT_TEXTURE2D as i32) { gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0 as u32 + attachType as u32, gl::TEXTURE_2D, texId, mipLevel); }
+            else if (texType == rlFramebufferAttachTextureType::RL_ATTACHMENT_RENDERBUFFER as i32) { gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0 as u32 + attachType as u32, gl::RENDERBUFFER, texId); }
+            else if (texType >= rlFramebufferAttachTextureType::RL_ATTACHMENT_CUBEMAP_POSITIVE_X as i32) { gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0 as u32 + attachType as u32, gl::TEXTURE_CUBE_MAP_POSITIVE_X as u32 + texType as u32, texId, mipLevel); }
+        } 
+        rlFramebufferAttachType::RL_ATTACHMENT_DEPTH =>
+        {
+            if (texType == rlFramebufferAttachTextureType::RL_ATTACHMENT_TEXTURE2D as i32) { gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT as u32, gl::TEXTURE_2D, texId, mipLevel); }
+            else if (texType == rlFramebufferAttachTextureType::RL_ATTACHMENT_RENDERBUFFER as i32) { gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT as u32, gl::RENDERBUFFER, texId); }
+        }
+        rlFramebufferAttachType::RL_ATTACHMENT_STENCIL =>
+        {
+            if (texType == rlFramebufferAttachTextureType::RL_ATTACHMENT_TEXTURE2D as i32) { gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::STENCIL_ATTACHMENT as u32, gl::TEXTURE_2D, texId, mipLevel); }
+            else if (texType == rlFramebufferAttachTextureType::RL_ATTACHMENT_RENDERBUFFER as i32) { gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::STENCIL_ATTACHMENT as u32, gl::RENDERBUFFER, texId); }
+        }
+        _ => {}
+    }
+
+    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+}
+
+// Verify render texture is complete
+pub unsafe fn rlFramebufferComplete(id: u32) -> bool {
+    let mut result = false;
+
+    gl::BindFramebuffer(gl::FRAMEBUFFER, id);
+
+    let status = gl::CheckFramebufferStatus(gl::FRAMEBUFFER);
+
+    if status != gl::FRAMEBUFFER_COMPLETE {
+        match status {
+            gl::FRAMEBUFFER_UNSUPPORTED => {
+                warn!("FBO: [ID {}] Framebuffer is unsupported", id);
+            }
+
+            gl::FRAMEBUFFER_INCOMPLETE_ATTACHMENT => {
+                warn!("FBO: [ID {}] Framebuffer has incomplete attachment", id);
+            }
+
+            #[cfg(feature = "gles2")]
+            gl::FRAMEBUFFER_INCOMPLETE_DIMENSIONS => {
+                warn!("FBO: [ID {}] Framebuffer has incomplete dimensions", id);
+            }
+
+            gl::FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT => {
+                warn!("FBO: [ID {}] Framebuffer has a missing attachment", id);
+            }
+
+            _ => {}
+        }
+    }
+
+    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+
+    result = (status == gl::FRAMEBUFFER_COMPLETE);
+
+    result
+}
+
+// Unload framebuffer from GPU memory
+// NOTE: All attached textures/cubemaps/renderbuffers are also deleted
+pub unsafe fn rlUnloadFramebuffer(id: u32) {
+    // Query depth attachment to automatically delete texture/renderbuffer
+    let mut depthType: i32 = 0;
+
+    gl::BindFramebuffer(gl::FRAMEBUFFER, id); // Bind framebuffer to query depth texture type
+
+    gl::GetFramebufferAttachmentParameteriv(
+        gl::FRAMEBUFFER,
+        gl::DEPTH_ATTACHMENT,
+        gl::FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,
+        &mut depthType,
+    );
+
+    // WARNING: WebGL: INVALID_ENUM: getFramebufferAttachmentParameter: invalid parameter name
+    // REF: https://registry.khronos.org/webgl/specs/latest/1.0/
+
+    let mut depthId: i32 = 0;
+
+    gl::GetFramebufferAttachmentParameteriv(
+        gl::FRAMEBUFFER,
+        gl::DEPTH_ATTACHMENT,
+        gl::FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
+        &mut depthId,
+    );
+
+    let depthIdU = depthId as u32;
+
+    if depthType as u32 == gl::RENDERBUFFER {
+        gl::DeleteRenderbuffers(1, &depthIdU);
+    } else if depthType as u32 == gl::TEXTURE {
+        gl::DeleteTextures(1, &depthIdU);
+    }
+
+    // NOTE: If a texture object is deleted while its image is attached to the *currently bound* framebuffer,
+    // the texture image is automatically detached from the currently bound framebuffer
+
+    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+    gl::DeleteFramebuffers(1, &id);
+
+    info!("FBO: [ID {}] Unloaded framebuffer from VRAM (GPU)", id);
+}
+
+// Vertex data management
+//-----------------------------------------------------------------------------------------
+// Load a new attributes buffer
+pub unsafe fn rlLoadVertexBuffer(buffer: *const std::ffi::c_void, size: i32, dynamic: bool) -> u32 {
+    let mut id: u32 = 0;
+
+    if !IS_GPU_READY {
+        warn!("GL: GPU is not ready to load data, trying to load before InitWindow()?");
+        return id;
+    }
+
+    gl::GenBuffers(1, &mut id);
+    gl::BindBuffer(gl::ARRAY_BUFFER, id);
+
+    gl::BufferData(
+        gl::ARRAY_BUFFER,
+        size as isize,
+        buffer,
+        if dynamic {
+            gl::DYNAMIC_DRAW
+        } else {
+            gl::STATIC_DRAW
+        },
+    );
+
+    id
+}
+
+// Load a new attributes element buffer
+pub unsafe fn rlLoadVertexBufferElement(buffer: *const ::std::ffi::c_void, size: i32, dynamic: bool) -> u32
+{
+    let mut id: u32 = 0;
+
+    if !IS_GPU_READY
+    {
+        warn!("GL: GPU is not ready to load data, trying to load before InitWindow()?");
+        return id;
+    }
+
+    gl::GenBuffers(1, &mut id);
+    gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, id);
+    gl::BufferData(
+        gl::ELEMENT_ARRAY_BUFFER,
+        size as isize,
+        buffer,
+        if dynamic { gl::DYNAMIC_DRAW } else { gl::STATIC_DRAW },
+    );
+
+    id
+}
+
+// Enable vertex buffer (VBO)
+pub unsafe fn rlEnableVertexBuffer(id: u32)
+{
+    gl::BindBuffer(gl::ARRAY_BUFFER, id);
+}
+
+// Disable vertex buffer (VBO)
+pub unsafe fn rlDisableVertexBuffer()
+{
+    gl::BindBuffer(gl::ARRAY_BUFFER, 0);
+}
+
+// Enable vertex buffer element (VBO element)
+pub unsafe fn rlEnableVertexBufferElement(id: u32)
+{
+    gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, id);
+}
+
+// Disable vertex buffer element (VBO element)
+pub unsafe fn rlDisableVertexBufferElement()
+{
+    gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
+}
+
+// Update vertex buffer with new data
+// NOTE: dataSize and offset must be provided in bytes
+pub unsafe fn rlUpdateVertexBuffer(
+    id: u32,
+    data: *const ::std::ffi::c_void,
+    dataSize: i32,
+    offset: i32,
+)
+{
+    gl::BindBuffer(gl::ARRAY_BUFFER, id);
+    gl::BufferSubData(
+        gl::ARRAY_BUFFER,
+        offset as isize,
+        dataSize as isize,
+        data,
+    );
+}
+
+// Update vertex buffer elements with new data
+// NOTE: dataSize and offset must be provided in bytes
+pub unsafe fn rlUpdateVertexBufferElements(
+    id: u32,
+    data: *const ::std::ffi::c_void,
+    dataSize: i32,
+    offset: i32,
+)
+{
+    gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, id);
+    gl::BufferSubData(
+        gl::ELEMENT_ARRAY_BUFFER,
+        offset as isize,
+        dataSize as isize,
+        data,
+    );
+}
+
+// Enable vertex array object (VAO)
+pub unsafe fn rlEnableVertexArray(vaoId: u32) -> bool
+{
+    let mut result: bool = false;
+
+    if RLGL.ExtSupported.vao
+    {
+        gl::BindVertexArray(vaoId);
+        result = true;
+    }
+
+    result
+}
+
+// Disable vertex array object (VAO)
+pub unsafe fn rlDisableVertexArray()
+{
+    if RLGL.ExtSupported.vao
+    {
+        gl::BindVertexArray(0);
+    }
+}
+
+// Enable vertex attribute index
+pub unsafe fn rlEnableVertexAttribute(index: u32)
+{
+    gl::EnableVertexAttribArray(index);
+}
+
+// Disable vertex attribute index
+pub unsafe fn rlDisableVertexAttribute(index: u32)
+{
+    gl::DisableVertexAttribArray(index);
+}
+
+// Draw vertex array
+pub unsafe fn rlDrawVertexArray(offset: i32, count: i32)
+{
+    gl::DrawArrays(gl::TRIANGLES, offset, count);
+}
+
+// Draw vertex array elements
+pub unsafe fn rlDrawVertexArrayElements(
+    offset: i32,
+    count: i32,
+    buffer: *const ::std::ffi::c_void,
+)
+{
+    // NOTE: Added pointer math separately from function to avoid UBSAN complaining
+    let mut bufferPtr = buffer as *const u16;
+
+    if offset > 0
+    {
+        bufferPtr = bufferPtr.add(offset as usize);
+    }
+
+    gl::DrawElements(
+        gl::TRIANGLES,
+        count,
+        gl::UNSIGNED_SHORT,
+        bufferPtr as *const ::std::ffi::c_void,
+    );
+}
+
+// Draw vertex array instanced
+pub unsafe fn rlDrawVertexArrayInstanced(offset: i32, count: i32, instances: i32)
+{
+    gl::DrawArraysInstanced(gl::TRIANGLES, offset, count, instances);
+}
+
+// Draw vertex array elements instanced
+pub unsafe fn rlDrawVertexArrayElementsInstanced(
+    offset: i32,
+    count: i32,
+    buffer: *const ::std::ffi::c_void,
+    instances: i32,
+)
+{
+    // NOTE: Added pointer math separately from function to avoid UBSAN complaining
+    let mut bufferPtr = buffer as *const u16;
+
+    if offset > 0
+    {
+        bufferPtr = bufferPtr.add(offset as usize);
+    }
+
+    gl::DrawElementsInstanced(
+        gl::TRIANGLES,
+        count,
+        gl::UNSIGNED_SHORT,
+        bufferPtr as *const ::std::ffi::c_void,
+        instances,
+    );
+}
+
+// Enable vertex state pointer
+pub unsafe fn rlEnableStatePointer(vertexAttribType: i32, buffer: *mut ::std::ffi::c_void)
+{
+}
+
+// Disable vertex state pointer
+pub unsafe fn rlDisableStatePointer(vertexAttribType: i32)
+{
+}
+
+// Load vertex array object (VAO)
+pub unsafe fn rlLoadVertexArray() -> u32
+{
+    let mut vaoId: u32 = 0;
+
+    if !IS_GPU_READY
+    {
+        warn!("GL: GPU is not ready to load data, trying to load before InitWindow()?");
+        return vaoId;
+    }
+
+    if RLGL.ExtSupported.vao
+    {
+        gl::GenVertexArrays(1, &mut vaoId);
+    }
+
+    vaoId
+}
+
+// Set vertex attribute
+pub unsafe fn rlSetVertexAttribute(
+    index: u32,
+    compSize: i32,
+    type_: i32,
+    normalized: bool,
+    stride: i32,
+    offset: i32,
+)
+{
+    // NOTE: Data type could be: GL_BYTE, GL_UNSIGNED_BYTE, GL_SHORT, GL_UNSIGNED_SHORT, GL_INT, GL_UNSIGNED_INT
+    // Additional types (depends on OpenGL version or extensions):
+    //  - GL_HALF_FLOAT, GL_FLOAT, GL_DOUBLE, GL_FIXED,
+    //  - GL_INT_2_10_10_10_REV, GL_UNSIGNED_INT_2_10_10_10_REV, GL_UNSIGNED_INT_10F_11F_11F_REV
+
+    let offsetNative = offset as usize;
+
+    gl::VertexAttribPointer(
+        index,
+        compSize,
+        type_ as u32,
+        if normalized { gl::TRUE } else { gl::FALSE },
+        stride,
+        offsetNative as *const ::std::ffi::c_void,
+    );
+}
+
+// Set vertex attribute divisor
+pub unsafe fn rlSetVertexAttributeDivisor(index: u32, divisor: i32)
+{
+    gl::VertexAttribDivisor(index, divisor as u32);
+}
+
+// Unload vertex array object (VAO)
+pub unsafe fn rlUnloadVertexArray(vaoId: u32)
+{
+    if RLGL.ExtSupported.vao
+    {
+        gl::BindVertexArray(0);
+        gl::DeleteVertexArrays(1, &vaoId);
+
+        info!(
+            "VAO: [ID {}] Unloaded vertex array data from VRAM (GPU)",
+            vaoId
+        );
+    }
+}
+
+// Unload vertex buffer (VBO)
+pub unsafe fn rlUnloadVertexBuffer(vboId: u32)
+{
+    gl::DeleteBuffers(1, &vboId);
+
+    //info!("VBO: Unloaded vertex data from VRAM (GPU)");
+}
+
+// Shaders management
+//-----------------------------------------------------------------------------------------------
+// Load (compile) shader and return shader id
+pub unsafe fn rlLoadShader(code: *const i8, type_: u32) -> u32
+{
+    let mut shaderId: u32 = 0;
+
+    shaderId = gl::CreateShader(type_);
+    gl::ShaderSource(shaderId, 1, &code, std::ptr::null());
+
+    let mut success: i32 = 0;
+
+    gl::CompileShader(shaderId);
+    gl::GetShaderiv(shaderId, gl::COMPILE_STATUS, &mut success);
+
+    if success == gl::FALSE as i32
+    {
+        match type_
+        {
+            gl::VERTEX_SHADER =>
+            {
+                warn!(
+                    "SHADER: [ID {}] Failed to compile vertex shader code",
+                    shaderId
+                );
+            }
+
+            gl::FRAGMENT_SHADER =>
+            {
+                warn!(
+                    "SHADER: [ID {}] Failed to compile fragment shader code",
+                    shaderId
+                );
+            }
+
+            //case GL_GEOMETRY_SHADER:
+
+            #[cfg(feature = "opengl_43")]
+            gl::COMPUTE_SHADER =>
+            {
+                warn!(
+                    "SHADER: [ID {}] Failed to compile compute shader code",
+                    shaderId
+                );
+            }
+
+            #[cfg(feature = "opengl_33")]
+            gl::COMPUTE_SHADER =>
+            {
+                warn!(
+                    "SHADER: Compute shaders not enabled. Define opengl_43"
+                );
+            }
+
+            _ => {}
+        }
+
+        let mut maxLength: i32 = 0;
+
+        gl::GetShaderiv(shaderId, gl::INFO_LOG_LENGTH, &mut maxLength);
+
+        if maxLength > 0
+        {
+            let mut length: i32 = 0;
+
+            let mut log: Vec<u8> = vec![0; maxLength as usize];
+
+            gl::GetShaderInfoLog(
+                shaderId,
+                maxLength,
+                &mut length,
+                log.as_mut_ptr() as *mut i8,
+            );
+
+            warn!(
+                "SHADER: [ID {}] Compile error: {}",
+                shaderId,
+                std::ffi::CStr::from_ptr(log.as_ptr() as *const i8)
+                    .to_string_lossy()
+            );
+        }
+
+        // Unload object allocated by glCreateShader(),
+        // despite failing in the compilation process
+        gl::DeleteShader(shaderId);
+
+        shaderId = 0;
+    }
+    else
+    {
+        match type_
+        {
+            gl::VERTEX_SHADER =>
+            {
+                info!(
+                    "SHADER: [ID {}] Vertex shader compiled successfully",
+                    shaderId
+                );
+            }
+
+            gl::FRAGMENT_SHADER =>
+            {
+                info!(
+                    "SHADER: [ID {}] Fragment shader compiled successfully",
+                    shaderId
+                );
+            }
+
+            //case GL_GEOMETRY_SHADER:
+
+            #[cfg(feature = "opengl_43")]
+            gl::COMPUTE_SHADER =>
+            {
+                info!(
+                    "SHADER: [ID {}] Compute shader compiled successfully",
+                    shaderId
+                );
+            }
+
+            #[cfg(feature = "opengl_33")]
+            gl::COMPUTE_SHADER =>
+            {
+                warn!(
+                    "SHADER: Compute shaders not enabled. Define opengl_43"
+                );
+            }
+
+            _ => {}
+        }
+    }
+
+    shaderId
+}
+
+// Load shader program from code strings
+// NOTE: If shader string is NULL, using default vertex/fragment shaders
+pub unsafe fn rlLoadShaderProgram(
+    vsCode: *const i8,
+    fsCode: *const i8,
+) -> u32
+{
+    let mut id: u32 = 0; // Shader program id
+
+    if !IS_GPU_READY
+    {
+        warn!(
+            "GL: GPU is not ready to load data, trying to load before InitWindow()?"
+        );
+
+        return id;
+    }
+
+    let mut vertexShaderId: u32 = 0;
+    let mut fragmentShaderId: u32 = 0;
+
+    // Compile vertex shader (if provided)
+    // NOTE: If not vertex shader is provided, use default one
+    if !vsCode.is_null()
+    {
+        vertexShaderId = rlLoadShader(vsCode, gl::VERTEX_SHADER);
+    }
+    else
+    {
+        vertexShaderId = RLGL.State.defaultVShaderId;
+    }
+
+    // Compile fragment shader (if provided)
+    // NOTE: If not vertex shader is provided, use default one
+    if !fsCode.is_null()
+    {
+        fragmentShaderId = rlLoadShader(fsCode, gl::FRAGMENT_SHADER);
+    }
+    else
+    {
+        fragmentShaderId = RLGL.State.defaultFShaderId;
+    }
+
+    // In case vertex and fragment shader are the default ones, no need to recompile, assign the default shader program id
+    if (vertexShaderId == RLGL.State.defaultVShaderId) &&
+       (fragmentShaderId == RLGL.State.defaultFShaderId)
+    {
+        id = RLGL.State.defaultShaderId;
+    }
+    else if (vertexShaderId > 0) && (fragmentShaderId > 0)
+    {
+        // One of or both shader are new, a new shader program needs to be compiled
+        id = rlLoadShaderProgramEx(vertexShaderId, fragmentShaderId);
+
+        // Detaching and deleting vertex/fragment shaders (if not default ones)
+        // WARNING: Detach shader before deletion to make sure memory is freed
+        if vertexShaderId != RLGL.State.defaultVShaderId
+        {
+            // WARNING: Shader program linkage could fail and returned id is 0
+            if id > 0
+            {
+                gl::DetachShader(id, vertexShaderId);
+            }
+
+            gl::DeleteShader(vertexShaderId);
+        }
+
+        if fragmentShaderId != RLGL.State.defaultFShaderId
+        {
+            // WARNING: Shader program linkage could fail and returned id is 0
+            if id > 0
+            {
+                gl::DetachShader(id, fragmentShaderId);
+            }
+
+            gl::DeleteShader(fragmentShaderId);
+        }
+
+        // In case shader program loading failed, assign default shader
+        if id == 0
+        {
+            // In case shader loading fails, reassigning default shader
+            warn!(
+                "SHADER: Failed to load custom shader code, using default shader"
+            );
+
+            id = RLGL.State.defaultShaderId;
+        }
+
+        /*
+        else
+        {
+            // Get available shader uniforms
+            // NOTE: This information is useful for debug...
+            let mut uniformCount: i32 = -1;
+
+            gl::GetProgramiv(id, gl::ACTIVE_UNIFORMS, &mut uniformCount);
+
+            for i in 0..uniformCount
+            {
+                let mut namelen: i32 = -1;
+                let mut num: i32 = -1;
+
+                let mut name: [i8; 256] = [0; 256];
+
+                let mut type_: u32 = gl::ZERO;
+
+                // Get the name of the uniforms
+                gl::GetActiveUniform(
+                    id,
+                    i as u32,
+                    (name.len() - 1) as i32,
+                    &mut namelen,
+                    &mut num,
+                    &mut type_,
+                    name.as_mut_ptr(),
+                );
+
+                name[namelen as usize] = 0;
+
+                debug!(
+                    "SHADER: [ID {}] Active uniform ({}) set at location: {}",
+                    id,
+                    std::ffi::CStr::from_ptr(name.as_ptr()).to_string_lossy(),
+                    gl::GetUniformLocation(id, name.as_ptr()),
+                );
+            }
+        }
+        */
+    }
+
+    id
+}
+
+// Load shader program from already loaded shader ids
+pub unsafe fn rlLoadShaderProgramEx(vsId: u32, fsId: u32) -> u32
+{
+    let mut programId: u32 = 0;
+
+    if !IS_GPU_READY
+    {
+        warn!(
+            "GL: GPU is not ready to load data, trying to load before InitWindow()?"
+        );
+
+        return programId;
+    }
+
+    let mut success: i32 = 0;
+
+    programId = gl::CreateProgram();
+
+    gl::AttachShader(programId, vsId);
+    gl::AttachShader(programId, fsId);
+
+    // Default attribute shader locations must be bound before linking
+    // NOTE: There is no problem with binding a generic attribute index to an attribute variable name
+    // that is never used; if some attrib name is no found on the shader, it locations becomes -1
+    gl::BindAttribLocation(
+        programId,
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION,
+        RL_DEFAULT_SHADER_ATTRIB_NAME_POSITION.as_ptr(),
+    );
+
+    gl::BindAttribLocation(
+        programId,
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD,
+        RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD.as_ptr(),
+    );
+
+    gl::BindAttribLocation(
+        programId,
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_NORMAL,
+        RL_DEFAULT_SHADER_ATTRIB_NAME_NORMAL.as_ptr(),
+    );
+
+    gl::BindAttribLocation(
+        programId,
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_COLOR,
+        RL_DEFAULT_SHADER_ATTRIB_NAME_COLOR.as_ptr(),
+    );
+
+    gl::BindAttribLocation(
+        programId,
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_TANGENT,
+        RL_DEFAULT_SHADER_ATTRIB_NAME_TANGENT.as_ptr(),
+    );
+
+    gl::BindAttribLocation(
+        programId,
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD2,
+        RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD2.as_ptr(),
+    );
+
+    gl::BindAttribLocation(
+        programId,
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_INSTANCETRANSFORM,
+        RL_DEFAULT_SHADER_ATTRIB_NAME_INSTANCETRANSFORM.as_ptr(),
+    );
+
+    gl::BindAttribLocation(
+        programId,
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_BONEINDICES,
+        RL_DEFAULT_SHADER_ATTRIB_NAME_BONEINDICES.as_ptr(),
+    );
+
+    gl::BindAttribLocation(
+        programId,
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_BONEWEIGHTS,
+        RL_DEFAULT_SHADER_ATTRIB_NAME_BONEWEIGHTS.as_ptr(),
+    );
+
+    gl::LinkProgram(programId);
+
+    // NOTE: All uniform variables are intitialised to 0 when a program links
+
+    gl::GetProgramiv(programId, gl::LINK_STATUS, &mut success);
+
+    if success == gl::FALSE as i32
+    {
+        warn!(
+            "SHADER: [ID {}] Failed to link shader program",
+            programId
+        );
+
+        let mut maxLength: i32 = 0;
+
+        gl::GetProgramiv(programId, gl::INFO_LOG_LENGTH, &mut maxLength);
+
+        if maxLength > 0
+        {
+            let mut length: i32 = 0;
+
+            let mut log: Vec<u8> = vec![0; maxLength as usize];
+
+            gl::GetProgramInfoLog(
+                programId,
+                maxLength,
+                &mut length,
+                log.as_mut_ptr() as *mut i8,
+            );
+
+            warn!(
+                "SHADER: [ID {}] Link error: {}",
+                programId,
+                std::ffi::CStr::from_ptr(log.as_ptr() as *const i8)
+                    .to_string_lossy()
+            );
+        }
+
+        gl::DeleteProgram(programId);
+
+        programId = 0;
+    }
+    else
+    {
+        info!(
+            "SHADER: [ID {}] Program shader loaded successfully",
+            programId
+        );
+    }
+
+    programId
+}
+
+// Load compute shader program
+pub unsafe fn rlLoadShaderProgramCompute(csId: u32) -> u32
+{
+    let mut programId: u32 = 0;
+
+    #[cfg(features="opengl_43")]
+    {
+        let mut success: i32 = 0;
+        programId = gl::CreateProgram();
+
+        gl::AttachShader(programId, csId);
+
+        gl::LinkProgram(programId);
+
+        // NOTE: All uniform variables are initialized to 0 when a program links
+
+        gl::GetProgramiv(programId, gl::LINK_STATUS, &mut success);
+
+        if success == gl::FALSE as i32
+        {
+            info!("SHADER: [ID {}] Failed to link compute shader program", programId);
+
+            let mut maxLength: i32 = 0;
+            gl::GetProgramiv(programId, gl::INFO_LOG_LENGTH, &mut maxLength);
+
+            if maxLength > 0
+            {
+                let mut length: i32 = 0;
+
+                let log = RL_CALLOC(maxLength as usize, std::mem::size_of::<u8>()) as *mut i8;
+
+                gl::GetProgramInfoLog(
+                    programId,
+                    maxLength,
+                    &mut length,
+                    log,
+                );
+
+                info!("SHADER: [ID {}] Link error: {}", programId, std::ffi::CStr::from_ptr(log).to_string_lossy());
+
+                RL_FREE(log as *mut _);
+            }
+
+            gl::DeleteProgram(programId);
+
+            programId = 0;
+        }
+        else
+        {
+            // NOTE: If GL_LINK_STATUS is GL_FALSE, program binary length is zero
+            // let mut binarySize: i32 = 0;
+            // gl::GetProgramiv(programId, gl::PROGRAM_BINARY_LENGTH, &mut binarySize);
+
+            info!("SHADER: [ID {}] Compute shader program loaded successfully", programId);
+        }
+    }
+
+    #[cfg(not(feature = "opengl_43"))]
+    {
+        info!("SHADER: Compute shaders not supported, enable opengl_43");
+    }
+
+    return programId;
+}
+
+// Delete shader
+pub unsafe fn rlUnloadShader(id: u32)
+{
+    gl::DeleteShader(id);
+
+    info!("SHADER: [ID {}] Unloaded shader data from VRAM (GPU)", id);
+}
+
+// Unload shader program
+pub unsafe fn rlUnloadShaderProgram(id: u32)
+{
+    gl::DeleteProgram(id);
+
+    info!("SHADER: [ID {}] Unloaded shader program data from VRAM (GPU)", id);
+}
+
+// Get shader location uniform
+// NOTE: First parameter refers to shader program id
+pub unsafe fn rlGetLocationUniform(id: u32, uniformName: *const i8) -> i32
+{
+    let mut location: i32 = -1;
+    location = gl::GetUniformLocation(id, uniformName);
+
+    // if location == -1 {
+    //     info!("SHADER: [ID {}] Failed to find shader uniform: {}", id, uniformName);
+    // } else {
+    //     info!("SHADER: [ID {}] Shader uniform ({}) set at location: {}", id, uniformName, location);
+    // }
+
+    return location;
+}
+
+// Get shader location attribute
+// NOTE: First parameter refers to shader program id
+pub unsafe fn rlGetLocationAttrib(id: u32, attribName: *const i8) -> i32
+{
+    let mut location: i32 = -1;
+    location = gl::GetAttribLocation(id, attribName);
+
+    // if location == -1 {
+    //     info!("SHADER: [ID {}] Failed to find shader attribute: {}", id, attribName);
+    // } else {
+    //     info!("SHADER: [ID {}] Shader attribute ({}) set at location: {}", id, attribName, location);
+    // }
+
+    return location;
+}
+
+// Set shader value uniform
+pub unsafe fn rlSetUniform(locIndex: i32, value: *const std::ffi::c_void, uniformType: i32, count: i32)
+{
+    let uniformType = rlShaderUniformDataType::from_repr(uniformType).unwrap();
+    match uniformType
+    {
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_FLOAT =>
+            gl::Uniform1fv(locIndex, count, value as *const f32),
+
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_VEC2 =>
+            gl::Uniform2fv(locIndex, count, value as *const f32),
+
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_VEC3 =>
+            gl::Uniform3fv(locIndex, count, value as *const f32),
+
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_VEC4 =>
+            gl::Uniform4fv(locIndex, count, value as *const f32),
+
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_INT =>
+            gl::Uniform1iv(locIndex, count, value as *const i32),
+
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_IVEC2 =>
+            gl::Uniform2iv(locIndex, count, value as *const i32),
+
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_IVEC3 =>
+            gl::Uniform3iv(locIndex, count, value as *const i32),
+
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_IVEC4 =>
+            gl::Uniform4iv(locIndex, count, value as *const i32),
+
+        #[cfg(not(feature = "gles2"))]
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_UINT =>
+            gl::Uniform1uiv(locIndex, count, value as *const u32),
+
+        #[cfg(not(feature = "gles2"))]
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_UIVEC2 =>
+            gl::Uniform2uiv(locIndex, count, value as *const u32),
+
+        #[cfg(not(feature = "gles2"))]
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_UIVEC3 =>
+            gl::Uniform3uiv(locIndex, count, value as *const u32),
+
+        #[cfg(not(feature = "gles2"))]
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_UIVEC4 =>
+            gl::Uniform4uiv(locIndex, count, value as *const u32),
+
+        rlShaderUniformDataType::RL_SHADER_UNIFORM_SAMPLER2D =>
+            gl::Uniform1iv(locIndex, count, value as *const i32),
+
+        _ => {
+            info!("SHADER: Failed to set uniform value, data type not recognized");
+        }
+    }
+}
+
+// Set shader value attribute
+#[rustfmt::skip]
+pub unsafe fn rlSetVertexAttributeDefault(locIndex: i32, value: *const std::ffi::c_void, attribType: i32, count: i32)
+{
+    let attribType = rlShaderAttributeDataType::from_repr(attribType).unwrap();
+    match (attribType)
+    {
+        rlShaderAttributeDataType::RL_SHADER_ATTRIB_FLOAT => { if (count == 1) { gl::VertexAttrib1fv(locIndex as u32, value as *const f32); } }
+        rlShaderAttributeDataType::RL_SHADER_ATTRIB_VEC2 => { if (count == 2) { gl::VertexAttrib2fv(locIndex as u32, value as *const f32); } }
+        rlShaderAttributeDataType::RL_SHADER_ATTRIB_VEC3 => { if (count == 3) { gl::VertexAttrib3fv(locIndex as u32, value as *const f32); } }
+        rlShaderAttributeDataType::RL_SHADER_ATTRIB_VEC4 => { if (count == 4) { gl::VertexAttrib4fv(locIndex as u32, value as *const f32); } }
+        _ => { warn!("SHADER: Failed to set attrib default value, data type not recognized"); }
+    }
+}
+
+// Set shader value uniform matrix
+pub unsafe fn rlSetUniformMatrix(locIndex: i32, mat: Matrix)
+{
+    gl::UniformMatrix4fv(locIndex, 1, gl::FALSE, (mat).to_array().as_ptr());
+}
+
+// Set shader value uniform matrix
+pub unsafe fn rlSetUniformMatrices(locIndex: i32, matrices: *const Matrix, count: i32)
+{
+#[cfg(feature = "opengl_33")]
+    gl::UniformMatrix4fv(locIndex, count, gl::TRUE, matrices as *const f32);
+#[cfg(feature = "gles2")]
+    // WARNING: WebGL does not support Matrix transpose ("true" parameter)
+    // REF: https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/uniformMatrix
+    gl::UniformMatrix4fv(locIndex, count, gl::FALSE, matrices);
+}
+
+// Set shader value uniform sampler
+pub unsafe fn rlSetUniformSampler(locIndex: i32, textureId: u32)
+{
+    // Check if texture is already active
+    for i in 0..(RL_DEFAULT_BATCH_MAX_TEXTURE_UNITS as usize)
+    {
+        if (RLGL.State.activeTextureId[i] == textureId)
+        {
+            gl::Uniform1i(locIndex, 1 + i as i32);
+            return;
+        }
+    }
+
+    // Register a new active texture for the internal batch system
+    // NOTE: Default texture is always activated as GL_TEXTURE0
+    for i in 0..(RL_DEFAULT_BATCH_MAX_TEXTURE_UNITS as usize)
+    {
+        if (RLGL.State.activeTextureId[i] == 0)
+        {
+            gl::Uniform1i(locIndex, 1 + i as i32);              // Activate new texture unit
+            RLGL.State.activeTextureId[i] = textureId; // Save texture id for binding on drawing
+            break;
+        }
+    }
+}
+
+// Set shader currently active (id and locations)
+pub unsafe fn rlSetShader(id: u32, locs: *mut i32)
+{
+    if (RLGL.State.currentShaderId != id)
+    {
+        rlDrawRenderBatch(RLGL.currentBatch);
+        RLGL.State.currentShaderId = id;
+        RLGL.State.currentShaderLocs = locs;
+    }
+}
+
+// Dispatch compute shader (equivalent to *draw* for graphics pipeline)
+pub unsafe fn rlComputeShaderDispatch(groupX: u32, groupY: u32, groupZ: u32)
+{
+    #[cfg(feature = "opengl_43")]
+    {
+        gl::DispatchCompute(groupX, groupY, groupZ);
+    }
+}
+
+// Load shader storage buffer object (SSBO)
+pub unsafe fn rlLoadShaderBuffer(size: u32, data: *const libc::c_void, usageHint: i32) -> u32
+{
+    let mut ssbo: u32 = 0;
+
+    #[cfg(feature = "opengl_43")]
+    {
+        gl::GenBuffers(1, &mut ssbo);
+        gl::BindBuffer(gl::SHADER_STORAGE_BUFFER, ssbo);
+
+        let usage = if usageHint != 0 { usageHint } else { RL_STREAM_COPY };
+
+        gl::BufferData(
+            gl::SHADER_STORAGE_BUFFER,
+            size as isize,
+            data,
+            usage,
+        );
+
+        if data.is_null()
+        {
+            gl::ClearBufferData(
+                gl::SHADER_STORAGE_BUFFER,
+                gl::R8UI,
+                gl::RED_INTEGER,
+                gl::UNSIGNED_BYTE,
+                std::ptr::null(),
+            );
+        }
+
+        gl::BindBuffer(gl::SHADER_STORAGE_BUFFER, 0);
+    }
+
+    #[cfg(not(feature = "opengl_43"))]
+    {
+        info!("SSBO: SSBO not enabled. Define opengl_43");
+    }
+
+    ssbo
+}
+
+// Unload shader storage buffer object (SSBO)
+pub unsafe fn rlUnloadShaderBuffer(ssboId: u32)
+{
+    #[cfg(feature = "opengl_43")]
+    {
+        gl::DeleteBuffers(1, &ssboId);
+    }
+
+    #[cfg(not(feature = "opengl_43"))]
+    {
+        info!("SSBO: SSBO not enabled. Define opengl_43");
+    }
+}
+
+// Update SSBO buffer data
+pub unsafe fn rlUpdateShaderBuffer(id: u32, data: *const libc::c_void, dataSize: u32, offset: u32)
+{
+    #[cfg(feature = "opengl_43")]
+    {
+        gl::BindBuffer(gl::SHADER_STORAGE_BUFFER, id);
+        gl::BufferSubData(gl::SHADER_STORAGE_BUFFER, offset as isize, dataSize as isize, data);
+    }
+}
+
+// Get SSBO buffer size
+pub unsafe fn rlGetShaderBufferSize(id: u32) -> u32
+{
+    let mut result: u32 = 0;
+
+    #[cfg(feature = "opengl_43")]
+    {
+        let mut size: i64 = 0;
+
+        gl::BindBuffer(gl::SHADER_STORAGE_BUFFER, id);
+        gl::GetBufferParameteri64v(
+            gl::SHADER_STORAGE_BUFFER,
+            gl::BUFFER_SIZE,
+            &mut size,
+        );
+
+        if size > 0
+        {
+            result = size as u32;
+        }
+    }
+
+    result
+}
+
+// Read SSBO buffer data (GPU -> CPU)
+pub unsafe fn rlReadShaderBuffer(id: u32, dest: *mut libc::c_void, count: u32, offset: u32)
+{
+    #[cfg(feature = "opengl_43")]
+    {
+        gl::BindBuffer(gl::SHADER_STORAGE_BUFFER, id);
+        gl::GetBufferSubData(gl::SHADER_STORAGE_BUFFER, offset as isize, count as isize, dest);
+    }
+}
+
+// Bind SSBO buffer
+pub unsafe fn rlBindShaderBuffer(id: u32, index: u32)
+{
+    #[cfg(feature = "opengl_43")]
+    {
+        gl::BindBufferBase(gl::SHADER_STORAGE_BUFFER, index, id);
+    }
+}
+
+// Copy SSBO buffer data
+pub unsafe fn rlCopyShaderBuffer(destId: u32, srcId: u32, destOffset: u32, srcOffset: u32, count: u32)
+{
+    #[cfg(feature = "opengl_43")]
+    {
+        gl::BindBuffer(gl::COPY_READ_BUFFER, srcId);
+        gl::BindBuffer(gl::COPY_WRITE_BUFFER, destId);
+
+        gl::CopyBufferSubData(
+            gl::COPY_READ_BUFFER,
+            gl::COPY_WRITE_BUFFER,
+            srcOffset as isize,
+            destOffset as isize,
+            count as isize,
+        );
+    }
+}
+
+// Bind image texture
+pub unsafe fn rlBindImageTexture(id: u32, index: u32, format: i32, readonly: bool)
+{
+    #[cfg(feature = "opengl_43")]
+    {
+        let mut glInternalFormat: u32 = 0;
+        let mut glFormat: u32 = 0;
+        let mut glType: u32 = 0;
+
+        rlGetGlTextureFormats(format, &mut glInternalFormat, &mut glFormat, &mut glType);
+
+        gl::BindImageTexture(
+            index,
+            id,
+            0,
+            false as i32,
+            0,
+            if readonly { gl::READ_ONLY } else { gl::READ_WRITE },
+            glInternalFormat,
+        );
+    }
+
+    #[cfg(not(feature = "opengl_43"))]
+    {
+        info!("TEXTURE: Image texture binding not enabled. Define opengl_43");
     }
 }
 
@@ -2806,10 +4320,6 @@ pub fn rlGetPixelFormatName(format: i32) -> &'static str {
     }
 }
 
-pub unsafe fn rlUnloadTexture(id: u32) {
-    gl::DeleteTextures(1, &id);
-}
-
 unsafe fn rlLoadShaderDefault() {
     let vs = rlLoadShader(crate::core::DEFAULT_VSHADER, RL_VERTEX_SHADER as i32);
     let fs = rlLoadShader(crate::core::DEFAULT_FSHADER, RL_FRAGMENT_SHADER as i32);
@@ -2842,48 +4352,6 @@ unsafe fn rlUnloadShaderDefault() {
     gl::DeleteProgram(RLGL.State.defaultShaderId);
 }
 
-pub unsafe fn rlLoadShader(code: &str, shaderType: i32) -> u32 {
-    let shader = gl::CreateShader(shaderType as u32);
-    let c_str = std::ffi::CString::new(code).unwrap();
-    gl::ShaderSource(shader, 1, &c_str.as_ptr(), std::ptr::null());
-    gl::CompileShader(shader);
-    shader
-}
-
-pub unsafe fn rlGetGlTextureFormats(
-    format: i32,
-    glInternalFormat: &mut u32,
-    glFormat: &mut u32,
-    glType: &mut u32,
-) {
-    *glInternalFormat = 0;
-    *glFormat = 0;
-    *glType = 0;
-
-    match format {
-        1 => {
-            // GRAYSCALE
-            *glInternalFormat = gl::R8;
-            *glFormat = gl::RED;
-            *glType = gl::UNSIGNED_BYTE;
-        }
-        2 => {
-            // GRAY_ALPHA
-            *glInternalFormat = gl::RG8;
-            *glFormat = gl::RG;
-            *glType = gl::UNSIGNED_BYTE;
-        }
-        7 => {
-            // R8G8B8A8
-            *glInternalFormat = gl::RGBA8;
-            *glFormat = gl::RGBA;
-            *glType = gl::UNSIGNED_BYTE;
-        }
-        _ => {
-            // Simplified for now, add others as needed
-        }
-    }
-}
 
 pub unsafe fn rlGetPixelDataSize(width: i32, height: i32, format: i32) -> i32 {
     let mut bpp = 0;
@@ -2898,143 +4366,6 @@ pub unsafe fn rlGetPixelDataSize(width: i32, height: i32, format: i32) -> i32 {
         _ => {}
     }
     (width * height * bpp) / 8
-}
-
-pub unsafe fn rlLoadFramebuffer() -> u32 {
-    let mut id = 0;
-    gl::GenFramebuffers(1, &mut id);
-    id
-}
-
-pub unsafe fn rlFramebufferAttach(
-    id: u32,
-    texId: u32,
-    attachType: i32,
-    texType: i32,
-    mipLevel: i32,
-) {
-    gl::BindFramebuffer(gl::FRAMEBUFFER, id);
-    if attachType < 100 {
-        // Color
-        let attachment = gl::COLOR_ATTACHMENT0 + attachType as u32;
-        if texType == 100 {
-            // Texture2D
-            gl::FramebufferTexture2D(gl::FRAMEBUFFER, attachment, gl::TEXTURE_2D, texId, mipLevel);
-        } else if texType == 200 {
-            // Renderbuffer
-            gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, attachment, gl::RENDERBUFFER, texId);
-        }
-    } else if attachType == 100 {
-        // Depth
-        if texType == 100 {
-            gl::FramebufferTexture2D(
-                gl::FRAMEBUFFER,
-                gl::DEPTH_ATTACHMENT,
-                gl::TEXTURE_2D,
-                texId,
-                mipLevel,
-            );
-        } else if texType == 200 {
-            gl::FramebufferRenderbuffer(
-                gl::FRAMEBUFFER,
-                gl::DEPTH_ATTACHMENT,
-                gl::RENDERBUFFER,
-                texId,
-            );
-        }
-    }
-    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-}
-
-pub unsafe fn rlFramebufferComplete(id: u32) -> bool {
-    gl::BindFramebuffer(gl::FRAMEBUFFER, id);
-    let status = gl::CheckFramebufferStatus(gl::FRAMEBUFFER);
-    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-    status == gl::FRAMEBUFFER_COMPLETE
-}
-
-pub unsafe fn rlUnloadFramebuffer(id: u32) {
-    gl::DeleteFramebuffers(1, &id);
-}
-
-pub unsafe fn rlLoadVertexBuffer(buffer: *const std::ffi::c_void, size: i32, dynamic: bool) -> u32 {
-    let mut id = 0;
-    gl::GenBuffers(1, &mut id);
-    gl::BindBuffer(gl::ARRAY_BUFFER, id);
-    gl::BufferData(
-        gl::ARRAY_BUFFER,
-        size as isize,
-        buffer,
-        if dynamic {
-            gl::DYNAMIC_DRAW
-        } else {
-            gl::STATIC_DRAW
-        },
-    );
-    id
-}
-
-pub unsafe fn rlLoadVertexBufferElement(
-    buffer: *const std::ffi::c_void,
-    size: i32,
-    dynamic: bool,
-) -> u32 {
-    let mut id = 0;
-    gl::GenBuffers(1, &mut id);
-    gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, id);
-    gl::BufferData(
-        gl::ELEMENT_ARRAY_BUFFER,
-        size as isize,
-        buffer,
-        if dynamic {
-            gl::DYNAMIC_DRAW
-        } else {
-            gl::STATIC_DRAW
-        },
-    );
-    id
-}
-
-pub unsafe fn rlUpdateVertexBuffer(id: u32, data: *const std::ffi::c_void, size: i32, offset: i32) {
-    gl::BindBuffer(gl::ARRAY_BUFFER, id);
-    gl::BufferSubData(gl::ARRAY_BUFFER, offset as isize, size as isize, data);
-}
-
-pub unsafe fn rlUnloadVertexBuffer(id: u32) {
-    gl::DeleteBuffers(1, &id);
-}
-
-pub unsafe fn rlLoadVertexArray() -> u32 {
-    let mut id = 0;
-    gl::GenVertexArrays(1, &mut id);
-    id
-}
-
-pub unsafe fn rlUnloadVertexArray(id: u32) {
-    gl::DeleteVertexArrays(1, &id);
-}
-
-pub unsafe fn rlSetVertexAttribute(
-    index: u32,
-    size: i32,
-    type_: i32,
-    normalized: bool,
-    stride: i32,
-    pointer: *const std::ffi::c_void,
-) {
-    gl::VertexAttribPointer(index, size, type_ as u32, normalized as u8, stride, pointer);
-}
-
-pub unsafe fn rlEnableVertexAttribute(index: u32) {
-    gl::EnableVertexAttribArray(index);
-}
-
-pub unsafe fn rlDisableVertexAttribute(index: u32) {
-    gl::DisableVertexAttribArray(index);
-}
-
-pub unsafe fn rlSetVertexAttributeDivisor(index: u32, divisor: u32) {
-    gl::VertexAttribDivisor(index, divisor);
 }
 
 pub unsafe fn rlSetUniform(
