@@ -1,6 +1,6 @@
-use crate::types::{Camera, Vector3, Matrix, CameraProjection};
 use crate::math::*;
-use glam::{Vec3, Mat4, Quat};
+use crate::types::{Camera, CameraProjection, Matrix, Vector3};
+use glam::{Mat4, Quat, Vec3};
 
 // Returns the cameras forward vector (normalized)
 pub fn get_camera_forward(camera: &Camera) -> Vector3 {
@@ -123,7 +123,13 @@ pub fn camera_yaw(camera: &mut Camera, angle: f32, rotate_around_target: bool) {
 }
 
 // Rotates the camera around its right vector, pitch is "looking up and down"
-pub fn camera_pitch(camera: &mut Camera, angle: f32, lock_view: bool, rotate_around_target: bool, rotate_up: bool) {
+pub fn camera_pitch(
+    camera: &mut Camera,
+    angle: f32,
+    lock_view: bool,
+    rotate_around_target: bool,
+    rotate_up: bool,
+) {
     let up = get_camera_up(camera);
     let mut target_position = camera.target - camera.position;
 
@@ -170,7 +176,7 @@ pub fn camera_roll(camera: &mut Camera, angle: f32) {
 
 // Returns the camera view matrix
 pub fn get_camera_view_matrix(camera: &Camera) -> Matrix {
-    Mat4::look_at_rh(camera.position, camera.target, camera.up)
+    MatrixLookAt(camera.position, camera.target, camera.up)
 }
 
 // Returns the camera projection matrix
@@ -179,10 +185,209 @@ pub fn get_camera_projection_matrix(camera: &Camera, aspect: f32) -> Matrix {
     const CAMERA_CULL_DISTANCE_FAR: f32 = 1000.0; // Should match RL_CULL_DISTANCE_FAR
 
     if camera.projection == CameraProjection::Perspective as i32 {
-        Mat4::perspective_rh_gl(camera.fovy * DEG2RAD, aspect, CAMERA_CULL_DISTANCE_NEAR, CAMERA_CULL_DISTANCE_FAR)
+        MatrixPerspective(
+            camera.fovy.to_radians() as f64,
+            aspect as f64,
+            CAMERA_CULL_DISTANCE_NEAR as f64,
+            CAMERA_CULL_DISTANCE_FAR as f64,
+        )
     } else {
         let top = camera.fovy as f32 / 2.0;
         let right = top * aspect;
-        Mat4::orthographic_rh_gl(-right, right, -top, top, CAMERA_CULL_DISTANCE_NEAR, CAMERA_CULL_DISTANCE_FAR)
+        MatrixOrtho(
+            -right as f64,
+            right as f64,
+            -top as f64,
+            top as f64,
+            CAMERA_CULL_DISTANCE_NEAR as f64,
+            CAMERA_CULL_DISTANCE_FAR as f64,
+        )
     }
+}
+
+pub fn MatrixOrtho(
+    left: f64,
+    right: f64,
+    bottom: f64,
+    top: f64,
+    nearPlane: f64,
+    farPlane: f64,
+) -> Matrix {
+    let mut result = Matrix {
+        m0: 0.0,
+        m1: 0.0,
+        m2: 0.0,
+        m3: 0.0,
+        m4: 0.0,
+        m5: 0.0,
+        m6: 0.0,
+        m7: 0.0,
+        m8: 0.0,
+        m9: 0.0,
+        m10: 0.0,
+        m11: 0.0,
+        m12: 0.0,
+        m13: 0.0,
+        m14: 0.0,
+        m15: 0.0,
+    };
+
+    let rl: f32 = (right - left) as f32;
+    let tb: f32 = (top - bottom) as f32;
+    let fn_ = (farPlane - nearPlane) as f32;
+
+    result.m0 = 2.0 / rl;
+    result.m1 = 0.0;
+    result.m2 = 0.0;
+    result.m3 = 0.0;
+
+    result.m4 = 0.0;
+    result.m5 = 2.0 / tb;
+    result.m6 = 0.0;
+    result.m7 = 0.0;
+
+    result.m8 = 0.0;
+    result.m9 = 0.0;
+    result.m10 = -2.0 / fn_;
+    result.m11 = 0.0;
+
+    result.m12 = -((left as f32 + right as f32) / rl);
+    result.m13 = -((top as f32 + bottom as f32) / tb);
+    result.m14 = -((farPlane as f32 + nearPlane as f32) / fn_);
+    result.m15 = 1.0;
+
+    result
+}
+
+pub fn MatrixPerspective(fovY: f64, aspect: f64, nearPlane: f64, farPlane: f64) -> Matrix {
+    let mut result = Matrix {
+        m0: 0.0,
+        m1: 0.0,
+        m2: 0.0,
+        m3: 0.0,
+        m4: 0.0,
+        m5: 0.0,
+        m6: 0.0,
+        m7: 0.0,
+        m8: 0.0,
+        m9: 0.0,
+        m10: 0.0,
+        m11: 0.0,
+        m12: 0.0,
+        m13: 0.0,
+        m14: 0.0,
+        m15: 0.0,
+    };
+
+    let top: f64 = nearPlane * (fovY * 0.5).tan();
+    let bottom: f64 = -top;
+    let right: f64 = top * aspect;
+    let left: f64 = -right;
+
+    // MatrixFrustum(-right, right, -top, top, near, far);
+    let rl: f32 = (right - left) as f32;
+    let tb: f32 = (top - bottom) as f32;
+    let fn_ = (farPlane - nearPlane) as f32;
+
+    result.m0 = ((nearPlane as f32) * 2.0) / rl;
+    result.m5 = ((nearPlane as f32) * 2.0) / tb;
+    result.m8 = ((right + left) as f32) / rl;
+    result.m9 = ((top + bottom) as f32) / tb;
+    result.m10 = -((farPlane + nearPlane) as f32) / fn_;
+    result.m11 = -1.0;
+    result.m14 = -((farPlane as f32 * nearPlane as f32 * 2.0) / fn_);
+
+    result
+}
+
+pub fn MatrixLookAt(eye: Vector3, target: Vector3, up: Vector3) -> Matrix {
+    let mut result = Matrix {
+        m0: 0.0,
+        m1: 0.0,
+        m2: 0.0,
+        m3: 0.0,
+        m4: 0.0,
+        m5: 0.0,
+        m6: 0.0,
+        m7: 0.0,
+        m8: 0.0,
+        m9: 0.0,
+        m10: 0.0,
+        m11: 0.0,
+        m12: 0.0,
+        m13: 0.0,
+        m14: 0.0,
+        m15: 0.0,
+    };
+
+    let mut length: f32 = 0.0;
+    let mut ilength: f32 = 0.0;
+
+    // Vector3Subtract(eye, target)
+    let mut vz = Vector3 {
+        x: eye.x - target.x,
+        y: eye.y - target.y,
+        z: eye.z - target.z,
+    };
+
+    // normalize vz
+    let mut v = vz;
+    length = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();
+    if length == 0.0 {
+        length = 1.0;
+    }
+    ilength = 1.0 / length;
+
+    vz.x *= ilength;
+    vz.y *= ilength;
+    vz.z *= ilength;
+
+    // cross(up, vz) -> vx
+    let mut vx = Vector3 {
+        x: up.y * vz.z - up.z * vz.y,
+        y: up.z * vz.x - up.x * vz.z,
+        z: up.x * vz.y - up.y * vz.x,
+    };
+
+    // normalize vx
+    v = vx;
+    length = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();
+    if length == 0.0 {
+        length = 1.0;
+    }
+    ilength = 1.0 / length;
+
+    vx.x *= ilength;
+    vx.y *= ilength;
+    vx.z *= ilength;
+
+    // cross(vz, vx) -> vy
+    let vy = Vector3 {
+        x: vz.y * vx.z - vz.z * vx.y,
+        y: vz.z * vx.x - vz.x * vx.z,
+        z: vz.x * vx.y - vz.y * vx.x,
+    };
+
+    // fill matrix (column-major like raylib/OpenGL style)
+    result.m0 = vx.x;
+    result.m1 = vy.x;
+    result.m2 = vz.x;
+    result.m3 = 0.0;
+
+    result.m4 = vx.y;
+    result.m5 = vy.y;
+    result.m6 = vz.y;
+    result.m7 = 0.0;
+
+    result.m8 = vx.z;
+    result.m9 = vy.z;
+    result.m10 = vz.z;
+    result.m11 = 0.0;
+
+    result.m12 = -(vx.x * eye.x + vx.y * eye.y + vx.z * eye.z);
+    result.m13 = -(vy.x * eye.x + vy.y * eye.y + vy.z * eye.z);
+    result.m14 = -(vz.x * eye.x + vz.y * eye.y + vz.z * eye.z);
+    result.m15 = 1.0;
+
+    result
 }

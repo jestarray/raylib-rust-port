@@ -9,14 +9,11 @@
     clippy::upper_case_acronyms,
     clippy::let_and_return
 )]
-use std::{default, ptr::null_mut};
+use std::{default, ffi::CStr, ptr::null_mut};
 
 use crate::{
     external::{
-        GL_COMPRESSED_RGBA_ASTC_4x4_KHR, GL_COMPRESSED_RGBA_ASTC_8x8_KHR, GL_COMPRESSED_RGB8_ETC2,
-        GL_COMPRESSED_RGBA8_ETC2_EAC, GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,
-        GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-        GL_COMPRESSED_RGB_S3TC_DXT1_EXT,
+        GL_COMPRESSED_RGB_S3TC_DXT1_EXT, GL_COMPRESSED_RGB8_ETC2, GL_COMPRESSED_RGBA_ASTC_4x4_KHR, GL_COMPRESSED_RGBA_ASTC_8x8_KHR, GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, GL_COMPRESSED_RGBA8_ETC2_EAC, GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
     },
     types::{Color, Matrix, Rectangle, Vector2},
 };
@@ -561,13 +558,13 @@ pub unsafe fn rlLoadExtensions(loader: *mut core::ffi::c_void) {
 {
     // NOTE: glad is generated and contains only required OpenGL 3.3 Core extensions (and lower versions)
 
-    use crate::external::gladLoadGL;
-    if gladLoadGL(Some(core::mem::transmute(loader))) == 0 {
-        warn!("GLAD: Cannot load OpenGL extensions");
-    }
-    else {
-        info!("GLAD: OpenGL extensions loaded successfully");
-    }
+    //use crate::external::gladLoadGL;
+    //if gladLoadGL(Some(core::mem::transmute(loader))) == 0 {
+    //    warn!("GLAD: Cannot load OpenGL extensions");
+    //}
+    //else {
+    //    info!("GLAD: OpenGL extensions loaded successfully");
+    //}
 
     // Get number of supported extensions
     let mut numExt: i32 = 0;
@@ -614,8 +611,8 @@ pub unsafe fn rlLoadExtensions(loader: *mut core::ffi::c_void) {
 
     #[cfg(feature = "opengl_43")]
     {
-        RLGL.ExtSupported.computeShader = GLAD_GL_ARB_compute_shader;
-        RLGL.ExtSupported.ssbo = GLAD_GL_ARB_shader_storage_buffer_object;
+        //RLGL.ExtSupported.computeShader = GLAD_GL_ARB_compute_shader;
+        //RLGL.ExtSupported.ssbo = GLAD_GL_ARB_shader_storage_buffer_object;
     }
 }
 
@@ -788,7 +785,7 @@ info!(
 
 // NOTE: Anisotropy levels capability is an extension
 gl::GetFloatv(
-GL_TEXTURE_MAX_ANISOTROPY_EXT,
+GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,
     &mut RLGL.ExtSupported.maxAnisotropyLevel
 );
 
@@ -1354,21 +1351,21 @@ pub unsafe fn rlDrawRenderBatchActive() {
 pub unsafe fn rlCheckRenderBatchLimit(vCount: i32) -> bool
 {
     let mut overflow = false;
-
+    let currentBatch = &mut *RLGL.currentBatch;
     if ((RLGL.State.vertexCounter + vCount) >=
-        ((*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].elementCount*4))
+        ((currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].elementCount*4))
     {
         overflow = true;
 
         // Store current primitive drawing mode and texture id
-        let currentMode = (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode;
-        let currentTexture = (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].textureId;
+        let currentMode = (currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode;
+        let currentTexture = (currentBatch).draws[(currentBatch).drawCounter as usize - 1].textureId;
 
         rlDrawRenderBatch(RLGL.currentBatch);    // NOTE: Stereo rendering is checked inside
 
         // Restore state of last batch so new vertices can be added
-        (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode = currentMode;
-        (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].textureId = currentTexture;
+        (currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode = currentMode;
+        (currentBatch).draws[(currentBatch).drawCounter as usize - 1].textureId = currentTexture;
     }
 
     return overflow;
@@ -3040,7 +3037,7 @@ pub unsafe fn rlLoadShaderBuffer(size: u32, data: *const libc::c_void, usageHint
         gl::GenBuffers(1, &mut ssbo);
         gl::BindBuffer(gl::SHADER_STORAGE_BUFFER, ssbo);
 
-        let usage = if usageHint != 0 { usageHint } else { RL_STREAM_COPY };
+        let usage = if usageHint != 0 { usageHint as u32 } else { RL_STREAM_COPY };
 
         gl::BufferData(
             gl::SHADER_STORAGE_BUFFER,
@@ -3162,20 +3159,20 @@ pub unsafe fn rlBindImageTexture(id: u32, index: u32, format: i32, readonly: boo
 {
     #[cfg(feature = "opengl_43")]
     {
-        let mut glInternalFormat: u32 = 0;
-        let mut glFormat: u32 = 0;
-        let mut glType: u32 = 0;
+        let mut glInternalFormat= 0;
+        let mut glFormat= 0;
+        let mut glType= 0;
 
-        rlGetGlTextureFormats(format, &mut glInternalFormat, &mut glFormat, &mut glType);
+        rlGetGlTextureFormats(format, &raw mut glInternalFormat, &raw mut glFormat, &raw mut glType);
 
         gl::BindImageTexture(
             index,
             id,
             0,
-            false as i32,
+            gl::FALSE,
             0,
             if readonly { gl::READ_ONLY } else { gl::READ_WRITE },
-            glInternalFormat,
+            glInternalFormat as u32,
         );
     }
 
@@ -3339,6 +3336,7 @@ pub fn rlGetPixelFormatName(format: i32) -> &'static str {
 pub unsafe fn rlLoadShaderDefault()
 {
     //RLGL.State.defaultShaderLocs = (int *)RL_CALLOC(RL_MAX_SHADER_LOCATIONS, sizeof(int));
+    RLGL.State.defaultShaderLocs = libc::calloc(RL_MAX_SHADER_LOCATIONS, std::mem::size_of::<i32>() as usize) as *mut i32;
 
     // NOTE: All locations must be reseted to -1 (no location)
     for i in 0..RL_MAX_SHADER_LOCATIONS { *(RLGL.State.defaultShaderLocs.add(i as usize)) = -1; }
@@ -3655,10 +3653,11 @@ pub unsafe fn rlGetCullDistanceFar() -> f64 {
 // Vertex level operations
 // Initialize drawing mode (how to organize vertex)
 pub unsafe fn rlBegin(mode: i32) {
+   let currentBatch = &mut *(RLGL.currentBatch);
     // Draw mode can be RL_LINES, RL_TRIANGLES and RL_QUADS
     // NOTE: In all three cases, vertex are accumulated over default internal vertex buffer
-    if ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode != mode) {
-        if ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount
+    if ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode != mode) {
+        if ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].vertexCount
             > 0)
         {
             // Make sure current RLGL.currentBatch.draws[i].vertexCount is aligned a multiple of 4,
@@ -3666,60 +3665,60 @@ pub unsafe fn rlBegin(mode: i32) {
             // It implies adding some extra alignment vertex at the end of the draw,
             // those vertex are not processed but they are considered as an additional offset
             // for the next set of vertex to be drawn
-            if ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode
+            if ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode
                 == RL_LINES)
             {
-                (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
-                    .vertexAlignment = if ((*RLGL.currentBatch).draws
-                    [(*RLGL.currentBatch).drawCounter as usize - 1]
+                (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
+                    .vertexAlignment = if ((currentBatch).draws
+                    [(currentBatch).drawCounter as usize - 1]
                     .vertexCount
                     < 4)
                 {
-                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                    (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
                         .vertexCount
                 } else {
-                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                    (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
                         .vertexCount
                         % 4
                 };
-            } else if ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+            } else if ((currentBatch).draws[(currentBatch).drawCounter as usize - 1]
                 .mode
                 == RL_TRIANGLES)
             {
-                (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
-                    .vertexAlignment = if ((*RLGL.currentBatch).draws
-                    [(*RLGL.currentBatch).drawCounter as usize - 1]
+                (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
+                    .vertexAlignment = if ((currentBatch).draws
+                    [(currentBatch).drawCounter as usize - 1]
                     .vertexCount
                     < 4)
                 {
                     1
                 } else {
-                    4 - ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                    4 - ((currentBatch).draws[(currentBatch).drawCounter as usize - 1]
                         .vertexCount
                         % 4)
                 };
             } else {
-                (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
                     .vertexAlignment = 0;
             }
 
             if (!rlCheckRenderBatchLimit(
-                (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
                     .vertexAlignment,
             )) {
-                RLGL.State.vertexCounter += (*RLGL.currentBatch).draws
-                    [(*RLGL.currentBatch).drawCounter as usize - 1]
+                RLGL.State.vertexCounter += (currentBatch).draws
+                    [(currentBatch).drawCounter as usize - 1]
                     .vertexAlignment;
-                (*RLGL.currentBatch).drawCounter += 1;
+                (currentBatch).drawCounter += 1;
             }
         }
 
-        if ((*RLGL.currentBatch).drawCounter >= RL_DEFAULT_BATCH_DRAWCALLS) {
+        if ((currentBatch).drawCounter >= RL_DEFAULT_BATCH_DRAWCALLS) {
             rlDrawRenderBatch(RLGL.currentBatch);
         }
 
-        (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode = mode;
-        (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].textureId =
+        (currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode = mode;
+        (currentBatch).draws[(currentBatch).drawCounter as usize - 1].textureId =
             RLGL.State.currentTextureId as i32;
         RLGL.State.currentTextureId = RLGL.State.defaultTextureId;
     }
@@ -3747,54 +3746,55 @@ pub unsafe fn rlVertex3f(x: f32, y: f32, z: f32)
         ty = RLGL.State.transform.m1*x + RLGL.State.transform.m5*y + RLGL.State.transform.m9*z + RLGL.State.transform.m13;
         tz = RLGL.State.transform.m2*x + RLGL.State.transform.m6*y + RLGL.State.transform.m10*z + RLGL.State.transform.m14;
     }
+   let currentBatch = &mut *(RLGL.currentBatch);
 
     // WARNING: Be careful with primitives breaking when launching a new batch!
     // RL_LINES comes in pairs, RL_TRIANGLES come in groups of 3 vertices and RL_QUADS come in groups of 4 vertices
     // Checking current draw.mode when a new vertex is required and finish the batch only if the draw.mode draw.vertexCount is %2, %3 or %4
-    if (RLGL.State.vertexCounter > ((*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].elementCount*4 - 4))
+    if (RLGL.State.vertexCounter > ((currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].elementCount*4 - 4))
     {
-        if (((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode == RL_LINES) &&
-            ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount%2 == 0))
+        if (((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode == RL_LINES) &&
+            ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].vertexCount%2 == 0))
         {
             // Reached the maximum number of vertices for RL_LINES drawing
             // Launch a draw call but keep current state for next vertices comming
             // NOTE: Adding +1 vertex to the check for some safety
             rlCheckRenderBatchLimit(2 + 1);
         }
-        else if (((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode == RL_TRIANGLES) &&
-            ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount%3 == 0))
+        else if (((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode == RL_TRIANGLES) &&
+            ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].vertexCount%3 == 0))
         {
             rlCheckRenderBatchLimit(3 + 1);
         }
-        else if (((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode == RL_QUADS) &&
-            ((*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount%4 == 0))
+        else if (((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode == RL_QUADS) &&
+            ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].vertexCount%4 == 0))
         {
             rlCheckRenderBatchLimit(4 + 1);
         }
     }
 
     // Add vertices
-    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize] = tx;
-    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize + 1] = ty;
-    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize + 2] = tz;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize] = tx;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize + 1] = ty;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize + 2] = tz;
 
     // Add current texcoord
-    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].texcoords[2* RLGL.State.vertexCounter as usize] = RLGL.State.texcoordx;
-    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].texcoords[2* RLGL.State.vertexCounter as usize + 1] = RLGL.State.texcoordy;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].texcoords[2* RLGL.State.vertexCounter as usize] = RLGL.State.texcoordx;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].texcoords[2* RLGL.State.vertexCounter as usize + 1] = RLGL.State.texcoordy;
 
     // Add current normal
-    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize] = RLGL.State.normalx;
-    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize + 1] = RLGL.State.normaly;
-    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize + 2] = RLGL.State.normalz;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize] = RLGL.State.normalx;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize + 1] = RLGL.State.normaly;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize + 2] = RLGL.State.normalz;
 
     // Add current color
-    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize] = RLGL.State.colorr;
-    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 1] = RLGL.State.colorg;
-    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 2] = RLGL.State.colorb;
-    (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 3] = RLGL.State.colora;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize] = RLGL.State.colorr;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 1] = RLGL.State.colorg;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 2] = RLGL.State.colorb;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 3] = RLGL.State.colora;
 
     RLGL.State.vertexCounter+=1;
-    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount+=1;
+    (currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount+=1;
 }
 
 // Define one vertex (position)
@@ -3871,7 +3871,7 @@ pub unsafe fn rlSetTexture(id: u32) {
     if id == 0 {
         // NOTE: If quads batch limit is reached, force a draw call and next batch starts
         if RLGL.State.vertexCounter
-            >= (*RLGL.currentBatch).vertexBuffer[(*RLGL.currentBatch).currentBuffer as usize]
+            >= (&(*RLGL.currentBatch).vertexBuffer)[(*RLGL.currentBatch).currentBuffer as usize]
                 .elementCount
                 * 4
         {
@@ -3880,10 +3880,11 @@ pub unsafe fn rlSetTexture(id: u32) {
         RLGL.State.currentTextureId = RLGL.State.defaultTextureId;
     } else {
         RLGL.State.currentTextureId = id;
-        if (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].textureId
+        let drawCountersub1 = (*RLGL.currentBatch).drawCounter as usize - 1;
+        if (&(*RLGL.currentBatch).draws)[drawCountersub1].textureId
             != id as i32
         {
-            if (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount
+            if (&(*RLGL.currentBatch).draws)[drawCountersub1].vertexCount
                 > 0
             {
                 // Make sure current RLGL.currentBatch.draws[i].vertexCount is aligned a multiple of 4,
@@ -3891,56 +3892,56 @@ pub unsafe fn rlSetTexture(id: u32) {
                 // It implies adding some extra alignment vertex at the end of the draw,
                 // those vertex are not processed but they are considered as an additional offset
                 // for the next set of vertex to be drawn
-                if (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].mode
+                if (&(*RLGL.currentBatch).draws)[drawCountersub1].mode
                     == RL_LINES
                 {
-                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
-                        .vertexAlignment = if (*RLGL.currentBatch).draws
-                        [(*RLGL.currentBatch).drawCounter as usize - 1]
+                    (&mut (*RLGL.currentBatch).draws)[drawCountersub1]
+                        .vertexAlignment = if (&(*RLGL.currentBatch).draws)
+                        [drawCountersub1]
                         .vertexCount
                         < 4
                     {
-                        (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                        (&(*RLGL.currentBatch).draws)[drawCountersub1]
                             .vertexCount
                     } else {
-                        (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                        (&(*RLGL.currentBatch).draws)[drawCountersub1]
                             .vertexCount
                             % 4
                     };
-                } else if (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                } else if (&(*RLGL.currentBatch).draws)[drawCountersub1]
                     .mode
                     == RL_TRIANGLES
                 {
-                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
-                        .vertexAlignment = if (*RLGL.currentBatch).draws
-                        [(*RLGL.currentBatch).drawCounter as usize - 1]
+                    (&mut (*RLGL.currentBatch).draws)[drawCountersub1]
+                        .vertexAlignment = if (&(*RLGL.currentBatch).draws)
+                        [drawCountersub1]
                         .vertexCount
                         < 4
                     {
                         1
                     } else {
-                        4 - ((*RLGL.currentBatch).draws
-                            [(*RLGL.currentBatch).drawCounter as usize - 1]
+                        4 - ((&(*RLGL.currentBatch).draws)
+                            [drawCountersub1]
                             .vertexCount
                             % 4)
                     };
                 } else {
-                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                    (&mut (*RLGL.currentBatch).draws)[drawCountersub1]
                         .vertexAlignment = 0;
                 }
 
                 if !rlCheckRenderBatchLimit(
-                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
+                    (&(*RLGL.currentBatch).draws)[drawCountersub1]
                         .vertexAlignment,
                 ) {
-                    RLGL.State.vertexCounter += (*RLGL.currentBatch).draws
-                        [(*RLGL.currentBatch).drawCounter as usize - 1]
+                    RLGL.State.vertexCounter += (&(*RLGL.currentBatch).draws)
+                        [drawCountersub1]
                         .vertexAlignment;
 
                     (*RLGL.currentBatch).drawCounter += 1;
 
-                    (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1]
-                        .mode = (*RLGL.currentBatch).draws
+                    (&mut (*RLGL.currentBatch).draws)[drawCountersub1]
+                        .mode = (&(*RLGL.currentBatch).draws)
                         [(*RLGL.currentBatch).drawCounter as usize - 2]
                         .mode;
                 }
@@ -3950,9 +3951,9 @@ pub unsafe fn rlSetTexture(id: u32) {
                 rlDrawRenderBatch(RLGL.currentBatch);
             }
 
-            (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].textureId =
+            (&mut (*RLGL.currentBatch).draws)[drawCountersub1].textureId =
                 id as i32;
-            (*RLGL.currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount =
+            (&mut (*RLGL.currentBatch).draws)[drawCountersub1].vertexCount =
                 0;
         }
     }
@@ -4425,8 +4426,83 @@ pub unsafe fn rlSetBlendFactorsSeparate(
     }
 }
 
+#[cfg(all(feature = "opengl_43", feature = "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"))]
+extern "system" fn rlDebugMessageCallback(
+    source: u32,
+    type_: u32,
+    id: u32,
+    severity: u32,
+    _length: i32,
+    message: *const i8,
+    _user_param: *mut libc::c_void,
+) {
+    // Ignore non-significant error/warning codes (NVidia drivers)
+    if (id == 131169) || (id == 131185) || (id == 131218) || (id == 131204) {
+        return;
+    }
+
+    let msgSource = match source {
+        gl::DEBUG_SOURCE_API => "API",
+        gl::DEBUG_SOURCE_WINDOW_SYSTEM => "WINDOW_SYSTEM",
+        gl::DEBUG_SOURCE_SHADER_COMPILER => "SHADER_COMPILER",
+        gl::DEBUG_SOURCE_THIRD_PARTY => "THIRD_PARTY",
+        gl::DEBUG_SOURCE_APPLICATION => "APPLICATION",
+        gl::DEBUG_SOURCE_OTHER => "OTHER",
+        _ => "UNKNOWN",
+    };
+
+    let msgType = match type_ {
+        gl::DEBUG_TYPE_ERROR => "ERROR",
+        gl::DEBUG_TYPE_DEPRECATED_BEHAVIOR => "DEPRECATED_BEHAVIOR",
+        gl::DEBUG_TYPE_UNDEFINED_BEHAVIOR => "UNDEFINED_BEHAVIOR",
+        gl::DEBUG_TYPE_PORTABILITY => "PORTABILITY",
+        gl::DEBUG_TYPE_PERFORMANCE => "PERFORMANCE",
+        gl::DEBUG_TYPE_MARKER => "MARKER",
+        gl::DEBUG_TYPE_PUSH_GROUP => "PUSH_GROUP",
+        gl::DEBUG_TYPE_POP_GROUP => "POP_GROUP",
+        gl::DEBUG_TYPE_OTHER => "OTHER",
+        _ => "UNKNOWN",
+    };
+
+    let msgSeverity = match severity {
+        gl::DEBUG_SEVERITY_LOW => "LOW",
+        gl::DEBUG_SEVERITY_MEDIUM => "MEDIUM",
+        gl::DEBUG_SEVERITY_HIGH => "HIGH",
+        gl::DEBUG_SEVERITY_NOTIFICATION => "NOTIFICATION",
+        _ => "DEFAULT",
+    };
+
+    let message = if message.is_null() {
+        "<null>"
+    } else {
+        unsafe { CStr::from_ptr(message).to_str().unwrap_or("<invalid utf8>") }
+    };
+
+    info!("GL: OpenGL debug message: {}", message);
+    info!("    > Type: {}", msgType);
+    info!("    > Source = {}", msgSource);
+    info!("    > Severity = {}", msgSeverity);
+}
+
 pub unsafe fn rlglInit(width: i32, height: i32) {
     IS_GPU_READY = true;
+
+    // Enable OpenGL debug context if requested (and supported)
+    #[cfg(all(
+    feature = "opengl_43",
+    feature = "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"))]
+    //if ((gl::DebugMessageCallback != NULL) && (gl::DebugMessageControl != NULL))
+    {
+        // You must already have loaded OpenGL function pointers with `gl::load_with(...)`
+        gl::DebugMessageCallback(Some(rlDebugMessageCallback), std::ptr::null());
+        //gl::DebugMessageCallback(rlDebugMessageCallback, 0 as *const std::ffi::c_void);
+        gl::DebugMessageControl(gl::DEBUG_SOURCE_API, gl::DEBUG_TYPE_ERROR, gl::DEBUG_SEVERITY_HIGH, 0, std::ptr::null(), gl::TRUE);
+        // Debug context options:
+        //  - GL_DEBUG_OUTPUT - Faster version but not useful for breakpoints
+        //  - GL_DEBUG_OUTPUT_SYNCHRONUS - Callback is in sync with errors, so a breakpoint can be placed on the callback in order to get a stacktrace for the GL error
+        gl::Enable(gl::DEBUG_OUTPUT);
+        gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
+    }
 
     // Init default white texture
     let pixels = [255, 255, 255, 255]; // 1 pixel RGBA (4 bytes)

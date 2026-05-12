@@ -1,4 +1,4 @@
-use crate::types::{Matrix, Vector2, Vector3, Vector4, Quaternion};
+use crate::types::{Matrix, Quaternion, Vector2, Vector3, Vector4};
 
 pub const PI: f32 = std::f32::consts::PI;
 pub const DEG2RAD: f32 = PI / 180.0;
@@ -30,7 +30,13 @@ pub fn normalize(value: f32, start: f32, end: f32) -> f32 {
 
 /// Remap input value within input range to output range
 #[inline]
-pub fn remap(value: f32, input_start: f32, input_end: f32, output_start: f32, output_end: f32) -> f32 {
+pub fn remap(
+    value: f32,
+    input_start: f32,
+    input_end: f32,
+    output_start: f32,
+    output_end: f32,
+) -> f32 {
     (value - input_start) / (input_end - input_start) * (output_end - output_start) + output_start
 }
 
@@ -55,21 +61,21 @@ pub fn float_equals(x: f32, y: f32) -> bool {
 // if glam's Mat4::look_at_rh or Mat4::orthographic_rh doesn't match raymath exactly.
 // Raylib uses right-handed, column-major matrices. Glam also defaults to this.
 
-#[inline]
-pub fn matrix_frustum(left: f64, right: f64, bottom: f64, top: f64, near: f64, far: f64) -> Matrix {
-    let mut result = Matrix::ZERO;
-    
-    let rl = (right - left) as f32;
-    let tb = (top - bottom) as f32;
-    let fn_ = (far - near) as f32;
-
-    result.x_axis.x = ((near * 2.0) as f32) / rl;
-    result.y_axis.y = ((near * 2.0) as f32) / tb;
-    result.z_axis.x = ((right + left) as f32) / rl;
-    result.z_axis.y = ((top + bottom) as f32) / tb;
-    result.z_axis.z = -((far + near) as f32) / fn_;
-    result.z_axis.w = -1.0;
-    result.w_axis.z = -((far * near * 2.0) as f32) / fn_;
-
-    result
-}
+//#[inline]
+//pub fn matrix_frustum(left: f64, right: f64, bottom: f64, top: f64, near: f64, far: f64) -> Matrix {
+//    let mut result = Matrix::ZERO;
+//
+//    let rl = (right - left) as f32;
+//    let tb = (top - bottom) as f32;
+//    let fn_ = (far - near) as f32;
+//
+//    result.x_axis.x = ((near * 2.0) as f32) / rl;
+//    result.y_axis.y = ((near * 2.0) as f32) / tb;
+//    result.z_axis.x = ((right + left) as f32) / rl;
+//    result.z_axis.y = ((top + bottom) as f32) / tb;
+//    result.z_axis.z = -((far + near) as f32) / fn_;
+//    result.z_axis.w = -1.0;
+//    result.w_axis.z = -((far * near * 2.0) as f32) / fn_;
+//
+//    result
+//}

@@ -14,12 +14,13 @@ strum = "0.28"
 strum_macros = "0.28"
 
 [features]
-default = ["opengl_33"]
+default = ["opengl_43", "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"]
 opengl_33 = []
-opengl_43 = []
+opengl_43 = ["opengl_33"]
 opengl_es3 = []
 gles2 = []
 RLGL_SHOW_GL_DETAILS_INFO = []
+RLGL_ENABLE_OPENGL_DEBUG_CONTEXT = []
 
 [build-dependencies]
 cc = "1.0"

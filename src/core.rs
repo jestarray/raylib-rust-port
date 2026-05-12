@@ -1,4 +1,4 @@
-use crate::types::{Color, Vector2};
+use crate::types::{Color, Matrix, Vector2};
 use gl;
 use sdl3;
 
@@ -41,22 +41,29 @@ pub static mut CORE: CoreData = CoreData {
 pub fn init_window(width: i32, height: i32, title: &str) {
     unsafe {
         let sdl_context = sdl3::init().expect("Failed to initialize SDL3");
-        let video_subsystem = sdl_context.video().expect("Failed to initialize video subsystem");
+        let video_subsystem = sdl_context
+            .video()
+            .expect("Failed to initialize video subsystem");
 
         let gl_attr = video_subsystem.gl_attr();
         gl_attr.set_context_profile(sdl3::video::GLProfile::Compatibility);
         gl_attr.set_context_version(3, 3);
 
-        let window = video_subsystem.window(title, width as u32, height as u32)
+        let window = video_subsystem
+            .window(title, width as u32, height as u32)
             .position_centered()
             .opengl()
             .build()
             .expect("Failed to create window");
 
-        let gl_context = window.gl_create_context().expect("Failed to create GL context");
+        let gl_context = window
+            .gl_create_context()
+            .expect("Failed to create GL context");
         window.gl_make_current(&gl_context).unwrap();
 
-        let event_pump = sdl_context.event_pump().expect("Failed to create event pump");
+        let event_pump = sdl_context
+            .event_pump()
+            .expect("Failed to create event pump");
 
         CORE.sdl_context = Some(sdl_context);
         CORE.video_subsystem = Some(video_subsystem);
@@ -68,11 +75,19 @@ pub fn init_window(width: i32, height: i32, title: &str) {
 
         gl::load_with(|name| {
             if let Some(vs) = &CORE.video_subsystem {
-                vs.gl_get_proc_address(name).map(|f| f as *const std::ffi::c_void).unwrap_or(std::ptr::null())
+                vs.gl_get_proc_address(name)
+                    .map(|f| f as *const std::ffi::c_void)
+                    .unwrap_or(std::ptr::null())
             } else {
                 std::ptr::null()
             }
         });
+        crate::rlgl::rlLoadExtensions(std::ptr::null_mut());
+
+        //if let Some(video_subsystem) = &CORE.video_subsystem {
+        //    let v = sdl3::sys::video::SDL_GL_GetProcAddress;
+        //    crate::rlgl::rlLoadExtensions(v as *mut std::ffi::c_void);
+        //}
         crate::rlgl::rlglInit(width, height);
         crate::rtext::load_font_default();
     }
@@ -83,27 +98,35 @@ pub fn window_should_close() -> bool {
         CORE.prev_key_state = CORE.key_state;
         CORE.prev_mouse_button_state = CORE.mouse_button_state;
         CORE.mouse_wheel_move = 0.0;
-        
+
         let mut mouse_x = 0;
         let mut mouse_y = 0;
-        
+
         if let Some(event_pump) = &mut CORE.event_pump {
             for event in event_pump.poll_iter() {
                 match event {
                     sdl3::event::Event::Quit { .. } => {
                         CORE.window_should_close = true;
                     }
-                    sdl3::event::Event::KeyDown { keycode: Some(k), .. } => {
+                    sdl3::event::Event::KeyDown {
+                        keycode: Some(k), ..
+                    } => {
                         let code = k as i32;
                         let index = map_sdl_key(k);
-                        if index > 0 && index < 512 { CORE.key_state[index as usize] = true; }
+                        if index > 0 && index < 512 {
+                            CORE.key_state[index as usize] = true;
+                        }
                         if k == sdl3::keyboard::Keycode::Escape {
                             CORE.window_should_close = true;
                         }
                     }
-                    sdl3::event::Event::KeyUp { keycode: Some(k), .. } => {
+                    sdl3::event::Event::KeyUp {
+                        keycode: Some(k), ..
+                    } => {
                         let index = map_sdl_key(k);
-                        if index > 0 && index < 512 { CORE.key_state[index as usize] = false; }
+                        if index > 0 && index < 512 {
+                            CORE.key_state[index as usize] = false;
+                        }
                     }
                     sdl3::event::Event::MouseButtonDown { mouse_btn, .. } => {
                         let btn = match mouse_btn {
@@ -134,11 +157,11 @@ pub fn window_should_close() -> bool {
                 }
             }
         }
-        
+
         let new_mouse_pos = Vector2::new(mouse_x as f32, mouse_y as f32);
         CORE.mouse_delta = new_mouse_pos - CORE.mouse_position;
         CORE.mouse_position = new_mouse_pos;
-        
+
         CORE.window_should_close
     }
 }
@@ -172,8 +195,32 @@ fn map_sdl_key(k: sdl3::keyboard::Keycode) -> i32 {
         Left => 263,
         Down => 264,
         Up => 265,
-        A => 65, B => 66, C => 67, D => 68, E => 69, F => 70, G => 71, H => 72, I => 73, J => 74, K => 75, L => 76, M => 77,
-        N => 78, O => 79, P => 80, Q => 81, R => 82, S => 83, T => 84, U => 85, V => 86, W => 87, X => 88, Y => 89, Z => 90,
+        A => 65,
+        B => 66,
+        C => 67,
+        D => 68,
+        E => 69,
+        F => 70,
+        G => 71,
+        H => 72,
+        I => 73,
+        J => 74,
+        K => 75,
+        L => 76,
+        M => 77,
+        N => 78,
+        O => 79,
+        P => 80,
+        Q => 81,
+        R => 82,
+        S => 83,
+        T => 84,
+        U => 85,
+        V => 86,
+        W => 87,
+        X => 88,
+        Y => 89,
+        Z => 90,
         Space => 32,
         _ => k as i32,
     }
@@ -191,12 +238,15 @@ pub fn close_window() {
 
 pub fn begin_drawing() {
     unsafe {
-        crate::rlgl::rlMatrixMode(crate::rlgl::RL_PROJECTION);
+        // WARNING: Previously to BeginDrawing() other render textures drawing could happen,
+        // consequently the measure for update vs draw is not accurate (only the total frame time is accurate)
+
+        //CORE.Time.current = GetTime(); // Number of elapsed seconds since InitTimer()
+        //CORE.Time.update = CORE.Time.current - CORE.Time.previous;
+        //CORE.Time.previous = CORE.Time.current;
+
         crate::rlgl::rlLoadIdentity();
-        crate::rlgl::rlOrtho(0.0, crate::rlgl::RLGL.State.framebufferWidth as f64, crate::rlgl::RLGL.State.framebufferHeight as f64, 0.0, -1.0, 1.0);
-        
-        crate::rlgl::rlMatrixMode(crate::rlgl::RL_MODELVIEW);
-        crate::rlgl::rlLoadIdentity();
+        crate::rlgl::rlMultMatrixf(&Matrix::IDENTITY.to_array());
     }
 }
 
@@ -211,7 +261,12 @@ pub fn end_drawing() {
 
 pub fn clear_background(color: Color) {
     unsafe {
-        gl::ClearColor(color.r as f32 / 255.0, color.g as f32 / 255.0, color.b as f32 / 255.0, color.a as f32 / 255.0);
+        gl::ClearColor(
+            color.r as f32 / 255.0,
+            color.g as f32 / 255.0,
+            color.b as f32 / 255.0,
+            color.a as f32 / 255.0,
+        );
         gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
     }
 }
@@ -225,15 +280,33 @@ pub fn get_frame_time() -> f32 {
 }
 
 pub fn is_key_down(key: i32) -> bool {
-    unsafe { if key < 512 { CORE.key_state[key as usize] } else { false } }
+    unsafe {
+        if key < 512 {
+            CORE.key_state[key as usize]
+        } else {
+            false
+        }
+    }
 }
 
 pub fn is_key_pressed(key: i32) -> bool {
-    unsafe { if key < 512 { CORE.key_state[key as usize] && !CORE.prev_key_state[key as usize] } else { false } }
+    unsafe {
+        if key < 512 {
+            CORE.key_state[key as usize] && !CORE.prev_key_state[key as usize]
+        } else {
+            false
+        }
+    }
 }
 
 pub fn is_mouse_button_down(button: i32) -> bool {
-    unsafe { if button < 5 { CORE.mouse_button_state[button as usize] } else { false } }
+    unsafe {
+        if button < 5 {
+            CORE.mouse_button_state[button as usize]
+        } else {
+            false
+        }
+    }
 }
 
 pub fn get_mouse_position() -> Vector2 {
@@ -252,7 +325,14 @@ pub fn begin_mode_2d(camera: crate::types::Camera2D) {
         crate::rlgl::rlPushMatrix();
         crate::rlgl::rlLoadIdentity();
 
-        crate::rlgl::rlOrtho(0.0, crate::rlgl::RLGL.State.framebufferWidth as f64, crate::rlgl::RLGL.State.framebufferHeight as f64, 0.0, -1.0, 1.0);
+        crate::rlgl::rlOrtho(
+            0.0,
+            crate::rlgl::RLGL.State.framebufferWidth as f64,
+            crate::rlgl::RLGL.State.framebufferHeight as f64,
+            0.0,
+            -1.0,
+            1.0,
+        );
 
         crate::rlgl::rlMatrixMode(crate::rlgl::RL_MODELVIEW);
         crate::rlgl::rlPushMatrix();
@@ -278,38 +358,38 @@ pub fn end_mode_2d() {
 }
 
 pub fn begin_mode_3d(camera: crate::types::Camera) {
-    unsafe {
-        crate::rlgl::rlDrawRenderBatchActive();
-        
-        crate::rlgl::rlMatrixMode(crate::rlgl::RL_PROJECTION);
-        crate::rlgl::rlPushMatrix();
-        crate::rlgl::rlLoadIdentity();
-        
-        let aspect = crate::rlgl::RLGL.State.framebufferWidth as f32 / crate::rlgl::RLGL.State.framebufferHeight as f32;
-        let proj = crate::rcamera::get_camera_projection_matrix(&camera, aspect);
-        crate::rlgl::rlMultMatrixf(proj.to_cols_array().as_ptr());
-        
-        crate::rlgl::rlMatrixMode(crate::rlgl::RL_MODELVIEW);
-        crate::rlgl::rlPushMatrix();
-        crate::rlgl::rlLoadIdentity();
-        
-        let view = crate::rcamera::get_camera_view_matrix(&camera);
-        crate::rlgl::rlMultMatrixf(view.to_cols_array().as_ptr());
-        
-        crate::rlgl::rlEnableDepthTest();
-    }
+    //unsafe {
+    //    crate::rlgl::rlDrawRenderBatchActive();
+    //
+    //    crate::rlgl::rlMatrixMode(crate::rlgl::RL_PROJECTION);
+    //    crate::rlgl::rlPushMatrix();
+    //    crate::rlgl::rlLoadIdentity();
+    //
+    //    let aspect = crate::rlgl::RLGL.State.framebufferWidth as f32 / crate::rlgl::RLGL.State.framebufferHeight as f32;
+    //    let proj = crate::rcamera::get_camera_projection_matrix(&camera, aspect);
+    //    crate::rlgl::rlMultMatrixf(proj.to_cols_array().as_ptr());
+    //
+    //    crate::rlgl::rlMatrixMode(crate::rlgl::RL_MODELVIEW);
+    //    crate::rlgl::rlPushMatrix();
+    //    crate::rlgl::rlLoadIdentity();
+    //
+    //    let view = crate::rcamera::get_camera_view_matrix(&camera);
+    //    crate::rlgl::rlMultMatrixf(view.to_cols_array().as_ptr());
+    //
+    //    crate::rlgl::rlEnableDepthTest();
+    //}
 }
 
 pub fn end_mode_3d() {
     unsafe {
         crate::rlgl::rlDrawRenderBatchActive();
-        
+
         crate::rlgl::rlMatrixMode(crate::rlgl::RL_MODELVIEW);
         crate::rlgl::rlPopMatrix();
-        
+
         crate::rlgl::rlMatrixMode(crate::rlgl::RL_PROJECTION);
         crate::rlgl::rlPopMatrix();
-        
+
         crate::rlgl::rlDisableDepthTest();
     }
 }
@@ -325,14 +405,16 @@ pub const KEY_R: i32 = 82;
 pub fn fade(color: Color, alpha: f32) -> Color {
     let mut result = color;
     let mut a = alpha;
-    if a < 0.0 { a = 0.0; }
-    if a > 1.0 { a = 1.0; }
+    if a < 0.0 {
+        a = 0.0;
+    }
+    if a > 1.0 {
+        a = 1.0;
+    }
     result.a = (color.a as f32 * a) as u8;
     result
 }
 
 pub fn get_random_value(min: i32, max: i32) -> i32 {
-    unsafe {
-        libc::rand() % (max - min + 1) + min
-    }
+    unsafe { libc::rand() % (max - min + 1) + min }
 }
