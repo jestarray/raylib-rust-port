@@ -858,23 +858,23 @@ GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,
 }
 
 // Get current OpenGL version
-pub fn rlGetVersion() -> i32 {
-    let mut glVersion = 0;
+pub fn rlGetVersion() -> rlGlVersion{
+    let mut glVersion = rlGlVersion::RL_OPENGL_SOFTWARE;
     #[cfg(feature = "opengl_43")]
     {
-        glVersion = rlGlVersion::RL_OPENGL_43 as i32;
+        glVersion = rlGlVersion::RL_OPENGL_43 ;
     }
     #[cfg(feature = "opengl_33")]
     {
-        glVersion = rlGlVersion::RL_OPENGL_33 as i32;
+        glVersion = rlGlVersion::RL_OPENGL_33 ;
     }
     #[cfg(feature = "opengl_es3")]
     {
-        glVersion = rlGlVersion::RL_OPENGL_ES_30 as i32;
+        glVersion = rlGlVersion::RL_OPENGL_ES_30 ;
     }
     #[cfg(feature = "gles2")]
     {
-        glVersion = rlGlVersion::RL_OPENGL_ES_20 as i32;
+        glVersion = rlGlVersion::RL_OPENGL_ES_20 ;
     }
 
     return glVersion;

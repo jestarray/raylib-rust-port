@@ -4,7 +4,7 @@ use raylib_rs::rmodels::*;
 use raylib_rs::rtext::*;
 
 fn main() {
-    init_window(800, 450, "raylib-rust [core] example - 3d camera mode");
+    InitWindow(800, 450, "raylib-rust [core] example - 3d camera mode");
 
     let mut camera = Camera {
         position: Vector3::new(0.0, 10.0, 10.0),
@@ -16,7 +16,7 @@ fn main() {
 
     set_target_fps(60);
 
-    while !window_should_close() {
+    while !WindowShouldClose() {
         // Update
         // ... (camera control could be added here)
 
@@ -32,7 +32,7 @@ fn main() {
 
             draw_text("Welcome to the third dimension!", 10, 40, 20, Color::DARKGRAY);
             draw_fps(10, 10);
-        end_drawing();
+        EndDrawing();
     }
 
     close_window();
