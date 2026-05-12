@@ -434,8 +434,40 @@ pub fn InitWindow(width: i32, height: i32, title: &str) {
         InitPlatform();
 
         crate::rlgl::rlglInit(width, height);
+        SetupViewport(width, height);
         crate::rtext::load_font_default();
     }
+}
+
+// Set viewport for a provided width and height
+pub unsafe fn SetupViewport(width: i32, height: i32) {
+    CORE.Window.render.x = width as f32;
+    CORE.Window.render.y = height as f32;
+
+    // Set viewport width and height
+    crate::rlgl::rlViewport(
+        (CORE.Window.renderOffset.x / 2.0) as i32,
+        (CORE.Window.renderOffset.y / 2.0) as i32,
+        CORE.Window.render.x as i32,
+        CORE.Window.render.y as i32,
+    );
+
+    crate::rlgl::rlMatrixMode(crate::rlgl::RL_PROJECTION); // Switch to projection matrix
+    crate::rlgl::rlLoadIdentity(); // Reset current matrix (projection)
+
+    // Set orthographic projection to current framebuffer size
+    // NOTE: Configured top-left corner as (0, 0)
+    crate::rlgl::rlOrtho(
+        0.0,
+        CORE.Window.render.x as f64,
+        CORE.Window.render.y as f64,
+        0.0,
+        0.0,
+        1.0,
+    );
+
+    crate::rlgl::rlMatrixMode(crate::rlgl::RL_MODELVIEW); // Switch back to modelview matrix
+    crate::rlgl::rlLoadIdentity(); // Reset current matrix (modelview)
 }
 
 pub fn WindowShouldClose() -> bool {
