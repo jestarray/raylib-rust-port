@@ -9,7 +9,7 @@
     clippy::upper_case_acronyms,
     clippy::let_and_return
 )]
-use std::ptr::null_mut;
+use std::{default, ptr::null_mut};
 
 use crate::{
     external::{
@@ -169,7 +169,7 @@ pub enum rlGlVersion {
 }
 
 #[repr(i32)]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, FromRepr)]
 pub enum PixelFormat {
     PIXELFORMAT_UNCOMPRESSED_GRAYSCALE = 1,
     PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA = 2,
@@ -3185,6 +3185,265 @@ pub unsafe fn rlBindImageTexture(id: u32, index: u32, format: i32, readonly: boo
     }
 }
 
+// Matrix state management
+//-----------------------------------------------------------------------------------------
+// Get internal modelview matrix
+pub unsafe fn rlGetMatrixModelview() -> Matrix {
+    RLGL.State.modelview
+}
+pub unsafe fn rlGetMatrixProjection() -> Matrix {
+    RLGL.State.projection
+}
+pub unsafe fn rlGetMatrixTransform() -> Matrix {
+    RLGL.State.transform
+}
+
+// Get internal projection matrix for stereo render (selected eye)
+pub unsafe fn rlGetMatrixProjectionStereo(eye: i32) -> Matrix
+{
+    let mut mat = Matrix::IDENTITY;
+    mat = RLGL.State.projectionStereo[eye as usize];
+    return mat;
+}
+
+// Get internal view offset matrix for stereo render (selected eye)
+pub unsafe fn rlGetMatrixViewOffsetStereo(eye: i32) -> Matrix
+{
+    let mut mat = Matrix::IDENTITY;
+    mat = RLGL.State.viewOffsetStereo[eye as usize];
+    return mat;
+}
+
+pub unsafe fn rlSetMatrixModelview(view: Matrix) {
+    RLGL.State.modelview = view;
+}
+pub unsafe fn rlSetMatrixProjection(proj: Matrix) {
+    RLGL.State.projection = proj;
+}
+
+// Set eyes projection matrices for stereo rendering
+pub unsafe fn rlSetMatrixProjectionStereo(right: Matrix, left: Matrix)
+{
+    RLGL.State.projectionStereo[0] = right;
+    RLGL.State.projectionStereo[1] = left;
+}
+
+// Set eyes view offsets matrices for stereo rendering
+pub unsafe fn rlSetMatrixViewOffsetStereo(right: Matrix, left: Matrix)
+{
+    RLGL.State.viewOffsetStereo[0] = right;
+    RLGL.State.viewOffsetStereo[1] = left;
+}
+
+// Load and draw a quad in NDC
+#[rustfmt::skip]
+pub unsafe fn rlLoadDrawQuad()
+{
+    let mut quadVAO = 0;
+    let mut quadVBO = 0;
+
+    let vertices = [
+         // Positions         Texcoords
+        -1.0,  1.0, 0.0,   0.0, 1.0,
+        -1.0, -1.0, 0.0,   0.0, 0.0,
+         1.0,  1.0, 0.0,   1.0, 1.0,
+         1.0, -1.0, 0.0,   1.0, 0.0,
+    ];
+
+    // Gen VAO to contain VBO
+    gl::GenVertexArrays(1, &mut quadVAO);
+    gl::BindVertexArray(quadVAO);
+
+    // Gen and fill vertex buffer (VBO)
+    gl::GenBuffers(1, &mut quadVBO);
+    gl::BindBuffer(gl::ARRAY_BUFFER, quadVBO);
+    gl::BufferData(gl::ARRAY_BUFFER, std::mem::size_of_val(&vertices) as isize, vertices.as_ptr() as *const std::ffi::c_void, gl::STATIC_DRAW);
+
+    // Bind vertex attributes (position, texcoords)
+    gl::EnableVertexAttribArray(RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION);
+    gl::VertexAttribPointer(RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, 3, gl::FLOAT, gl::FALSE, 5 * std::mem::size_of::<f32>() as i32, std::ptr::null());
+    gl::EnableVertexAttribArray(RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD);
+    gl::VertexAttribPointer(RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD, 2, gl::FLOAT, gl::FALSE, 5 * std::mem::size_of::<f32>() as i32, (3 * std::mem::size_of::<f32>()) as *const std::ffi::c_void);
+
+    // Draw quad
+    gl::BindVertexArray(quadVAO);
+    gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
+    gl::BindVertexArray(0);
+
+    // Delete buffers (VBO and VAO)
+    gl::DeleteBuffers(1, &quadVBO);
+    gl::DeleteVertexArrays(1, &quadVAO);
+}
+
+pub fn rlGetPixelFormatName(format: i32) -> &'static str {
+    if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32 {
+        "GRAYSCALE"
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA as i32 {
+        "GRAY_ALPHA"
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G6B5 as i32 {
+        "R5G6B5"
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8 as i32 {
+        "R8G8B8"
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G5B5A1 as i32 {
+        "R5G5B5A1"
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 as i32 {
+        "R4G4B4A4"
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 {
+        "R8G8B8A8"
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32 as i32 {
+        "R32"
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32 as i32 {
+        "R32G32B32"
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 as i32 {
+        "R32G32B32A32"
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16 as i32 {
+        "R16"
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16 as i32 {
+        "R16G16B16"
+    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 as i32 {
+        "R16G16B16A16"
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32 {
+        "DXT1_RGB"
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGBA as i32 {
+        "DXT1_RGBA"
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT3_RGBA as i32 {
+        "DXT3_RGBA"
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT5_RGBA as i32 {
+        "DXT5_RGBA"
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ETC1_RGB as i32 {
+        "ETC1_RGB"
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB as i32 {
+        "ETC2_RGB"
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA as i32 {
+        "ETC2_RGBA"
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGB as i32 {
+        "PVRT_RGB"
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGBA as i32 {
+        "PVRT_RGBA"
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA as i32 {
+        "ASTC_4x4_RGBA"
+    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA as i32 {
+        "ASTC_8x8_RGBA"
+    } else {
+        "UNKNOWN"
+    }
+}
+
+//----------------------------------------------------------------------------------
+// Module Functions Definition
+//----------------------------------------------------------------------------------
+// Load default shader (just vertex positioning and texture coloring)
+// NOTE: This shader program is used for internal buffers
+// NOTE: Loaded: RLGL.State.defaultShaderId, RLGL.State.defaultShaderLocs
+#[rustfmt::skip]
+pub unsafe fn rlLoadShaderDefault()
+{
+    //RLGL.State.defaultShaderLocs = (int *)RL_CALLOC(RL_MAX_SHADER_LOCATIONS, sizeof(int));
+
+    // NOTE: All locations must be reseted to -1 (no location)
+    for i in 0..RL_MAX_SHADER_LOCATIONS { *(RLGL.State.defaultShaderLocs.add(i as usize)) = -1; }
+
+    // Vertex shader directly defined, no external file required
+    let defaultVShaderCode =      
+    c"#version 330                       
+     in vec3 vertexPosition;            
+     in vec2 vertexTexCoord;            
+     in vec4 vertexColor;               
+     out vec2 fragTexCoord;             
+     out vec4 fragColor;                
+     uniform mat4 mvp;                 
+     void main()                       
+     {                                 
+         fragTexCoord = vertexTexCoord;
+         fragColor = vertexColor;      
+         gl_Position = mvp*vec4(vertexPosition, 1.0);
+     }";
+
+    // Fragment shader directly defined, no external file required
+    let defaultFShaderCode =
+    c"#version 330      
+    in vec2 fragTexCoord;             
+    in vec4 fragColor;                 
+    out vec4 finalColor;               
+    uniform sampler2D texture0;        
+    uniform vec4 colDiffuse;           
+    void main()                        
+    {                                  
+        vec4 texelColor = texture(texture0, fragTexCoord);   
+        finalColor = texelColor*colDiffuse*fragColor;        
+    }                                  ";
+
+    // NOTE: Compiled vertex/fragment shaders are not deleted,
+    // they are kept for re-use as default shaders in case some shader loading fails
+    RLGL.State.defaultVShaderId = rlLoadShader(defaultVShaderCode.as_ptr(), gl::VERTEX_SHADER);     // Compile default vertex shader
+    RLGL.State.defaultFShaderId = rlLoadShader(defaultFShaderCode.as_ptr(), gl::FRAGMENT_SHADER);   // Compile default fragment shader
+
+    RLGL.State.defaultShaderId = rlLoadShaderProgramEx(RLGL.State.defaultVShaderId, RLGL.State.defaultFShaderId);
+
+    if (RLGL.State.defaultShaderId > 0)
+    {
+        info!("SHADER: [ID {}] Default shader loaded successfully", RLGL.State.defaultShaderId);
+
+        // Set default shader locations: attributes locations
+        *(RLGL.State.defaultShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_POSITION as usize)) = gl::GetAttribLocation(RLGL.State.defaultShaderId, RL_DEFAULT_SHADER_ATTRIB_NAME_POSITION.as_ptr());
+        *(RLGL.State.defaultShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_TEXCOORD01 as usize)) = gl::GetAttribLocation(RLGL.State.defaultShaderId, RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD.as_ptr());
+        *(RLGL.State.defaultShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_COLOR as usize)) = gl::GetAttribLocation(RLGL.State.defaultShaderId, RL_DEFAULT_SHADER_ATTRIB_NAME_COLOR.as_ptr());
+
+        // Set default shader locations: uniform locations
+        *(RLGL.State.defaultShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_MATRIX_MVP as usize)) = gl::GetUniformLocation(RLGL.State.defaultShaderId, RL_DEFAULT_SHADER_UNIFORM_NAME_MVP.as_ptr());
+        *(RLGL.State.defaultShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_COLOR_DIFFUSE as usize)) = gl::GetUniformLocation(RLGL.State.defaultShaderId, RL_DEFAULT_SHADER_UNIFORM_NAME_COLOR.as_ptr());
+        *(RLGL.State.defaultShaderLocs.add(RL_SHADER_LOC_MAP_DIFFUSE as usize)) = gl::GetUniformLocation(RLGL.State.defaultShaderId, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE0.as_ptr());
+    }
+    else {warn!("SHADER: [ID {}] Failed to load default shader", RLGL.State.defaultShaderId);}
+}
+
+// Unload default shader
+// NOTE: Unloads: RLGL.State.defaultShaderId, RLGL.State.defaultShaderLocs
+pub unsafe fn rlUnloadShaderDefault()
+{
+    gl::UseProgram(0);
+
+    gl::DetachShader(RLGL.State.defaultShaderId, RLGL.State.defaultVShaderId);
+    gl::DetachShader(RLGL.State.defaultShaderId, RLGL.State.defaultFShaderId);
+    gl::DeleteShader(RLGL.State.defaultVShaderId);
+    gl::DeleteShader(RLGL.State.defaultFShaderId);
+
+    gl::DeleteProgram(RLGL.State.defaultShaderId);
+
+    //RL_FREE(RLGL.State.defaultShaderLocs);
+
+    info!("SHADER: [ID {}] Default shader unloaded successfully", RLGL.State.defaultShaderId);
+}
+
+unsafe fn _old_rlLoadShaderDefault() {
+    let vs = rlLoadShader(crate::core::DEFAULT_VSHADER.as_bytes().as_ptr() as *const i8, RL_VERTEX_SHADER as u32);
+    let fs = rlLoadShader(crate::core::DEFAULT_FSHADER.as_bytes().as_ptr() as *const i8, RL_FRAGMENT_SHADER as u32);
+    let program = gl::CreateProgram();
+    gl::AttachShader(program, vs);
+    gl::AttachShader(program, fs);
+
+    gl::BindAttribLocation(
+        program,
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION,
+        "vertexPosition\0".as_ptr() as *const i8,
+    );
+    gl::BindAttribLocation(
+        program,
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD,
+        "vertexTexCoord\0".as_ptr() as *const i8,
+    );
+    gl::BindAttribLocation(
+        program,
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_COLOR,
+        "vertexColor\0".as_ptr() as *const i8,
+    );
+
+    gl::LinkProgram(program);
+    RLGL.State.defaultShaderId = program;
+    RLGL.State.currentShaderId = program;
+}
+
+
 // Matrix operations
 /// Choose the current matrix to be transformed
 pub unsafe fn rlMatrixMode(mode: i32) {
@@ -4266,164 +4525,70 @@ pub unsafe fn rlglClose() {
     IS_GPU_READY = false;
 }
 
-pub fn rlGetPixelFormatName(format: i32) -> &'static str {
-    if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32 {
-        "GRAYSCALE"
-    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA as i32 {
-        "GRAY_ALPHA"
-    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G6B5 as i32 {
-        "R5G6B5"
-    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8 as i32 {
-        "R8G8B8"
-    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G5B5A1 as i32 {
-        "R5G5B5A1"
-    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 as i32 {
-        "R4G4B4A4"
-    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 {
-        "R8G8B8A8"
-    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32 as i32 {
-        "R32"
-    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32 as i32 {
-        "R32G32B32"
-    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 as i32 {
-        "R32G32B32A32"
-    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16 as i32 {
-        "R16"
-    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16 as i32 {
-        "R16G16B16"
-    } else if format == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 as i32 {
-        "R16G16B16A16"
-    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32 {
-        "DXT1_RGB"
-    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGBA as i32 {
-        "DXT1_RGBA"
-    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT3_RGBA as i32 {
-        "DXT3_RGBA"
-    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_DXT5_RGBA as i32 {
-        "DXT5_RGBA"
-    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ETC1_RGB as i32 {
-        "ETC1_RGB"
-    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB as i32 {
-        "ETC2_RGB"
-    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA as i32 {
-        "ETC2_RGBA"
-    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGB as i32 {
-        "PVRT_RGB"
-    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGBA as i32 {
-        "PVRT_RGBA"
-    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA as i32 {
-        "ASTC_4x4_RGBA"
-    } else if format == PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA as i32 {
-        "ASTC_8x8_RGBA"
-    } else {
-        "UNKNOWN"
-    }
-}
-
-unsafe fn rlLoadShaderDefault() {
-    let vs = rlLoadShader(crate::core::DEFAULT_VSHADER, RL_VERTEX_SHADER as i32);
-    let fs = rlLoadShader(crate::core::DEFAULT_FSHADER, RL_FRAGMENT_SHADER as i32);
-    let program = gl::CreateProgram();
-    gl::AttachShader(program, vs);
-    gl::AttachShader(program, fs);
-
-    gl::BindAttribLocation(
-        program,
-        RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION,
-        "vertexPosition\0".as_ptr() as *const i8,
-    );
-    gl::BindAttribLocation(
-        program,
-        RL_DEFAULT_SHADER_ATTRIB_LOCATION_TEXCOORD,
-        "vertexTexCoord\0".as_ptr() as *const i8,
-    );
-    gl::BindAttribLocation(
-        program,
-        RL_DEFAULT_SHADER_ATTRIB_LOCATION_COLOR,
-        "vertexColor\0".as_ptr() as *const i8,
-    );
-
-    gl::LinkProgram(program);
-    RLGL.State.defaultShaderId = program;
-    RLGL.State.currentShaderId = program;
-}
-
-unsafe fn rlUnloadShaderDefault() {
-    gl::DeleteProgram(RLGL.State.defaultShaderId);
-}
-
-
-pub unsafe fn rlGetPixelDataSize(width: i32, height: i32, format: i32) -> i32 {
-    let mut bpp = 0;
+// Get pixel data size in bytes (image or texture)
+// NOTE: Size depends on pixel format
+pub fn rlGetPixelDataSize(width: i32, height: i32, format: i32) -> i32 {
+    let mut dataSize: i32 = 0; // Size in bytes
+    let mut bpp: i32 = 0;      // Bits per pixel
+    let format = PixelFormat::from_repr(format).unwrap();
     match format {
-        1 => bpp = 8,
-        2 => bpp = 16,
-        3 => bpp = 16,
-        4 => bpp = 24,
-        5 => bpp = 16,
-        6 => bpp = 16,
-        7 => bpp = 32,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE => bpp = 8,
+
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA
+        | PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G6B5
+        | PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G5B5A1
+        | PixelFormat::PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 => bpp = 16,
+
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 => bpp = 32,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8 => bpp = 24,
+
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32 => bpp = 32,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32 => bpp = 32 * 3,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 => bpp = 32 * 4,
+
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16 => bpp = 16,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16 => bpp = 16 * 3,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 => bpp = 16 * 4,
+
+        PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB
+        | PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGBA
+        | PixelFormat::PIXELFORMAT_COMPRESSED_ETC1_RGB
+        | PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB
+        | PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGB
+        | PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGBA => {
+            // 8 bytes per each 4x4 block
+            let blockWidth = (width + 3) / 4;
+            let blockHeight = (height + 3) / 4;
+            dataSize = blockWidth * blockHeight * 8;
+        }
+
+        PixelFormat::PIXELFORMAT_COMPRESSED_DXT3_RGBA
+        | PixelFormat::PIXELFORMAT_COMPRESSED_DXT5_RGBA
+        | PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA
+        | PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA => {
+            // 16 bytes per each 4x4 block
+            let blockWidth = (width + 3) / 4;
+            let blockHeight = (height + 3) / 4;
+            dataSize = blockWidth * blockHeight * 16;
+        }
+
+        PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA => {
+            // 4 bytes per each 4x4 block (as in original code)
+            let blockWidth = (width + 3) / 4;
+            let blockHeight = (height + 3) / 4;
+            dataSize = blockWidth * blockHeight * 4;
+        }
+
         _ => {}
     }
-    (width * height * bpp) / 8
-}
 
-pub unsafe fn rlSetUniform(
-    locIndex: i32,
-    value: *const std::ffi::c_void,
-    uniformType: i32,
-    count: i32,
-) {
-    match uniformType {
-        0 => gl::Uniform1fv(locIndex, count, value as *const f32),
-        1 => gl::Uniform2fv(locIndex, count, value as *const f32),
-        2 => gl::Uniform3fv(locIndex, count, value as *const f32),
-        3 => gl::Uniform4fv(locIndex, count, value as *const f32),
-        4 => gl::Uniform1iv(locIndex, count, value as *const i32),
-        _ => {}
+    // Compute dataSize for uncompressed texture data (no blocks)
+    if (format as i32 >= PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32)
+        && (format as i32 <= PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 as i32)
+    {
+        let bytesPerPixel: f64 = (bpp as f64) / 8.0;
+        dataSize = (bytesPerPixel * (width as f64) * (height as f64)) as i32;
     }
-}
 
-pub unsafe fn rlSetUniformMatrix(locIndex: i32, mat: Matrix) {
-    //gl::UniformMatrix4fv(locIndex, 1, gl::FALSE as u8, mat.to_cols_array().as_ptr());
-}
-
-pub unsafe fn rlSetUniformSampler(locIndex: i32, textureId: u32) {
-    for i in 0..RL_DEFAULT_BATCH_MAX_TEXTURE_UNITS as usize {
-        if RLGL.State.activeTextureId[i] == textureId {
-            gl::Uniform1i(locIndex, (1 + i) as i32);
-            return;
-        }
-    }
-    for i in 0..RL_DEFAULT_BATCH_MAX_TEXTURE_UNITS as usize {
-        if RLGL.State.activeTextureId[i] == 0 {
-            gl::Uniform1i(locIndex, (1 + i) as i32);
-            RLGL.State.activeTextureId[i] = textureId;
-            break;
-        }
-    }
-}
-
-pub unsafe fn rlSetShader(id: u32, _locs: *mut i32) {
-    if RLGL.State.currentShaderId != id {
-        rlDrawRenderBatch(RLGL.currentBatch);
-        RLGL.State.currentShaderId = id;
-    }
-}
-
-pub unsafe fn rlGetMatrixModelview() -> Matrix {
-    RLGL.State.modelview
-}
-pub unsafe fn rlGetMatrixProjection() -> Matrix {
-    RLGL.State.projection
-}
-pub unsafe fn rlGetMatrixTransform() -> Matrix {
-    RLGL.State.transform
-}
-
-pub unsafe fn rlSetMatrixModelview(view: Matrix) {
-    RLGL.State.modelview = view;
-}
-pub unsafe fn rlSetMatrixProjection(proj: Matrix) {
-    RLGL.State.projection = proj;
+    dataSize
 }
