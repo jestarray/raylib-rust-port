@@ -1,0 +1,89 @@
+## confirmed ported
+- [x] rlMatrixMode
+- [x] rlPushMatrix
+- [x] rlPopMatrix
+- [x] rlLoadIdentity
+- [x] rlTranslatef
+- [x] rlRotatef
+- [x] rlScalef (double check matrix multiply)
+- [x] rlFrustrum(doublecheck casts if buggy)
+- [x] rlOrtho
+- [x] rlViewPort
+- [ ] rlBegin(most messy, revist if buggy and refactor PR raylib C)
+- [x] rlEnd
+- [ ] rlVertex3f(also messy, revisit if buggy and refactor PR raylib C)
+- [x] rlVertex2f
+- [x] rlTextCoord2f
+- [x] rlNormal3f
+- [x] rlColor4ub
+- [x] rlColor4f
+- [x] rlColor3f
+- [ ] rlSetTexture(messy, revisit if buggy and refactor PR raylib C)
+- [x] rlActiveTextureSlot
+- [x] rlEnableTexture
+- [x] rlDisableTexture
+- [x] rlEnableTextureCubemap
+- [x] rlDisableTextureCubemap
+- [x] rlTextureParameters
+- [x] rlCubemapParameters
+- [x] rlEnableShader
+- [x] rlDisableShader
+- [x] rlEnableFrameBuffer
+- [x] rlGetActiveFrameBuffer
+- [x] rlDisableFrameBuffer
+- [x] rlBlitFramebuffer
+- [x] rlBindFramebuffer
+- [x] rlActiveDrawBuffers
+- [x] rlEnableColorBlend
+- [x] rlDisableColorBlend
+- [x] rlEnableDepthTest
+- [x] rlDisableDepthTest
+- [x] rlEnableDepthMask
+- [x] rlDisableDepthMask
+- [x] rlEnableBackfaceCulling
+- [x] rlDisableBackfaceCulling
+- [x] rlColorMask
+- [x] rlSetCullFace
+- [x] rlEnableScissorTest
+- [x] rlDisableScissorTest
+- [x] rlScissor
+- [x] rlEnableWireMode
+- [x] rlDisableWireMode
+- [x] rlEnablePointMode
+- [x] rlDisablePointMode
+- [x] rlSetLineWidth
+- [x] rlGetLineWidth
+- [x] rlSetPointSize
+- [x] rlGetPointSize
+- [x] rlEnableSmoothLines
+- [x] rlDisableSmoothLines
+- [x] rlEnableStereoRender
+- [x] rlDisableStereoRender
+- [x] rlIsStereoRenderEnabled
+- [x] rlClearColor
+- [x] rlClearScreenBuffers
+- [x] rlCheckErrors
+- [x] rlSetBlendMode
+- [x] rlSetBlendFactors
+- [x] rlSetBlendFactorsSeparate(re-indent params?)
+- [x] rlDebugMessageCallback
+- [x] rlglInit (check on glDebugMessageCallback comes from GLAD)
+- [x] rlglClose
+- [ ] rlLoadExtensions(not using glad loader, mostly done but `Optional OpenGL 3.3 extensions` need glad porting. Remove glad specific things for rust opengl loader)
+- [ ] rlGetProcAddress
+- [x] rlGetVersion
+- [x] rlSetFramebufferWidth
+- [x] rlSetFramebufferHeight
+- [x] rlGetFramebufferWidth
+- [x] rlGetFramebufferHeight
+- [x] rlGetTextureIdDefault
+- [x] rlGetShaderIdDefault
+- [x] rlGetShaderLocsDefault
+- [ ] rlLoadRenderBatch(big and messy, likely a ource of bugs)
+- [x] rlUnloadRenderBatch(ask why is this taking a copy of the renderbatch rather than by ref. Probably because of RL_FREE)
+- [x] rlDrawRenderBatch (big function, doublecheck rlMatrixToFloat vs to_array() method)
+- [ ] rlSetRenderBatchActive
+- [x] rlDrawRenderBatchActive
+
+## todo:
+- replace RCALLOC and other C allocations with rust instead

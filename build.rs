@@ -2,7 +2,15 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    let raylib_src = "/mnt/z/raylib/src";
+    let mut raylib_src = "";
+    #[cfg( target_os = "linux")]
+    let mut raylib_src = "/mnt/z/raylib/src";
+    #[cfg(target_os = "windows")]
+    {
+        raylib_src = "Z:/raylib/src";
+        println!("cargo:rustc-link-search=native=C:\\SDL3\\lib");
+        println!("cargo:rustc-link-lib=SDL3");
+    }
     let external_dir = format!("{}/external", raylib_src);
 
     // Compile the wrapper containing stb_* and other C libraries

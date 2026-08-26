@@ -1,8 +1,9 @@
 use std::ffi::{c_char, CString};
 
 use crate::{
-    rlgl::{rlGetVersion, rlGlVersion},
-    types::{Color, Matrix, Vector2},
+    rlgl::{self, rlGetTextureIdDefault, rlGetVersion, rlGlVersion},
+    rshapes::SetShapesTexture,
+    types::{Color, Matrix, Rectangle, Texture2D, Vector2},
 };
 use gl;
 use sdl3::{self, event::EventType, sys::video, video::WindowFlags};
@@ -435,7 +436,29 @@ pub fn InitWindow(width: i32, height: i32, title: &str) {
 
         crate::rlgl::rlglInit(width, height);
         SetupViewport(width, height);
-        crate::rtext::load_font_default();
+        let data = [255u8; 128 * 128 * 4];
+        rlgl::rlLoadTexture(
+            data.as_ptr() as *const std::ffi::c_void,
+            128,
+            128,
+            rlgl::PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32,
+            0,
+        );
+        let texture = Texture2D {
+            id: rlGetTextureIdDefault(),
+            width: 1,
+            height: 1,
+            mipmaps: 1,
+            format: rlgl::PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32,
+        };
+        let source = Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 1.0,
+            height: 1.0,
+        };
+        SetShapesTexture(texture, source);
+        //crate::rtext::load_font_default();
     }
 }
 

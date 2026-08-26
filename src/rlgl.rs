@@ -152,6 +152,7 @@ pub const RL_CULL_FACE_BACK: i32 = 1;
 pub const RL_FRONT: u32 = 0x0404;
 pub const RL_BACK: u32 = 0x0405;
 pub const RL_FRONT_AND_BACK: u32 = 0x0408;
+pub const GL_TEXTURE_MAX_ANISOTROPY_EXT: u32 = 0x84FE;
 
 #[repr(i32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -206,7 +207,7 @@ pub enum rlTextureFilter {
 }
 
 #[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr)]
 pub enum rlBlendMode {
     RL_BLEND_ALPHA = 0,         // Blend textures considering alpha (default)
     RL_BLEND_ADDITIVE,          // Blend textures adding colors
@@ -549,6 +550,1181 @@ pub static mut RLGL: rlglData = rlglData {
     ExtSupported: ExtSupported::ZERO,
 };
 
+// Matrix operations
+/// Choose the current matrix to be transformed
+pub unsafe fn rlMatrixMode(mode: i32) {
+    if (mode == RL_PROJECTION) {
+        RLGL.State.currentMatrix = &raw mut RLGL.State.projection;
+    } else if (mode == RL_MODELVIEW) {
+        RLGL.State.currentMatrix = &raw mut RLGL.State.modelview;
+    }
+    //else if (mode == RL_TEXTURE) // Not supported
+
+    RLGL.State.currentMatrixMode = mode;
+}
+
+/// Push the current matrix into RLGL.State.stack
+pub unsafe fn rlPushMatrix() {
+    if (RLGL.State.stackCounter >= RL_MAX_MATRIX_STACK_SIZE as i32) {
+        error!("RLGL: Matrix stack overflow (RL_MAX_MATRIX_STACK_SIZE)");
+    }
+
+    if (RLGL.State.currentMatrixMode == RL_MODELVIEW) {
+        RLGL.State.transformRequired = true;
+        RLGL.State.currentMatrix = &raw mut RLGL.State.transform;
+    }
+
+    RLGL.State.stack[RLGL.State.stackCounter as usize] = *RLGL.State.currentMatrix;
+    RLGL.State.stackCounter += 1;
+}
+
+/// Pop latest inserted matrix from RLGL.State.stack
+pub unsafe fn rlPopMatrix() {
+    if (RLGL.State.stackCounter > 0) {
+        let mat = RLGL.State.stack[(RLGL.State.stackCounter - 1) as usize];
+        *RLGL.State.currentMatrix = mat;
+        RLGL.State.stackCounter -= 1;
+    }
+
+    if ((RLGL.State.stackCounter == 0) && (RLGL.State.currentMatrixMode == RL_MODELVIEW)) {
+        RLGL.State.currentMatrix = &raw mut RLGL.State.modelview;
+        RLGL.State.transformRequired = false;
+    }
+}
+
+// Reset current matrix to identity matrix
+pub unsafe fn rlLoadIdentity() {
+    *RLGL.State.currentMatrix = Matrix::IDENTITY;
+}
+
+// Multiply the current matrix by a translation matrix
+pub unsafe fn rlTranslatef(x: f32, y: f32, z: f32) {
+    let mut matTranslation = Matrix::IDENTITY;
+
+    // Set translation component of matrix
+    matTranslation.m12 = x;
+    matTranslation.m13 = y;
+    matTranslation.m14 = z;
+
+    // NOTE: Transposing matrix by multiplication order
+    *RLGL.State.currentMatrix = matTranslation * *RLGL.State.currentMatrix;
+}
+
+/// Multiply the current matrix by a rotation matrix
+/// NOTE: The provided angle must be in degrees
+pub unsafe fn rlRotatef(angle: f32, mut x: f32, mut y: f32, mut z: f32) {
+    let mut matRotation = Matrix::IDENTITY;
+
+    // Axis vector (x, y, z) normalization
+    let lengthSquared = x * x + y * y + z * z;
+    if ((lengthSquared != 1.0) && (lengthSquared != 0.0)) {
+        let inverseLength = 1.0 / (lengthSquared).sqrt();
+        x *= inverseLength;
+        y *= inverseLength;
+        z *= inverseLength;
+    }
+
+    // Rotation matrix generation
+    let sinres = angle.to_radians().sin();
+    let cosres = angle.to_radians().cos();
+    let t = 1.0 - cosres;
+
+    matRotation.m0 = x * x * t + cosres;
+    matRotation.m1 = y * x * t + z * sinres;
+    matRotation.m2 = z * x * t - y * sinres;
+    matRotation.m3 = 0.0;
+
+    matRotation.m4 = x * y * t - z * sinres;
+    matRotation.m5 = y * y * t + cosres;
+    matRotation.m6 = z * y * t + x * sinres;
+    matRotation.m7 = 0.0;
+
+    matRotation.m8 = x * z * t + y * sinres;
+    matRotation.m9 = y * z * t - x * sinres;
+    matRotation.m10 = z * z * t + cosres;
+    matRotation.m11 = 0.0;
+
+    matRotation.m12 = 0.0;
+    matRotation.m13 = 0.0;
+    matRotation.m14 = 0.0;
+    matRotation.m15 = 1.0;
+
+    // NOTE: Transposing matrix by multiplication order
+    *RLGL.State.currentMatrix = (matRotation * *RLGL.State.currentMatrix);
+}
+
+/// Multiply the current matrix by a scaling matrix
+pub unsafe fn rlScalef(x: f32, y: f32, z: f32) {
+    let mut matScale = Matrix::IDENTITY;
+
+    // Set scale component of matrix
+    matScale.m0 = x;
+    matScale.m5 = y;
+    matScale.m10 = z;
+
+    // NOTE: Transposing matrix by multiplication order
+    *RLGL.State.currentMatrix = (matScale * *RLGL.State.currentMatrix);
+}
+
+// Multiply the current matrix by another matrix
+pub unsafe fn rlMultMatrixf(matf: &[f32; 16]) {
+    // Matrix creation from array
+    // Conversion from column-major to row-major memory order
+    let mat = Matrix::new(
+        matf[0], matf[4], matf[8], matf[12], matf[1], matf[5], matf[9], matf[13], matf[2], matf[6],
+        matf[10], matf[14], matf[3], matf[7], matf[11], matf[15],
+    );
+
+    *RLGL.State.currentMatrix = (mat * *RLGL.State.currentMatrix);
+}
+
+/// Multiply the current matrix by a perspective matrix generated by parameters
+pub unsafe fn rlFrustum(left: f64, right: f64, bottom: f64, top: f64, znear: f64, zfar: f64) {
+    let mut matFrustum = Matrix::ZERO;
+
+    let rl = (right - left) as f32;
+    let tb = (top - bottom) as f32;
+    let fnn = (zfar - znear) as f32;
+
+    matFrustum.m0 = (znear as f32 * 2.0) / rl;
+    matFrustum.m1 = 0.0;
+    matFrustum.m2 = 0.0;
+    matFrustum.m3 = 0.0;
+
+    matFrustum.m4 = 0.0;
+    matFrustum.m5 = (znear as f32 * 2.0) / tb;
+    matFrustum.m6 = 0.0;
+    matFrustum.m7 = 0.0;
+
+    matFrustum.m8 = (right as f32 + left as f32) / rl;
+    matFrustum.m9 = (top as f32 + bottom as f32) / tb;
+    matFrustum.m10 = -(zfar as f32 + znear as f32) / fnn;
+    matFrustum.m11 = -1.0;
+
+    matFrustum.m12 = 0.0;
+    matFrustum.m13 = 0.0;
+    matFrustum.m14 = -(zfar as f32 * znear as f32 * 2.0) / fnn;
+    matFrustum.m15 = 0.0;
+
+    *RLGL.State.currentMatrix = (*RLGL.State.currentMatrix * matFrustum);
+}
+
+/// Multiply the current matrix by an orthographic matrix generated by parameters
+pub unsafe fn rlOrtho(left: f64, right: f64, bottom: f64, top: f64, znear: f64, zfar: f64) {
+    // NOTE: If left-right and top-botton values are equal it could create a division by zero,
+    // response to it is platform/compiler dependent
+    let mut matOrtho = Matrix::ZERO;
+
+    let rl = (right - left) as f32;
+    let tb = (top - bottom) as f32;
+    let fnn = (zfar - znear) as f32;
+
+    matOrtho.m0 = 2.0 / rl;
+    matOrtho.m1 = 0.0;
+    matOrtho.m2 = 0.0;
+    matOrtho.m3 = 0.0;
+    matOrtho.m4 = 0.0;
+    matOrtho.m5 = 2.0 / tb;
+    matOrtho.m6 = 0.0;
+    matOrtho.m7 = 0.0;
+    matOrtho.m8 = 0.0;
+    matOrtho.m9 = 0.0;
+    matOrtho.m10 = -2.0 / fnn;
+    matOrtho.m11 = 0.0;
+    matOrtho.m12 = -(left as f32 + right as f32) / rl;
+    matOrtho.m13 = -(top as f32 + bottom as f32) / tb;
+    matOrtho.m14 = -(zfar as f32 + znear as f32) / fnn;
+    matOrtho.m15 = 1.0;
+
+    *RLGL.State.currentMatrix = (*RLGL.State.currentMatrix * matOrtho);
+}
+
+/// Set the viewport area (transformation from normalized device coordinates to window coordinates)
+pub unsafe fn rlViewport(x: i32, y: i32, width: i32, height: i32) {
+    gl::Viewport(x, y, width, height);
+}
+
+pub unsafe fn rlSetClipPlanes(nearPlane: f64, farPlane: f64) {
+    rlCullDistanceNear = nearPlane;
+    rlCullDistanceFar = farPlane;
+}
+
+/// Get cull plane distance near
+pub unsafe fn rlGetCullDistanceNear() -> f64 {
+    return rlCullDistanceNear;
+}
+
+/// Get cull plane distance far
+pub unsafe fn rlGetCullDistanceFar() -> f64 {
+    return rlCullDistanceFar;
+}
+
+// Vertex level operations
+// Initialize drawing mode (how to organize vertex)
+pub unsafe fn rlBegin(mode: i32) {
+   let currentBatch = &mut *(RLGL.currentBatch);
+    // Draw mode can be RL_LINES, RL_TRIANGLES and RL_QUADS
+    // NOTE: In all three cases, vertex are accumulated over default internal vertex buffer
+    if ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode != mode) {
+        if ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].vertexCount
+            > 0)
+        {
+            // Make sure current RLGL.currentBatch.draws[i].vertexCount is aligned a multiple of 4,
+            // that way, following QUADS drawing will keep aligned with index processing
+            // It implies adding some extra alignment vertex at the end of the draw,
+            // those vertex are not processed but they are considered as an additional offset
+            // for the next set of vertex to be drawn
+            if ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode
+                == RL_LINES)
+            {
+                (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
+                    .vertexAlignment = if ((currentBatch).draws
+                    [(currentBatch).drawCounter as usize - 1]
+                    .vertexCount
+                    < 4)
+                {
+                    (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
+                        .vertexCount
+                } else {
+                    (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
+                        .vertexCount
+                        % 4
+                };
+            } else if ((currentBatch).draws[(currentBatch).drawCounter as usize - 1]
+                .mode
+                == RL_TRIANGLES)
+            {
+                (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
+                    .vertexAlignment = if ((currentBatch).draws
+                    [(currentBatch).drawCounter as usize - 1]
+                    .vertexCount
+                    < 4)
+                {
+                    1
+                } else {
+                    4 - ((currentBatch).draws[(currentBatch).drawCounter as usize - 1]
+                        .vertexCount
+                        % 4)
+                };
+            } else {
+                (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
+                    .vertexAlignment = 0;
+            }
+
+            if (!rlCheckRenderBatchLimit(
+                (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
+                    .vertexAlignment,
+            )) {
+                RLGL.State.vertexCounter += (currentBatch).draws
+                    [(currentBatch).drawCounter as usize - 1]
+                    .vertexAlignment;
+                (currentBatch).drawCounter += 1;
+            }
+        }
+
+        if ((currentBatch).drawCounter >= RL_DEFAULT_BATCH_DRAWCALLS) {
+            rlDrawRenderBatch(RLGL.currentBatch);
+        }
+
+        (currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode = mode;
+        (currentBatch).draws[(currentBatch).drawCounter as usize - 1].textureId =
+            RLGL.State.currentTextureId as i32;
+        RLGL.State.currentTextureId = RLGL.State.defaultTextureId;
+    }
+}
+
+pub unsafe fn rlEnd() {
+    // NOTE: Depth increment is dependent on rlOrtho(): z-near and z-far values,
+    // as well as depth buffer bit-depth (16bit or 24bit or 32bit)
+    // Correct increment formula would be: depthInc = (zfar - znear)/pow(2, bits)
+    (*RLGL.currentBatch).currentDepth += (1.0 / 20000.0);
+}
+
+// NOTE: Vertex position data is the basic information required for drawing
+#[rustfmt::skip]
+pub unsafe fn rlVertex3f(x: f32, y: f32, z: f32)
+{
+    let mut tx = x;
+    let mut ty = y;
+    let mut tz = z;
+
+    // Transform provided vector if required
+    if (RLGL.State.transformRequired)
+    {
+        tx = RLGL.State.transform.m0*x + RLGL.State.transform.m4*y + RLGL.State.transform.m8*z + RLGL.State.transform.m12;
+        ty = RLGL.State.transform.m1*x + RLGL.State.transform.m5*y + RLGL.State.transform.m9*z + RLGL.State.transform.m13;
+        tz = RLGL.State.transform.m2*x + RLGL.State.transform.m6*y + RLGL.State.transform.m10*z + RLGL.State.transform.m14;
+    }
+   let currentBatch = &mut *(RLGL.currentBatch);
+
+    // WARNING: Be careful with primitives breaking when launching a new batch!
+    // RL_LINES comes in pairs, RL_TRIANGLES come in groups of 3 vertices and RL_QUADS come in groups of 4 vertices
+    // Checking current draw.mode when a new vertex is required and finish the batch only if the draw.mode draw.vertexCount is %2, %3 or %4
+    if (RLGL.State.vertexCounter > ((currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].elementCount*4 - 4))
+    {
+        if (((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode == RL_LINES) &&
+            ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].vertexCount%2 == 0))
+        {
+            // Reached the maximum number of vertices for RL_LINES drawing
+            // Launch a draw call but keep current state for next vertices comming
+            // NOTE: Adding +1 vertex to the check for some safety
+            rlCheckRenderBatchLimit(2 + 1);
+        }
+        else if (((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode == RL_TRIANGLES) &&
+            ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].vertexCount%3 == 0))
+        {
+            rlCheckRenderBatchLimit(3 + 1);
+        }
+        else if (((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode == RL_QUADS) &&
+            ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].vertexCount%4 == 0))
+        {
+            rlCheckRenderBatchLimit(4 + 1);
+        }
+    }
+
+    // Add vertices
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize] = tx;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize + 1] = ty;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize + 2] = tz;
+
+    // Add current texcoord
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].texcoords[2* RLGL.State.vertexCounter as usize] = RLGL.State.texcoordx;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].texcoords[2* RLGL.State.vertexCounter as usize + 1] = RLGL.State.texcoordy;
+
+    // Add current normal
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize] = RLGL.State.normalx;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize + 1] = RLGL.State.normaly;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize + 2] = RLGL.State.normalz;
+
+    // Add current color
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize] = RLGL.State.colorr;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 1] = RLGL.State.colorg;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 2] = RLGL.State.colorb;
+    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 3] = RLGL.State.colora;
+
+    RLGL.State.vertexCounter+=1;
+    (currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount+=1;
+}
+
+// Define one vertex (position)
+pub unsafe fn rlVertex2f(x: f32, y: f32) {
+    rlVertex3f(x, y, (*RLGL.currentBatch).currentDepth);
+}
+pub unsafe fn rlVertex2i(x: i32, y: i32) {
+    rlVertex3f(x as f32, y as f32, (*RLGL.currentBatch).currentDepth);
+}
+
+// Define one vertex (texture coordinate)
+// NOTE: Texture coordinates are limited to QUADS only
+pub unsafe fn rlTexCoord2f(x: f32, y: f32) {
+    RLGL.State.texcoordx = x;
+    RLGL.State.texcoordy = y;
+}
+
+// Define one vertex (normal)
+// NOTE: Normals limited to TRIANGLES only?
+pub unsafe fn rlNormal3f(x: f32, y: f32, z: f32) {
+    let mut normalx = x;
+    let mut normaly = y;
+    let mut normalz = z;
+    if (RLGL.State.transformRequired) {
+        normalx =
+            RLGL.State.transform.m0 * x + RLGL.State.transform.m4 * y + RLGL.State.transform.m8 * z;
+        normaly =
+            RLGL.State.transform.m1 * x + RLGL.State.transform.m5 * y + RLGL.State.transform.m9 * z;
+        normalz = RLGL.State.transform.m2 * x
+            + RLGL.State.transform.m6 * y
+            + RLGL.State.transform.m10 * z;
+    }
+
+    // NOTE: Default behavior assumes the normal vector is in the correct space for what the shader expects,
+    // it could be not normalized to 0.0f..1.0f, magnitud can be useed for some effects
+    /*
+    // WARNING: Vector normalization if required
+    float length = sqrtf(normalx*normalx + normaly*normaly + normalz*normalz);
+    if (length != 0.0f)
+    {
+        float ilength = 1.0f/length;
+        normalx *= ilength;
+        normaly *= ilength;
+        normalz *= ilength;
+    }
+    */
+    RLGL.State.normalx = normalx;
+    RLGL.State.normaly = normaly;
+    RLGL.State.normalz = normalz;
+}
+
+pub unsafe fn rlColor4ub(x: u8, y: u8, z: u8, w: u8) {
+    RLGL.State.colorr = x;
+    RLGL.State.colorg = y;
+    RLGL.State.colorb = z;
+    RLGL.State.colora = w;
+}
+
+pub unsafe fn rlColor4f(r: f32, g: f32, b: f32, a: f32) {
+    rlColor4ub(
+        (r * 255.0) as u8,
+        (g * 255.0) as u8,
+        (b * 255.0) as u8,
+        (a * 255.0) as u8,
+    );
+}
+
+// Define one vertex (color)
+pub unsafe fn rlColor3f(x: f32, y: f32, z: f32) {
+    rlColor4ub((x * 255.0) as u8, (y * 255.0) as u8, (z * 255.0) as u8, 255);
+}
+
+pub unsafe fn rlSetTexture(id: u32) {
+    if id == 0 {
+        // NOTE: If quads batch limit is reached, force a draw call and next batch starts
+        if RLGL.State.vertexCounter
+            >= (&(*RLGL.currentBatch).vertexBuffer)[(*RLGL.currentBatch).currentBuffer as usize]
+                .elementCount
+                * 4
+        {
+            rlDrawRenderBatch(RLGL.currentBatch);
+        }
+        RLGL.State.currentTextureId = RLGL.State.defaultTextureId;
+    } else {
+        RLGL.State.currentTextureId = id;
+        let drawCountersub1 = (*RLGL.currentBatch).drawCounter as usize - 1;
+        if (&(*RLGL.currentBatch).draws)[drawCountersub1].textureId
+            != id as i32
+        {
+            if (&(*RLGL.currentBatch).draws)[drawCountersub1].vertexCount
+                > 0
+            {
+                // Make sure current RLGL.currentBatch.draws[i].vertexCount is aligned a multiple of 4,
+                // that way, following QUADS drawing will keep aligned with index processing
+                // It implies adding some extra alignment vertex at the end of the draw,
+                // those vertex are not processed but they are considered as an additional offset
+                // for the next set of vertex to be drawn
+                if (&(*RLGL.currentBatch).draws)[drawCountersub1].mode
+                    == RL_LINES
+                {
+                    (&mut (*RLGL.currentBatch).draws)[drawCountersub1]
+                        .vertexAlignment = if (&(*RLGL.currentBatch).draws)
+                        [drawCountersub1]
+                        .vertexCount
+                        < 4
+                    {
+                        (&(*RLGL.currentBatch).draws)[drawCountersub1]
+                            .vertexCount
+                    } else {
+                        (&(*RLGL.currentBatch).draws)[drawCountersub1]
+                            .vertexCount
+                            % 4
+                    };
+                } else if (&(*RLGL.currentBatch).draws)[drawCountersub1]
+                    .mode
+                    == RL_TRIANGLES
+                {
+                    (&mut (*RLGL.currentBatch).draws)[drawCountersub1]
+                        .vertexAlignment = if (&(*RLGL.currentBatch).draws)
+                        [drawCountersub1]
+                        .vertexCount
+                        < 4
+                    {
+                        1
+                    } else {
+                        4 - ((&(*RLGL.currentBatch).draws)
+                            [drawCountersub1]
+                            .vertexCount
+                            % 4)
+                    };
+                } else {
+                    (&mut (*RLGL.currentBatch).draws)[drawCountersub1]
+                        .vertexAlignment = 0;
+                }
+
+                if !rlCheckRenderBatchLimit(
+                    (&(*RLGL.currentBatch).draws)[drawCountersub1]
+                        .vertexAlignment,
+                ) {
+                    RLGL.State.vertexCounter += (&(*RLGL.currentBatch).draws)
+                        [drawCountersub1]
+                        .vertexAlignment;
+
+                    (*RLGL.currentBatch).drawCounter += 1;
+
+                    (&mut (*RLGL.currentBatch).draws)[drawCountersub1]
+                        .mode = (&(*RLGL.currentBatch).draws)
+                        [(*RLGL.currentBatch).drawCounter as usize - 2]
+                        .mode;
+                }
+            }
+
+            if (*RLGL.currentBatch).drawCounter >= RL_DEFAULT_BATCH_DRAWCALLS {
+                rlDrawRenderBatch(RLGL.currentBatch);
+            }
+
+            (&mut (*RLGL.currentBatch).draws)[drawCountersub1].textureId =
+                id as i32;
+            (&mut (*RLGL.currentBatch).draws)[drawCountersub1].vertexCount =
+                0;
+        }
+    }
+}
+
+pub unsafe fn rlActiveTextureSlot(slot: i32) {
+    gl::ActiveTexture(gl::TEXTURE0 + slot as u32);
+}
+
+pub unsafe fn rlEnableTexture(id: u32) {
+    gl::BindTexture(gl::TEXTURE_2D, id);
+}
+
+pub unsafe fn rlDisableTexture() {
+    gl::BindTexture(gl::TEXTURE_2D, 0);
+}
+
+pub unsafe fn rlEnableTextureCubemap(id: u32) {
+    gl::BindTexture(gl::TEXTURE_CUBE_MAP, id);
+}
+
+pub unsafe fn rlDisableTextureCubemap() {
+    gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0);
+}
+
+/// Set texture parameters (wrap mode/filter mode)
+pub unsafe fn rlTextureParameters(id: u32, param: i32, value: i32) {
+    gl::BindTexture(gl::TEXTURE_2D, id);
+    match param as u32 {
+        RL_TEXTURE_WRAP_S | RL_TEXTURE_WRAP_T => {
+            if value as u32 == RL_TEXTURE_WRAP_MIRROR_CLAMP {
+                if RLGL.ExtSupported.texMirrorClamp {
+                    gl::TexParameteri(gl::TEXTURE_2D, param as u32, value);
+                } else {
+                    warn!("GL: Clamp mirror wrap mode not supported (GL_MIRROR_CLAMP_EXT)");
+                }
+            } else {
+                gl::TexParameteri(gl::TEXTURE_2D, param as u32, value);
+            }
+        }
+
+        RL_TEXTURE_MAG_FILTER | RL_TEXTURE_MIN_FILTER => {
+            gl::TexParameteri(gl::TEXTURE_2D, param as u32, value);
+        }
+
+        RL_TEXTURE_FILTER_ANISOTROPIC => {
+            // Reset anisotropy filter, in case it was set
+            gl::TexParameterf(gl::TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1.0);
+
+            if (value as f32) <= RLGL.ExtSupported.maxAnisotropyLevel {
+                gl::TexParameterf(gl::TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, value as f32);
+            } else if RLGL.ExtSupported.maxAnisotropyLevel > 0.0 {
+                warn!(
+                    "GL: Maximum anisotropic filter level supported is {}X level {}",
+                    id, RLGL.ExtSupported.maxAnisotropyLevel,
+                );
+
+                gl::TexParameterf(gl::TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, value as f32);
+            } else {
+                warn!("GL: Anisotropic filtering not supported");
+            }
+        }
+
+        #[cfg(feature = "opengl_33")]
+        RL_TEXTURE_MIPMAP_BIAS_RATIO => {
+            gl::TexParameterf(gl::TEXTURE_2D, gl::TEXTURE_LOD_BIAS, value as f32 / 100.0);
+        }
+
+        _ => {}
+    }
+
+    gl::BindTexture(gl::TEXTURE_2D, 0);
+}
+
+pub unsafe fn rlCubemapParameters(id: u32, param: i32, value: i32) {
+    gl::BindTexture(gl::TEXTURE_CUBE_MAP, id);
+
+    // Reset anisotropy filter, in case it was set
+    gl::TexParameterf(gl::TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1.0);
+
+    match param as u32 {
+        RL_TEXTURE_WRAP_S | RL_TEXTURE_WRAP_T => {
+            if value == RL_TEXTURE_WRAP_MIRROR_CLAMP as i32 {
+                if RLGL.ExtSupported.texMirrorClamp {
+                    gl::TexParameteri(gl::TEXTURE_CUBE_MAP, param as u32, value);
+                } else {
+                    warn!("GL: Clamp mirror wrap mode not supported (GL_MIRROR_CLAMP_EXT)");
+                }
+            } else {
+                gl::TexParameteri(gl::TEXTURE_CUBE_MAP, param as u32, value);
+            }
+        }
+
+        RL_TEXTURE_MAG_FILTER | RL_TEXTURE_MIN_FILTER => {
+            gl::TexParameteri(gl::TEXTURE_CUBE_MAP, param as u32, value);
+        }
+
+        RL_TEXTURE_FILTER_ANISOTROPIC => {
+            if (value as f32) <= RLGL.ExtSupported.maxAnisotropyLevel {
+                gl::TexParameterf(
+                    gl::TEXTURE_CUBE_MAP,
+                    GL_TEXTURE_MAX_ANISOTROPY_EXT,
+                    value as f32,
+                );
+            } else if RLGL.ExtSupported.maxAnisotropyLevel > 0.0 {
+                warn!(
+                    "GL: Maximum anisotropic filter level supported is {}X, level {}",
+                    id, RLGL.ExtSupported.maxAnisotropyLevel as i32,
+                );
+
+                gl::TexParameterf(
+                    gl::TEXTURE_CUBE_MAP,
+                    GL_TEXTURE_MAX_ANISOTROPY_EXT,
+                    value as f32,
+                );
+            } else {
+                warn!("GL: Anisotropic filtering not supported");
+            }
+        }
+
+        #[cfg(feature = "opengl_33")]
+        RL_TEXTURE_MIPMAP_BIAS_RATIO => {
+            gl::TexParameterf(
+                gl::TEXTURE_CUBE_MAP,
+                gl::TEXTURE_LOD_BIAS,
+                value as f32 / 100.0,
+            );
+        }
+
+        _ => {}
+    }
+
+    gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0);
+}
+
+pub unsafe fn rlEnableShader(id: u32) {
+    gl::UseProgram(id);
+}
+
+// Disable shader program
+pub unsafe fn rlDisableShader() {
+    gl::UseProgram(0);
+}
+
+// Enable rendering to texture (fbo)
+pub unsafe fn rlEnableFramebuffer(id: u32) {
+    gl::BindFramebuffer(gl::FRAMEBUFFER, id);
+}
+
+// return the active render texture (fbo)
+pub unsafe fn rlGetActiveFramebuffer() -> u32 {
+    let mut fboId: i32 = 0;
+
+    #[cfg(any(feature = "opengl_33", feature = "opengl_es3",))]
+    {
+        gl::GetIntegerv(gl::DRAW_FRAMEBUFFER_BINDING, &mut fboId);
+    }
+
+    fboId as u32
+}
+
+// Disable rendering to texture
+pub unsafe fn rlDisableFramebuffer() {
+    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+}
+
+// Blit active framebuffer to main framebuffer
+pub unsafe fn rlBlitFramebuffer(
+    srcX: i32,
+    srcY: i32,
+    srcWidth: i32,
+    srcHeight: i32,
+    dstX: i32,
+    dstY: i32,
+    dstWidth: i32,
+    dstHeight: i32,
+    bufferMask: i32,
+) {
+    #[cfg(any(feature = "opengl_33", feature = "opengl_es3"))]
+    {
+        gl::BlitFramebuffer(
+            srcX,
+            srcY,
+            srcWidth,
+            srcHeight,
+            dstX,
+            dstY,
+            dstWidth,
+            dstHeight,
+            bufferMask as u32,
+            gl::NEAREST,
+        );
+    }
+}
+
+// Bind framebuffer object (fbo)
+pub unsafe fn rlBindFramebuffer(target: u32, framebuffer: u32) {
+    gl::BindFramebuffer(target, framebuffer);
+}
+
+// Activate multiple draw color buffers
+// NOTE: One color buffer is always active by default
+pub unsafe fn rlActiveDrawBuffers(count: i32) {
+    #[cfg(any(feature = "opengl_33", feature = "opengl_es3"))]
+    {
+        // NOTE: Maximum number of draw buffers supported is implementation dependent,
+        // it can be queried with glGet*() but it must be at least 8
+        //GLint maxDrawBuffers = 0;
+        //glGetIntegerv(GL_MAX_DRAW_BUFFERS, &maxDrawBuffers);
+
+        if (count > 0) {
+            if (count > 8) {
+                warn!("GL: Max color buffers limited to 8");
+            } else {
+                let buffers = [
+                    gl::COLOR_ATTACHMENT0,
+                    gl::COLOR_ATTACHMENT1,
+                    gl::COLOR_ATTACHMENT2,
+                    gl::COLOR_ATTACHMENT3,
+                    gl::COLOR_ATTACHMENT4,
+                    gl::COLOR_ATTACHMENT5,
+                    gl::COLOR_ATTACHMENT6,
+                    gl::COLOR_ATTACHMENT7,
+                ];
+
+                gl::DrawBuffers(count, buffers.as_ptr());
+            }
+        } else {
+            warn!("GL: One color buffer active by default");
+        }
+    }
+}
+
+// Render state configuration
+pub unsafe fn rlEnableColorBlend() {
+    gl::Enable(gl::BLEND);
+}
+pub unsafe fn rlDisableColorBlend() {
+    gl::Disable(gl::BLEND);
+}
+pub unsafe fn rlEnableDepthTest() {
+    gl::Enable(gl::DEPTH_TEST);
+}
+pub unsafe fn rlDisableDepthTest() {
+    gl::Disable(gl::DEPTH_TEST);
+}
+pub unsafe fn rlEnableDepthMask() {
+    gl::DepthMask(gl::TRUE);
+}
+pub unsafe fn rlDisableDepthMask() {
+    gl::DepthMask(gl::FALSE);
+}
+pub unsafe fn rlEnableBackfaceCulling() {
+    gl::Enable(gl::CULL_FACE);
+}
+pub unsafe fn rlDisableBackfaceCulling() {
+    gl::Disable(gl::CULL_FACE);
+}
+
+/// Set color mask active for screen read/draw
+pub unsafe fn rlColorMask(r: bool, g: bool, b: bool, a: bool) {
+    gl::ColorMask(r as u8, g as u8, b as u8, a as u8);
+}
+
+pub unsafe fn rlSetCullFace(mode: i32) {
+    match mode {
+        RL_CULL_FACE_BACK => gl::CullFace(gl::BACK),
+        RL_CULL_FACE_FRONT => gl::CullFace(gl::FRONT),
+        _ => {}
+    }
+}
+pub unsafe fn rlEnableScissorTest() {
+    gl::Enable(gl::SCISSOR_TEST);
+}
+pub unsafe fn rlDisableScissorTest() {
+    gl::Disable(gl::SCISSOR_TEST);
+}
+pub unsafe fn rlScissor(x: i32, y: i32, width: i32, height: i32) {
+    gl::Scissor(x, y, width, height);
+}
+
+pub unsafe fn rlEnableWireMode() {
+    // NOTE: glPolygonMode() not available on OpenGL ES
+    #[cfg(feature = "opengl_33")]
+    gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
+}
+
+pub unsafe fn rlDisableWireMode() {
+    // NOTE: glPolygonMode() not available on OpenGL ES
+    #[cfg(feature = "opengl_33")]
+    gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
+}
+
+pub unsafe fn rlEnablePointMode() {
+    #[cfg(feature = "opengl_33")]
+    {
+        // NOTE: glPolygonMode() not available on OpenGL ES
+        gl::PolygonMode(gl::FRONT_AND_BACK, gl::POINT);
+        gl::Enable(gl::PROGRAM_POINT_SIZE);
+    }
+}
+
+pub unsafe fn rlDisablePointMode() {
+    #[cfg(feature = "opengl_33")]
+    // NOTE: glPolygonMode() not available on OpenGL ES
+    gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
+}
+
+pub unsafe fn rlSetLineWidth(width: f32) {
+    gl::LineWidth(width);
+}
+
+pub unsafe fn rlGetLineWidth() -> f32 {
+    let mut width: f32 = 0.0;
+    gl::GetFloatv(gl::LINE_WIDTH, &mut width);
+    width
+}
+
+pub unsafe fn rlSetPointSize(_size: f32) {
+}
+
+pub unsafe fn rlGetPointSize() -> f32 {
+    let size: f32 = 1.0;
+    size
+}
+
+pub unsafe fn rlEnableSmoothLines() {
+    #[cfg(feature = "opengl_33")]
+    gl::Enable(gl::LINE_SMOOTH);
+}
+
+pub unsafe fn rlDisableSmoothLines() {
+    #[cfg(feature = "opengl_33")]
+    gl::Disable(gl::LINE_SMOOTH);
+}
+
+// Enable stereo rendering
+pub unsafe fn rlEnableStereoRender() {
+    RLGL.State.stereoRender = true;
+}
+
+// Disable stereo rendering
+pub unsafe fn rlDisableStereoRender() {
+    RLGL.State.stereoRender = false;
+}
+
+// Check if stereo render is enabled
+pub unsafe fn rlIsStereoRenderEnabled() -> bool {
+    return RLGL.State.stereoRender;
+}
+
+/// Clear color buffer with color
+pub unsafe fn rlClearColor(r: u8, g: u8, b: u8, a: u8) {
+    // Color values clamp to 0.0f(0) and 1.0f(255)
+    gl::ClearColor(
+        r as f32 / 255.0,
+        g as f32 / 255.0,
+        b as f32 / 255.0,
+        a as f32 / 255.0,
+    );
+}
+
+/// Clear used screen buffers (color and depth)
+pub unsafe fn rlClearScreenBuffers() {
+    gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); // Clear used buffers: Color and Depth (Depth is used for 3D)
+
+    //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);     // Stencil buffer not used...
+}
+
+// Check and log OpenGL error codes
+#[rustfmt::skip]
+pub unsafe fn rlCheckErrors()
+{
+    let mut check = true;
+    while check
+    {
+        let err = gl::GetError();
+        match err
+        {
+            gl::NO_ERROR => { check = false; break;}
+            0x0500 => { warn!("GL: Error detected: GL_INVALID_ENUM"); break;}
+            0x0501 => { warn!("GL: Error detected: GL_INVALID_VALUE"); break;}
+            0x0502 => { warn!("GL: Error detected: GL_INVALID_OPERATION"); break;}
+            0x0503 => { warn!("GL: Error detected: GL_STACK_OVERFLOW"); break;}
+            0x0504 => { warn!("GL: Error detected: GL_STACK_UNDERFLOW");  break;}
+            0x0505 => { warn!("GL: Error detected: GL_OUT_OF_MEMORY"); break;}
+            0x0506 => { warn!("GL: Error detected: GL_INVALID_FRAMEBUFFER_OPERATION"); break;}
+            _ => { warn!("GL: Error detected: Unknown error code: %{}", err); break;}
+        }
+    }
+}
+
+/// Set blend mode
+#[rustfmt::skip]
+pub unsafe fn rlSetBlendMode(mode: i32)
+{
+    let mode = rlBlendMode::from_repr(mode).unwrap();
+    use rlBlendMode::*;
+    if ((RLGL.State.currentBlendMode != mode as u32) || ((mode == RL_BLEND_CUSTOM || mode == RL_BLEND_CUSTOM_SEPARATE) && RLGL.State.glCustomBlendModeModified))
+    {
+        rlDrawRenderBatch(RLGL.currentBatch);
+
+        match mode
+        {
+            RL_BLEND_ALPHA => { gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA); gl::BlendEquation(gl::FUNC_ADD); }
+            RL_BLEND_ADDITIVE => { gl::BlendFunc(gl::SRC_ALPHA, gl::ONE); gl::BlendEquation(gl::FUNC_ADD); }
+            RL_BLEND_MULTIPLIED => { gl::BlendFunc(gl::DST_COLOR, gl::ONE_MINUS_SRC_ALPHA); gl::BlendEquation(gl::FUNC_ADD); }
+            RL_BLEND_ADD_COLORS => { gl::BlendFunc(gl::ONE, gl::ONE); gl::BlendEquation(gl::FUNC_ADD); }
+            RL_BLEND_SUBTRACT_COLORS => { gl::BlendFunc(gl::ONE, gl::ONE); gl::BlendEquation(gl::FUNC_SUBTRACT); }
+            RL_BLEND_ALPHA_PREMULTIPLY => { gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA); gl::BlendEquation(gl::FUNC_ADD); }
+            RL_BLEND_CUSTOM => {
+                // NOTE: Using GL blend src/dst factors and GL equation configured with rlSetBlendFactors()
+                gl::BlendFunc(RLGL.State.glBlendSrcFactor, RLGL.State.glBlendDstFactor);
+                gl::BlendEquation(RLGL.State.glBlendEquation);
+            }
+            RL_BLEND_CUSTOM_SEPARATE => {
+                // NOTE: Using GL blend src/dst factors and GL equation configured with rlSetBlendFactorsSeparate()
+                gl::BlendFuncSeparate(RLGL.State.glBlendSrcFactorRGB, RLGL.State.glBlendDestFactorRGB, RLGL.State.glBlendSrcFactorAlpha, RLGL.State.glBlendDestFactorAlpha);
+                gl::BlendEquationSeparate(RLGL.State.glBlendEquationRGB, RLGL.State.glBlendEquationAlpha);
+            } 
+            _ => {}
+        }
+
+        RLGL.State.currentBlendMode = mode as u32;
+        RLGL.State.glCustomBlendModeModified = false;
+    }
+}
+
+// Set blending mode factor and equation
+pub unsafe fn rlSetBlendFactors(glSrcFactor: i32, glDstFactor: i32, glEquation: i32) {
+    if ((RLGL.State.glBlendSrcFactor != glSrcFactor as u32)
+        || (RLGL.State.glBlendDstFactor != glDstFactor as u32)
+        || (RLGL.State.glBlendEquation != glEquation as u32))
+    {
+        RLGL.State.glBlendSrcFactor = glSrcFactor as u32;
+        RLGL.State.glBlendDstFactor = glDstFactor as u32;
+        RLGL.State.glBlendEquation = glEquation as u32;
+
+        RLGL.State.glCustomBlendModeModified = true;
+    }
+}
+
+// Set blending mode factor and equation separately for RGB and alpha
+pub unsafe fn rlSetBlendFactorsSeparate(
+    glSrcRGB: i32,
+    glDstRGB: i32,
+    glSrcAlpha: i32,
+    glDstAlpha: i32,
+    glEqRGB: i32,
+    glEqAlpha: i32,
+) {
+    if ((RLGL.State.glBlendSrcFactorRGB != glSrcRGB as u32)
+        || (RLGL.State.glBlendDestFactorRGB != glDstRGB as u32)
+        || (RLGL.State.glBlendSrcFactorAlpha != glSrcAlpha as u32)
+        || (RLGL.State.glBlendDestFactorAlpha != glDstAlpha as u32)
+        || (RLGL.State.glBlendEquationRGB != glEqRGB as u32)
+        || (RLGL.State.glBlendEquationAlpha != glEqAlpha as u32))
+    {
+        RLGL.State.glBlendSrcFactorRGB = glSrcRGB as u32;
+        RLGL.State.glBlendDestFactorRGB = glDstRGB as u32;
+        RLGL.State.glBlendSrcFactorAlpha = glSrcAlpha as u32;
+        RLGL.State.glBlendDestFactorAlpha = glDstAlpha as u32;
+        RLGL.State.glBlendEquationRGB = glEqRGB as u32;
+        RLGL.State.glBlendEquationAlpha = glEqAlpha as u32;
+
+        RLGL.State.glCustomBlendModeModified = true;
+    }
+}
+
+#[cfg(all(feature = "opengl_43", feature = "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"))]
+extern "system" fn rlDebugMessageCallback(
+    source: u32,
+    type_: u32,
+    id: u32,
+    severity: u32,
+    _length: i32,
+    message: *const i8,
+    _user_param: *mut libc::c_void,
+) {
+    // Ignore non-significant error/warning codes (NVidia drivers)
+      // Ignore non-significant error/warning codes (NVidia drivers)
+    // NOTE: Here there are the details with a sample output:
+    // - #131169 - Framebuffer detailed info: The driver allocated storage for
+    // renderbuffer 2. (severity: low)
+    // - #131185 - Buffer detailed info: Buffer object 1 (bound to
+    // GL_ELEMENT_ARRAY_BUFFER_ARB, usage hint is GL_ENUM_88e4)
+    //             will use VIDEO memory as the source for buffer object
+    //             operations. (severity: low)
+    // - #131218 - Program/shader state performance warning: Vertex shader in
+    // program 7 is being recompiled based on GL state. (severity: medium)
+    // - #131204 - Texture state usage warning: The texture object (0) bound to
+    // texture image unit 0 does not have
+    //             a defined base level and cannot be used for texture mapping.
+    //             (severity: low)
+    if (id == 131169) || (id == 131185) || (id == 131218) || (id == 131204) {
+        return;
+    }
+
+    let msgSource = match source {
+        gl::DEBUG_SOURCE_API => "API",
+        gl::DEBUG_SOURCE_WINDOW_SYSTEM => "WINDOW_SYSTEM",
+        gl::DEBUG_SOURCE_SHADER_COMPILER => "SHADER_COMPILER",
+        gl::DEBUG_SOURCE_THIRD_PARTY => "THIRD_PARTY",
+        gl::DEBUG_SOURCE_APPLICATION => "APPLICATION",
+        gl::DEBUG_SOURCE_OTHER => "OTHER",
+        _ => "UNKNOWN",
+    };
+
+    let msgType = match type_ {
+        gl::DEBUG_TYPE_ERROR => "ERROR",
+        gl::DEBUG_TYPE_DEPRECATED_BEHAVIOR => "DEPRECATED_BEHAVIOR",
+        gl::DEBUG_TYPE_UNDEFINED_BEHAVIOR => "UNDEFINED_BEHAVIOR",
+        gl::DEBUG_TYPE_PORTABILITY => "PORTABILITY",
+        gl::DEBUG_TYPE_PERFORMANCE => "PERFORMANCE",
+        gl::DEBUG_TYPE_MARKER => "MARKER",
+        gl::DEBUG_TYPE_PUSH_GROUP => "PUSH_GROUP",
+        gl::DEBUG_TYPE_POP_GROUP => "POP_GROUP",
+        gl::DEBUG_TYPE_OTHER => "OTHER",
+        _ => "UNKNOWN",
+    };
+
+    let msgSeverity = match severity {
+        gl::DEBUG_SEVERITY_LOW => "LOW",
+        gl::DEBUG_SEVERITY_MEDIUM => "MEDIUM",
+        gl::DEBUG_SEVERITY_HIGH => "HIGH",
+        gl::DEBUG_SEVERITY_NOTIFICATION => "NOTIFICATION",
+        _ => "DEFAULT",
+    };
+
+    let message = if message.is_null() {
+        "<null>"
+    } else {
+        unsafe { CStr::from_ptr(message).to_str().unwrap_or("<invalid utf8>") }
+    };
+
+    warn!("GL: OpenGL debug message: {}", message);
+    warn!("    > Type: {}", msgType);
+    warn!("    > Source = {}", msgSource);
+    warn!("    > Severity = {}", msgSeverity);
+}
+
+pub unsafe fn rlglInit(width: i32, height: i32) {
+    IS_GPU_READY = true;
+
+    // Enable OpenGL debug context if requested (and supported)
+    #[cfg(all(
+    feature = "opengl_43",
+    feature = "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"))]
+    //if ((gl::DebugMessageCallback != NULL) && (gl::DebugMessageControl != NULL))
+    {
+        // You must already have loaded OpenGL function pointers with `gl::load_with(...)`
+        gl::DebugMessageCallback(Some(rlDebugMessageCallback), std::ptr::null());
+        //gl::DebugMessageCallback(rlDebugMessageCallback, 0 as *const std::ffi::c_void);
+        gl::DebugMessageControl(gl::DEBUG_SOURCE_API, gl::DEBUG_TYPE_ERROR, gl::DEBUG_SEVERITY_HIGH, 0, std::ptr::null(), gl::TRUE);
+        // Debug context options:
+        //  - GL_DEBUG_OUTPUT - Faster version but not useful for breakpoints
+        //  - GL_DEBUG_OUTPUT_SYNCHRONUS - Callback is in sync with errors, so a 
+        // breakpoint can be placed on the callback in order to get a stacktrace 
+        // for the GL error
+        gl::Enable(gl::DEBUG_OUTPUT);
+        gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
+    }
+
+    // Init default white texture
+    let pixels = [255_u8, 255, 255, 255]; // 1 pixel RGBA (4 bytes)
+    RLGL.State.defaultTextureId = rlLoadTexture(
+        pixels.as_ptr() as *const std::ffi::c_void,
+        1,
+        1,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32,
+        1,
+    );
+    RLGL.State.currentTextureId = RLGL.State.defaultTextureId;
+
+    if (RLGL.State.defaultTextureId != 0) {
+        info!(
+            "TEXTURE: [ID {}] Default texture loaded successfully",
+            RLGL.State.defaultTextureId
+        );
+    } else {
+        warn!("TEXTURE: Failed to load default texture");
+    }
+
+    // Init default Shader (customized for GL 3.3 and ES2)
+    // Loaded: RLGL.State.defaultShaderId + RLGL.State.defaultShaderLocs
+    rlLoadShaderDefault();
+    RLGL.State.currentShaderId = RLGL.State.defaultShaderId;
+    RLGL.State.currentShaderLocs = RLGL.State.defaultShaderLocs.as_mut_ptr();
+
+    // Init default vertex arrays buffers
+    // Simulate that the default shader has the location 
+    // RL_SHADER_LOC_VERTEX_NORMAL to bind the normal buffer for the default 
+    // render batch
+    *(RLGL
+        .State
+        .currentShaderLocs
+        .add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_NORMAL as usize)) =
+        RL_DEFAULT_SHADER_ATTRIB_LOCATION_NORMAL as i32;
+    RLGL.defaultBatch =
+        rlLoadRenderBatch(RL_DEFAULT_BATCH_BUFFERS, RL_DEFAULT_BATCH_BUFFER_ELEMENTS);
+    *(RLGL
+        .State
+        .currentShaderLocs
+        .add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_NORMAL as usize)) = -1;
+    RLGL.currentBatch = &mut RLGL.defaultBatch;
+
+    // Init stack matrices (emulating OpenGL 1.1)
+    for i in 0..RL_MAX_MATRIX_STACK_SIZE {
+        RLGL.State.stack[i] = Matrix::IDENTITY;
+    }
+
+    // Init internal matrices
+    RLGL.State.transform = Matrix::IDENTITY;
+    RLGL.State.projection = Matrix::IDENTITY;
+    RLGL.State.modelview = Matrix::IDENTITY;
+    RLGL.State.currentMatrix = &mut RLGL.State.modelview;
+
+    // Initialize OpenGL default states
+    //----------------------------------------------------------
+    // Init state: Depth test
+    gl::DepthFunc(gl::LEQUAL); // Type of depth testing to apply
+    gl::Disable(gl::DEPTH_TEST); // Disable depth testing for 2D (only used for 3D)
+
+    // Init state: Blending mode
+    gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA); // Color blending function (how colors are mixed)
+    gl::Enable(gl::BLEND); // Enable color blending (required to work with transparencies)
+
+    // Init state: Culling
+    // NOTE: All shapes/models triangles are drawn CCW
+    gl::CullFace(gl::BACK); // Cull the back face (default)
+    gl::FrontFace(gl::CCW); // Front face are defined counter clockwise (default)
+    gl::Enable(gl::CULL_FACE); // Enable backface culling
+
+    // Init state: Cubemap seamless
+    #[cfg(feature = "opengl_33")]
+    gl::Enable(gl::TEXTURE_CUBE_MAP_SEAMLESS); // Seamless cubemaps (not supported on OpenGL ES 2.0)
+
+    // Store screen size into global variables
+    RLGL.State.framebufferWidth = width;
+    RLGL.State.framebufferHeight = height;
+
+    // Init state: Color/Depth buffers clear
+    gl::ClearColor(0.0, 0.0, 0.0, 1.0); // Set clear color (black)
+    gl::ClearDepth(1.0); // Set clear depth value (default)
+    gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); // Clear color and depth buffers (depth buffer required for 3D)
+
+    info!("RLGL: Default OpenGL state initialized successfully");
+    //----------------------------------------------------------
+}
+
+pub unsafe fn rlglClose() {
+    rlUnloadRenderBatch(&mut RLGL.defaultBatch);
+    rlUnloadShaderDefault();
+    gl::DeleteTextures(1, &RLGL.State.defaultTextureId);
+
+    info!(
+        "TEXTURE: [ID {}] Default texture unloaded successfully",
+        RLGL.State.defaultTextureId
+    );
+    IS_GPU_READY = false;
+}
+
 // Load OpenGL extensions
 // NOTE: External loader function must be provided
 #[rustfmt::skip]
@@ -630,16 +1806,15 @@ pub unsafe fn rlLoadExtensions(loader: *mut core::ffi::c_void) {
     RLGL.ExtSupported.maxDepthBits = 24;
     RLGL.ExtSupported.texAnisoFilter = true;
     RLGL.ExtSupported.texMirrorClamp = true;
-
     // TODO: Check for additional OpenGL ES 3.0 supported extensions:
-    //RLGL.ExtSupported.texCompDXT = true;
-    //RLGL.ExtSupported.texCompETC1 = true;
-    //RLGL.ExtSupported.texCompETC2 = true;
-    //RLGL.ExtSupported.texCompPVRT = true;
-    //RLGL.ExtSupported.texCompASTC = true;
-    //RLGL.ExtSupported.maxAnisotropyLevel = true;
-    //RLGL.ExtSupported.computeShader = true;
-    //RLGL.ExtSupported.ssbo = true;
+    // RLGL.ExtSupported.texCompDXT = true;
+    // RLGL.ExtSupported.texCompETC1 = true;
+    // RLGL.ExtSupported.texCompETC2 = true;
+    // RLGL.ExtSupported.texCompPVRT = true;
+    // RLGL.ExtSupported.texCompASTC = true;
+    // RLGL.ExtSupported.maxAnisotropyLevel = true;
+    // RLGL.ExtSupported.computeShader = true;
+    // RLGL.ExtSupported.ssbo = true;
 }
 
 #[cfg(feature = "gles2")]     // Also defined for GRAPHICS_API_OPENGL_ES_20
@@ -935,24 +2110,25 @@ pub unsafe fn rlLoadRenderBatch(numBuffers: i32, bufferElements: i32) -> rlRende
     {
         let i = i as usize;
         batch.vertexBuffer[i].elementCount = bufferElements;
+        let bufferElements = bufferElements as usize;
 
-        batch.vertexBuffer[i].vertices = vec![0.0f32; (bufferElements * 3 * 4) as usize]; // 3 float by vertex, 4 vertex by quad
-        batch.vertexBuffer[i].texcoords = vec![0.0f32; (bufferElements * 2 * 4) as usize];    // 2 float by texcoord, 4 texcoord by quad
-        batch.vertexBuffer[i].normals = vec![0.0f32; (bufferElements * 3 * 4) as usize];      // 3 float by vertex, 4 vertex by quad
-        batch.vertexBuffer[i].colors = vec![0u8; (bufferElements * 4 * 4) as usize];   // 4 float by color, 4 colors by quad
+        batch.vertexBuffer[i].vertices = vec![0.0f32; bufferElements * 3 * 4]; // 3 float by vertex, 4 vertex by quad
+        batch.vertexBuffer[i].texcoords = vec![0.0f32; bufferElements * 2 * 4];    // 2 float by texcoord, 4 texcoord by quad
+        batch.vertexBuffer[i].normals = vec![0.0f32; bufferElements * 3 * 4];      // 3 float by vertex, 4 vertex by quad
+        batch.vertexBuffer[i].colors = vec![0u8; bufferElements * 4 * 4];   // 4 float by color, 4 colors by quad
         #[cfg(feature = "opengl_33")]
         {
-            batch.vertexBuffer[i].indices = vec![0u32; (bufferElements * 6) as usize];      // 6 int by quad (indices)
+            batch.vertexBuffer[i].indices = vec![0u32; bufferElements * 6];      // 6 int by quad (indices)
         }
         #[cfg(feature = "gles2")]
         {
-            batch.vertexBuffer[i].indices = vec![0u16; (bufferElements * 6) as usize];  // 6 int by quad (indices)
+            batch.vertexBuffer[i].indices = vec![0u16; bufferElements * 6];  // 6 int by quad (indices)
         }
 
-        for j in 0..(3*4*bufferElements as usize) { batch.vertexBuffer[i].vertices[j] = 0.0; }
-        for j in 0..(2*4*bufferElements as usize) { batch.vertexBuffer[i].texcoords[j] = 0.0; }
-        for j in 0..(3*4*bufferElements as usize) { batch.vertexBuffer[i].normals[j] = 0.0; }
-        for j in 0..(4*4*bufferElements as usize) { batch.vertexBuffer[i].colors[j] = 0u8; }
+        for j in 0..(3*4*bufferElements) { batch.vertexBuffer[i].vertices[j] = 0.0; }
+        for j in 0..(2*4*bufferElements) { batch.vertexBuffer[i].texcoords[j] = 0.0; }
+        for j in 0..(3*4*bufferElements) { batch.vertexBuffer[i].normals[j] = 0.0; }
+        for j in 0..(4*4*bufferElements) { batch.vertexBuffer[i].colors[j] = 0u8; }
 
         let mut k = 0;
 
@@ -976,6 +2152,7 @@ pub unsafe fn rlLoadRenderBatch(numBuffers: i32, bufferElements: i32) -> rlRende
 
     // Upload to GPU (VRAM) vertex data and initialize VAOs/VBOs
     //--------------------------------------------------------------------------------------------
+    use rlShaderLocationIndex::*;
     for i in 0..(numBuffers as usize)
     {
         if (RLGL.ExtSupported.vao)
@@ -990,29 +2167,29 @@ pub unsafe fn rlLoadRenderBatch(numBuffers: i32, bufferElements: i32) -> rlRende
         gl::GenBuffers(1, &mut batch.vertexBuffer[i].vboId[0]);
         gl::BindBuffer(gl::ARRAY_BUFFER, batch.vertexBuffer[i].vboId[0]);
         gl::BufferData(gl::ARRAY_BUFFER, (bufferElements as usize *3*4*std::mem::size_of::<f32>()) as isize, batch.vertexBuffer[i].vertices.as_ptr() as *const std::ffi::c_void, gl::DYNAMIC_DRAW);
-        gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_POSITION as usize)) as u32);
-        gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_POSITION as usize)) as u32, 3, gl::FLOAT, 0, 0, std::ptr::null());
+        gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_POSITION as usize)) as u32);
+        gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_POSITION as usize)) as u32, 3, gl::FLOAT, 0, 0, std::ptr::null());
 
         // Vertex texcoord buffer (shader-location = 1)
         gl::GenBuffers(1, &mut batch.vertexBuffer[i].vboId[1]);
         gl::BindBuffer(gl::ARRAY_BUFFER, batch.vertexBuffer[i].vboId[1]);
         gl::BufferData(gl::ARRAY_BUFFER, (bufferElements as usize *2*4*std::mem::size_of::<f32>()) as isize, batch.vertexBuffer[i].texcoords.as_ptr() as *const std::ffi::c_void, gl::DYNAMIC_DRAW);
-        gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_TEXCOORD01 as usize)) as u32);
-        gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_TEXCOORD01 as usize)) as u32, 2, gl::FLOAT, 0, 0, std::ptr::null());
+        gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_TEXCOORD01 as usize)) as u32);
+        gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_TEXCOORD01 as usize)) as u32, 2, gl::FLOAT, 0, 0, std::ptr::null());
 
         // Vertex normal buffer (shader-location = 2)
         gl::GenBuffers(1, &mut batch.vertexBuffer[i].vboId[2]);
         gl::BindBuffer(gl::ARRAY_BUFFER, batch.vertexBuffer[i].vboId[2]);
         gl::BufferData(gl::ARRAY_BUFFER, (bufferElements as usize *3*4*std::mem::size_of::<f32>()) as isize, batch.vertexBuffer[i].normals.as_ptr() as *const std::ffi::c_void, gl::DYNAMIC_DRAW);
-        gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_NORMAL as usize)) as u32);
-        gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_NORMAL as usize)) as u32, 3, gl::FLOAT, 0, 0, std::ptr::null());
+        gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_NORMAL as usize)) as u32);
+        gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_NORMAL as usize)) as u32, 3, gl::FLOAT, 0, 0, std::ptr::null());
 
         // Vertex color buffer (shader-location = 3)
         gl::GenBuffers(1, &mut batch.vertexBuffer[i].vboId[3]);
         gl::BindBuffer(gl::ARRAY_BUFFER, batch.vertexBuffer[i].vboId[3]);
         gl::BufferData(gl::ARRAY_BUFFER, (bufferElements as usize *4*4*std::mem::size_of::<u8>()) as isize, batch.vertexBuffer[i].colors.as_ptr() as *const std::ffi::c_void, gl::DYNAMIC_DRAW);
-        gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_COLOR as usize)) as u32);
-        gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_COLOR as usize)) as u32, 4, gl::UNSIGNED_BYTE, gl::TRUE, 0, std::ptr::null());
+        gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_COLOR as usize)) as u32);
+        gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_COLOR as usize)) as u32, 4, gl::UNSIGNED_BYTE, gl::TRUE, 0, std::ptr::null());
 
         // Fill index buffer
         gl::GenBuffers(1, &mut batch.vertexBuffer[i].vboId[4]);
@@ -1105,6 +2282,7 @@ pub unsafe fn rlUnloadRenderBatch(batch: &mut rlRenderBatch) {
 #[rustfmt::skip]
 pub unsafe fn rlDrawRenderBatch(batch: *mut rlRenderBatch)
 {
+    use rlShaderLocationIndex::*;
     let batch = &mut *batch;
     // Update batch vertex buffers
     //------------------------------------------------------------------------------------------------------------
@@ -1158,8 +2336,8 @@ pub unsafe fn rlDrawRenderBatch(batch: *mut rlRenderBatch)
 
     // Draw batch vertex buffers (considering VR stereo if required)
     //------------------------------------------------------------------------------------------------------------
-    let mut matProjection = RLGL.State.projection;
-    let mut matModelView = RLGL.State.modelview;
+    let matProjection = RLGL.State.projection;
+    let matModelView = RLGL.State.modelview;
 
     let mut eyeCount = 1;
     if (RLGL.State.stereoRender) {eyeCount = 2;}
@@ -1172,7 +2350,7 @@ pub unsafe fn rlDrawRenderBatch(batch: *mut rlRenderBatch)
             rlViewport((eye as i32 * RLGL.State.framebufferWidth) /2, 0, RLGL.State.framebufferWidth /2 , RLGL.State.framebufferHeight);
 
             // Set current eye view offset to modelview matrix
-            rlSetMatrixModelview((matModelView * RLGL.State.viewOffsetStereo[eye]));
+            rlSetMatrixModelview(matModelView * RLGL.State.viewOffsetStereo[eye]);
             // Set current eye projection matrix
             rlSetMatrixProjection(RLGL.State.projectionStereo[eye]);
         }
@@ -1185,29 +2363,29 @@ pub unsafe fn rlDrawRenderBatch(batch: *mut rlRenderBatch)
 
             // Create modelview-projection matrix and upload to shader
             let matMVP = (RLGL.State.modelview * RLGL.State.projection);
-            gl::UniformMatrix4fv(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_MATRIX_MVP as usize)), 1, 0, matMVP.to_array().as_ptr());
+            gl::UniformMatrix4fv(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_MATRIX_MVP as usize)), 1, 0, matMVP.to_array().as_ptr());
 
-            if (*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_MATRIX_PROJECTION as usize)) != -1)
+            if (*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_MATRIX_PROJECTION as usize)) != -1)
             {
-                gl::UniformMatrix4fv(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_MATRIX_PROJECTION as usize)), 1, 0, RLGL.State.projection.to_array().as_ptr());
+                gl::UniformMatrix4fv(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_MATRIX_PROJECTION as usize)), 1, 0, RLGL.State.projection.to_array().as_ptr());
             }
 
             // WARNING: For the following setup of the view, model, and normal matrices, it is expected that
             // transformations and rendering occur between rlPushMatrix() and rlPopMatrix()
 
-            if (*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_MATRIX_VIEW as usize)) != -1)
+            if (*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_MATRIX_VIEW as usize)) != -1)
             {
-                gl::UniformMatrix4fv(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_MATRIX_VIEW as usize)), 1, 0, (RLGL.State.modelview).to_array().as_ptr());
+                gl::UniformMatrix4fv(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_MATRIX_VIEW as usize)), 1, 0, (RLGL.State.modelview).to_array().as_ptr());
             }
 
-            if (*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_MATRIX_MODEL as usize)) != -1)
+            if (*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_MATRIX_MODEL as usize)) != -1)
             {
-                gl::UniformMatrix4fv(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_MATRIX_MODEL as usize)), 1, 0, (RLGL.State.transform).to_array().as_ptr());
+                gl::UniformMatrix4fv(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_MATRIX_MODEL as usize)), 1, 0, (RLGL.State.transform).to_array().as_ptr());
             }
 
-            if (*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_MATRIX_NORMAL as usize)) != -1)
+            if (*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_MATRIX_NORMAL as usize)) != -1)
             {
-                gl::UniformMatrix4fv(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_MATRIX_NORMAL as usize)), 1, 0, (((RLGL.State.transform.invert().transpose()))).to_array().as_ptr());
+                gl::UniformMatrix4fv(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_MATRIX_NORMAL as usize)), 1, 0, (((RLGL.State.transform.invert().transpose()))).to_array().as_ptr());
             }
 
             if (RLGL.ExtSupported.vao) {gl::BindVertexArray(batch.vertexBuffer[batch.currentBuffer as usize].vaoId);}
@@ -1215,29 +2393,29 @@ pub unsafe fn rlDrawRenderBatch(batch: *mut rlRenderBatch)
             {
                 // Bind vertex attrib: position (shader-location = 0)
                 gl::BindBuffer(gl::ARRAY_BUFFER, batch.vertexBuffer[batch.currentBuffer as usize].vboId[0]);
-                gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_POSITION as usize)) as u32, 3, gl::FLOAT, 0, 0, std::ptr::null());
-                gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_POSITION as usize)) as u32);
+                gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_POSITION as usize)) as u32, 3, gl::FLOAT, 0, 0, std::ptr::null());
+                gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_POSITION as usize)) as u32);
 
                 // Bind vertex attrib: texcoord (shader-location = 1)
                 gl::BindBuffer(gl::ARRAY_BUFFER, batch.vertexBuffer[batch.currentBuffer as usize].vboId[1]);
-                gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_TEXCOORD01 as usize)) as u32, 2, gl::FLOAT, 0, 0, std::ptr::null());
-                gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_TEXCOORD01 as usize)) as u32);
+                gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_TEXCOORD01 as usize)) as u32, 2, gl::FLOAT, 0, 0, std::ptr::null());
+                gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_TEXCOORD01 as usize)) as u32);
 
                 // Bind vertex attrib: normal (shader-location = 2)
                 gl::BindBuffer(gl::ARRAY_BUFFER, batch.vertexBuffer[batch.currentBuffer as usize].vboId[2]);
-                gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_NORMAL as usize)) as u32, 3, gl::FLOAT, 0, 0, std::ptr::null());
-                gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_NORMAL as usize)) as u32);
+                gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_NORMAL as usize)) as u32, 3, gl::FLOAT, 0, 0, std::ptr::null());
+                gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_NORMAL as usize)) as u32);
 
                 // Bind vertex attrib: color (shader-location = 3)
                 gl::BindBuffer(gl::ARRAY_BUFFER, batch.vertexBuffer[batch.currentBuffer as usize].vboId[3]);
-                gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_COLOR as usize)) as u32, 4, gl::UNSIGNED_BYTE, gl::TRUE, 0, std::ptr::null());
-                gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_COLOR as usize)) as u32);
+                gl::VertexAttribPointer(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_COLOR as usize)) as u32, 4, gl::UNSIGNED_BYTE, gl::TRUE, 0, std::ptr::null());
+                gl::EnableVertexAttribArray(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_VERTEX_COLOR as usize)) as u32);
 
                 gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, batch.vertexBuffer[batch.currentBuffer as usize].vboId[4]);
             }
 
             // Setup some default shader values
-            gl::Uniform4f(*(RLGL.State.currentShaderLocs.add(rlShaderLocationIndex::RL_SHADER_LOC_COLOR_DIFFUSE as usize)), 1.0, 1.0, 1.0, 1.0);
+            gl::Uniform4f(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_COLOR_DIFFUSE as usize)), 1.0, 1.0, 1.0, 1.0);
             gl::Uniform1i(*(RLGL.State.currentShaderLocs.add(RL_SHADER_LOC_MAP_DIFFUSE as usize)), 0);  // Active default sampler2D: texture0
 
             // Activate additional sampler textures
@@ -1711,60 +2889,60 @@ pub unsafe fn rlGetGlTextureFormats(format: i32, glInternalFormat: *mut i32, glF
     *glInternalFormat = 0;
     *glFormat = 0;
     *glType = 0;
-
+    let format = PixelFormat::from_repr(format).unwrap();
     #[cfg(feature = "opengl_33")]
     match (format)
     {
-       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32 => { *glInternalFormat = gl::R8 as i32; *glFormat = gl::RED as i32; *glType = gl::UNSIGNED_BYTE as i32;  }
-       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA as i32 => { *glInternalFormat = gl::RG8 as i32; *glFormat = gl::RG as i32; *glType = gl::UNSIGNED_BYTE as i32;  }
-       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G6B5 as i32 => { *glInternalFormat = gl::RGB565 as i32; *glFormat = gl::RGB as i32; *glType = gl::UNSIGNED_SHORT_5_6_5 as i32;  }
-       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8 as i32 => { *glInternalFormat = gl::RGB8 as i32; *glFormat = gl::RGB as i32; *glType = gl::UNSIGNED_BYTE as i32;  }
-       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G5B5A1 as i32 => { *glInternalFormat = gl::RGB5_A1 as i32; *glFormat = gl::RGBA as i32; *glType = gl::UNSIGNED_SHORT_5_5_5_1 as i32;  }
-       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 as i32 => { *glInternalFormat = gl::RGBA4 as i32; *glFormat = gl::RGBA as i32; *glType = gl::UNSIGNED_SHORT_4_4_4_4 as i32;  }
-       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 => { *glInternalFormat = gl::RGBA8 as i32; *glFormat = gl::RGBA as i32; *glType = gl::UNSIGNED_BYTE as i32;  }
-       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32 as i32 => { if (RLGL.ExtSupported.texFloat32) { *glInternalFormat = gl::R32F as i32; *glFormat = gl::RED as i32; *glType = gl::FLOAT as i32; } }
-       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32 as i32 => { if (RLGL.ExtSupported.texFloat32) { *glInternalFormat = gl::RGB32F as i32; *glFormat = gl::RGB as i32; *glType = gl::FLOAT as i32; } }
-       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 as i32 => { if (RLGL.ExtSupported.texFloat32) { *glInternalFormat = gl::RGBA32F as i32; *glFormat = gl::RGBA as i32; *glType = gl::FLOAT as i32; } }
-       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16 as i32 => { if (RLGL.ExtSupported.texFloat16) { *glInternalFormat = gl::R16F as i32; *glFormat = gl::RED as i32; *glType = gl::HALF_FLOAT as i32; } }
-       val if val == PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16 as i32 => { if (RLGL.ExtSupported.texFloat16) { *glInternalFormat = gl::RGB16F as i32; *glFormat = gl::RGB as i32; *glType = gl::HALF_FLOAT as i32; } }
+       PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE => { *glInternalFormat = gl::R8 as i32; *glFormat = gl::RED as i32; *glType = gl::UNSIGNED_BYTE as i32;  }
+       PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA => { *glInternalFormat = gl::RG8 as i32; *glFormat = gl::RG as i32; *glType = gl::UNSIGNED_BYTE as i32;  }
+       PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G6B5 => { *glInternalFormat = gl::RGB565 as i32; *glFormat = gl::RGB as i32; *glType = gl::UNSIGNED_SHORT_5_6_5 as i32;  }
+       PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8 => { *glInternalFormat = gl::RGB8 as i32; *glFormat = gl::RGB as i32; *glType = gl::UNSIGNED_BYTE as i32;  }
+       PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G5B5A1 => { *glInternalFormat = gl::RGB5_A1 as i32; *glFormat = gl::RGBA as i32; *glType = gl::UNSIGNED_SHORT_5_5_5_1 as i32;  }
+       PixelFormat::PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 => { *glInternalFormat = gl::RGBA4 as i32; *glFormat = gl::RGBA as i32; *glType = gl::UNSIGNED_SHORT_4_4_4_4 as i32;  }
+       PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 => { *glInternalFormat = gl::RGBA8 as i32; *glFormat = gl::RGBA as i32; *glType = gl::UNSIGNED_BYTE as i32;  }
+       PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32 => { if (RLGL.ExtSupported.texFloat32) { *glInternalFormat = gl::R32F as i32; *glFormat = gl::RED as i32; *glType = gl::FLOAT as i32; } }
+       PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32 => { if (RLGL.ExtSupported.texFloat32) { *glInternalFormat = gl::RGB32F as i32; *glFormat = gl::RGB as i32; *glType = gl::FLOAT as i32; } }
+       PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 => { if (RLGL.ExtSupported.texFloat32) { *glInternalFormat = gl::RGBA32F as i32; *glFormat = gl::RGBA as i32; *glType = gl::FLOAT as i32; } }
+       PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16 => { if (RLGL.ExtSupported.texFloat16) { *glInternalFormat = gl::R16F as i32; *glFormat = gl::RED as i32; *glType = gl::HALF_FLOAT as i32; } }
+       PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16 => { if (RLGL.ExtSupported.texFloat16) { *glInternalFormat = gl::RGB16F as i32; *glFormat = gl::RGB as i32; *glType = gl::HALF_FLOAT as i32; } }
        _ => {}
     }
 
     match (format) {
-        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32 => { if (RLGL.ExtSupported.texCompDXT) { *glInternalFormat = GL_COMPRESSED_RGB_S3TC_DXT1_EXT as i32; 
+        PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB => { if (RLGL.ExtSupported.texCompDXT) { *glInternalFormat = GL_COMPRESSED_RGB_S3TC_DXT1_EXT as i32; 
         }}
 
-        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGBA as i32 => { if (RLGL.ExtSupported.texCompDXT) { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT1_EXT as i32; 
+        PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGBA => { if (RLGL.ExtSupported.texCompDXT) { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT1_EXT as i32; 
         }}
 
-        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_DXT3_RGBA as i32 => { if (RLGL.ExtSupported.texCompDXT) { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT as i32; 
+        PixelFormat::PIXELFORMAT_COMPRESSED_DXT3_RGBA => { if (RLGL.ExtSupported.texCompDXT) { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT as i32; 
         }}
 
-        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_DXT5_RGBA as i32 => { if (RLGL.ExtSupported.texCompDXT) { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT as i32; 
+        PixelFormat::PIXELFORMAT_COMPRESSED_DXT5_RGBA => { if (RLGL.ExtSupported.texCompDXT) { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT as i32; 
         }}
 
-        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_ETC1_RGB as i32 => { if (RLGL.ExtSupported.texCompETC1) { *glInternalFormat = GL_ETC1_RGB8_OES as i32;                       // NOTE: Requires OpenGL ES 2.0 or OpenGL 4.3
+        PixelFormat::PIXELFORMAT_COMPRESSED_ETC1_RGB => { if (RLGL.ExtSupported.texCompETC1) { *glInternalFormat = GL_ETC1_RGB8_OES as i32;                       // NOTE: Requires OpenGL ES 2.0 or OpenGL 4.3
         }}
 
-        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB as i32 => { if (RLGL.ExtSupported.texCompETC2) { *glInternalFormat = GL_COMPRESSED_RGB8_ETC2 as i32;                // NOTE: Requires OpenGL ES 3.0 or OpenGL 4.3
+        PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB => { if (RLGL.ExtSupported.texCompETC2) { *glInternalFormat = GL_COMPRESSED_RGB8_ETC2 as i32;                // NOTE: Requires OpenGL ES 3.0 or OpenGL 4.3
         }}
 
-        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA as i32 => { if (RLGL.ExtSupported.texCompETC2) { *glInternalFormat = GL_COMPRESSED_RGBA8_ETC2_EAC as i32;      // NOTE: Requires OpenGL ES 3.0 or OpenGL 4.3
+        PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA => { if (RLGL.ExtSupported.texCompETC2) { *glInternalFormat = GL_COMPRESSED_RGBA8_ETC2_EAC as i32;      // NOTE: Requires OpenGL ES 3.0 or OpenGL 4.3
         }}
 
-        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGB as i32 => { if (RLGL.ExtSupported.texCompPVRT) { *glInternalFormat = GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG as i32;     // NOTE: Requires PowerVR GPU
+        PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGB => { if (RLGL.ExtSupported.texCompPVRT) { *glInternalFormat = GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG as i32;     // NOTE: Requires PowerVR GPU
         }}
 
-        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGBA as i32 => { if (RLGL.ExtSupported.texCompPVRT) { *glInternalFormat = GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG as i32;   // NOTE: Requires PowerVR GPU
+        PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGBA => { if (RLGL.ExtSupported.texCompPVRT) { *glInternalFormat = GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG as i32;   // NOTE: Requires PowerVR GPU
         }}
 
-        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA as i32 => { if (RLGL.ExtSupported.texCompASTC) { *glInternalFormat = GL_COMPRESSED_RGBA_ASTC_4x4_KHR as i32;   // NOTE: Requires OpenGL ES 3.1 or OpenGL 4.3
+        PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA => { if (RLGL.ExtSupported.texCompASTC) { *glInternalFormat = GL_COMPRESSED_RGBA_ASTC_4x4_KHR as i32;   // NOTE: Requires OpenGL ES 3.1 or OpenGL 4.3
         }}
 
-        val if val == PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA as i32 => { if (RLGL.ExtSupported.texCompASTC) { *glInternalFormat = GL_COMPRESSED_RGBA_ASTC_8x8_KHR as i32;   // NOTE: Requires OpenGL ES 3.1 or OpenGL 4.3
+        PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA => { if (RLGL.ExtSupported.texCompASTC) { *glInternalFormat = GL_COMPRESSED_RGBA_ASTC_8x8_KHR as i32;   // NOTE: Requires OpenGL ES 3.1 or OpenGL 4.3
         }}
         _ => {
-            warn!("TEXTURE: Current format not supported ({})", format)
+            warn!("TEXTURE: Current format not supported ({:?})", format)
         }
     }
 
@@ -3192,6 +4370,9 @@ pub unsafe fn rlGetMatrixProjection() -> Matrix {
     RLGL.State.projection
 }
 pub unsafe fn rlGetMatrixTransform() -> Matrix {
+    // TODO: Consider possible transform matrices in the RLGL.State.stack
+    //Matrix matStackTransform = rlMatrixIdentity();
+    //for (int i = RLGL.State.stackCounter; i > 0; i--) matStackTransform = rlMatrixMultiply(RLGL.State.stack[i], matStackTransform);
     RLGL.State.transform
 }
 
@@ -3326,6 +4507,74 @@ pub fn rlGetPixelFormatName(format: i32) -> &'static str {
     }
 }
 
+// Get pixel data size in bytes (image or texture)
+// NOTE: Size depends on pixel format
+pub fn rlGetPixelDataSize(width: i32, height: i32, format: i32) -> i32 {
+    let mut dataSize: i32 = 0; // Size in bytes
+    let mut bpp: i32 = 0;      // Bits per pixel
+    let format = PixelFormat::from_repr(format).unwrap();
+    match format {
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE => bpp = 8,
+
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA
+        | PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G6B5
+        | PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G5B5A1
+        | PixelFormat::PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 => bpp = 16,
+
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 => bpp = 32,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8 => bpp = 24,
+
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32 => bpp = 32,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32 => bpp = 32 * 3,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 => bpp = 32 * 4,
+
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16 => bpp = 16,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16 => bpp = 16 * 3,
+        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 => bpp = 16 * 4,
+
+        PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB
+        | PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGBA
+        | PixelFormat::PIXELFORMAT_COMPRESSED_ETC1_RGB
+        | PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB
+        | PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGB
+        | PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGBA => {
+            // 8 bytes per each 4x4 block
+            let blockWidth = (width + 3) / 4;
+            let blockHeight = (height + 3) / 4;
+            dataSize = blockWidth * blockHeight * 8;
+        }
+
+        PixelFormat::PIXELFORMAT_COMPRESSED_DXT3_RGBA
+        | PixelFormat::PIXELFORMAT_COMPRESSED_DXT5_RGBA
+        | PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA
+        | PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA => {
+            // 16 bytes per each 4x4 block
+            let blockWidth = (width + 3) / 4;
+            let blockHeight = (height + 3) / 4;
+            dataSize = blockWidth * blockHeight * 16;
+        }
+
+        PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA => {
+            // 4 bytes per each 4x4 block (as in original code)
+            let blockWidth = (width + 3) / 4;
+            let blockHeight = (height + 3) / 4;
+            dataSize = blockWidth * blockHeight * 4;
+        }
+
+        _ => {}
+    }
+
+    // Compute dataSize for uncompressed texture data (no blocks)
+    if (format as i32 >= PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32)
+        && (format as i32 <= PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 as i32)
+    {
+        let bytesPerPixel: f64 = (bpp as f64) / 8.0;
+        dataSize = (bytesPerPixel * (width as f64) * (height as f64)) as i32;
+    }
+
+    dataSize
+}
+
 //----------------------------------------------------------------------------------
 // Module Functions Definition
 //----------------------------------------------------------------------------------
@@ -3440,1232 +4689,4 @@ unsafe fn _old_rlLoadShaderDefault() {
     gl::LinkProgram(program);
     RLGL.State.defaultShaderId = program;
     RLGL.State.currentShaderId = program;
-}
-
-
-// Matrix operations
-/// Choose the current matrix to be transformed
-pub unsafe fn rlMatrixMode(mode: i32) {
-    if (mode == RL_PROJECTION) {
-        RLGL.State.currentMatrix = &raw mut RLGL.State.projection;
-    } else if (mode == RL_MODELVIEW) {
-        RLGL.State.currentMatrix = &raw mut RLGL.State.modelview;
-    }
-    //else if (mode == RL_TEXTURE) // Not supported
-
-    RLGL.State.currentMatrixMode = mode;
-}
-
-/// Push the current matrix into RLGL.State.stack
-pub unsafe fn rlPushMatrix() {
-    if (RLGL.State.stackCounter >= RL_MAX_MATRIX_STACK_SIZE as i32) {
-        error!("RLGL: Matrix stack overflow (RL_MAX_MATRIX_STACK_SIZE)");
-    }
-
-    if (RLGL.State.currentMatrixMode == RL_MODELVIEW) {
-        RLGL.State.transformRequired = true;
-        RLGL.State.currentMatrix = &raw mut RLGL.State.transform;
-    }
-
-    RLGL.State.stack[RLGL.State.stackCounter as usize] = *RLGL.State.currentMatrix;
-    RLGL.State.stackCounter += 1;
-}
-
-/// Pop latest inserted matrix from RLGL.State.stack
-pub unsafe fn rlPopMatrix() {
-    if (RLGL.State.stackCounter > 0) {
-        let mat = RLGL.State.stack[(RLGL.State.stackCounter - 1) as usize];
-        *RLGL.State.currentMatrix = mat;
-        RLGL.State.stackCounter -= 1;
-    }
-
-    if ((RLGL.State.stackCounter == 0) && (RLGL.State.currentMatrixMode == RL_MODELVIEW)) {
-        RLGL.State.currentMatrix = &raw mut RLGL.State.modelview;
-        RLGL.State.transformRequired = false;
-    }
-}
-
-// Reset current matrix to identity matrix
-pub unsafe fn rlLoadIdentity() {
-    *RLGL.State.currentMatrix = Matrix::IDENTITY;
-}
-
-pub unsafe fn rlTranslatef(x: f32, y: f32, z: f32) {
-    let mut matTranslation = Matrix::IDENTITY;
-
-    // Set translation component of matrix
-    matTranslation.m12 = x;
-    matTranslation.m13 = y;
-    matTranslation.m14 = z;
-
-    // NOTE: Transposing matrix by multiplication order
-    *RLGL.State.currentMatrix = matTranslation * *RLGL.State.currentMatrix;
-}
-
-/// Multiply the current matrix by a rotation matrix
-/// NOTE: The provided angle must be in degrees
-pub unsafe fn rlRotatef(angle: f32, mut x: f32, mut y: f32, mut z: f32) {
-    let mut matRotation = Matrix::IDENTITY;
-
-    // Axis vector (x, y, z) normalization
-    let lengthSquared = x * x + y * y + z * z;
-    if ((lengthSquared != 1.0) && (lengthSquared != 0.0)) {
-        let inverseLength = 1.0 / (lengthSquared).sqrt();
-        x *= inverseLength;
-        y *= inverseLength;
-        z *= inverseLength;
-    }
-
-    // Rotation matrix generation
-    let sinres = angle.to_radians().sin();
-    let cosres = angle.to_radians().cos();
-    let t = 1.0 - cosres;
-
-    matRotation.m0 = x * x * t + cosres;
-    matRotation.m1 = y * x * t + z * sinres;
-    matRotation.m2 = z * x * t - y * sinres;
-    matRotation.m3 = 0.0;
-
-    matRotation.m4 = x * y * t - z * sinres;
-    matRotation.m5 = y * y * t + cosres;
-    matRotation.m6 = z * y * t + x * sinres;
-    matRotation.m7 = 0.0;
-
-    matRotation.m8 = x * z * t + y * sinres;
-    matRotation.m9 = y * z * t - x * sinres;
-    matRotation.m10 = z * z * t + cosres;
-    matRotation.m11 = 0.0;
-
-    matRotation.m12 = 0.0;
-    matRotation.m13 = 0.0;
-    matRotation.m14 = 0.0;
-    matRotation.m15 = 1.0;
-
-    // NOTE: Transposing matrix by multiplication order
-    *RLGL.State.currentMatrix = (matRotation * *RLGL.State.currentMatrix);
-}
-
-/// Multiply the current matrix by a scaling matrix
-pub unsafe fn rlScalef(x: f32, y: f32, z: f32) {
-    let mut matScale = Matrix::IDENTITY;
-
-    // Set scale component of matrix
-    matScale.m0 = x;
-    matScale.m5 = y;
-    matScale.m10 = z;
-
-    // NOTE: Transposing matrix by multiplication order
-    *RLGL.State.currentMatrix = (matScale * *RLGL.State.currentMatrix);
-}
-
-// Multiply the current matrix by another matrix
-pub unsafe fn rlMultMatrixf(matf: &[f32; 16]) {
-    // Matrix creation from array
-    // Conversion from column-major to row-major memory order
-    let mat = Matrix::new(
-        matf[0], matf[4], matf[8], matf[12], matf[1], matf[5], matf[9], matf[13], matf[2], matf[6],
-        matf[10], matf[14], matf[3], matf[7], matf[11], matf[15],
-    );
-
-    *RLGL.State.currentMatrix = (mat * *RLGL.State.currentMatrix);
-}
-
-/// Multiply the current matrix by a perspective matrix generated by parameters
-pub unsafe fn rlFrustum(left: f64, right: f64, bottom: f64, top: f64, znear: f64, zfar: f64) {
-    let mut matFrustum = Matrix::ZERO;
-
-    let rl = (right - left) as f32;
-    let tb = (top - bottom) as f32;
-    let fnn = (zfar - znear) as f32;
-
-    matFrustum.m0 = (znear as f32 * 2.0) / rl;
-    matFrustum.m1 = 0.0;
-    matFrustum.m2 = 0.0;
-    matFrustum.m3 = 0.0;
-
-    matFrustum.m4 = 0.0;
-    matFrustum.m5 = (znear as f32 * 2.0) / tb;
-    matFrustum.m6 = 0.0;
-    matFrustum.m7 = 0.0;
-
-    matFrustum.m8 = (right as f32 + left as f32) / rl;
-    matFrustum.m9 = (top as f32 + bottom as f32) / tb;
-    matFrustum.m10 = -(zfar as f32 + znear as f32) / fnn;
-    matFrustum.m11 = -1.0;
-
-    matFrustum.m12 = 0.0;
-    matFrustum.m13 = 0.0;
-    matFrustum.m14 = -(zfar as f32 * znear as f32 * 2.0) / fnn;
-    matFrustum.m15 = 0.0;
-
-    *RLGL.State.currentMatrix = (*RLGL.State.currentMatrix * matFrustum);
-}
-
-/// Multiply the current matrix by an orthographic matrix generated by parameters
-pub unsafe fn rlOrtho(left: f64, right: f64, bottom: f64, top: f64, znear: f64, zfar: f64) {
-    // NOTE: If left-right and top-botton values are equal it could create a division by zero,
-    // response to it is platform/compiler dependent
-    let mut matOrtho = Matrix::ZERO;
-
-    let rl = (right - left) as f32;
-    let tb = (top - bottom) as f32;
-    let fnn = (zfar - znear) as f32;
-
-    matOrtho.m0 = 2.0 / rl;
-    matOrtho.m1 = 0.0;
-    matOrtho.m2 = 0.0;
-    matOrtho.m3 = 0.0;
-    matOrtho.m4 = 0.0;
-    matOrtho.m5 = 2.0 / tb;
-    matOrtho.m6 = 0.0;
-    matOrtho.m7 = 0.0;
-    matOrtho.m8 = 0.0;
-    matOrtho.m9 = 0.0;
-    matOrtho.m10 = -2.0 / fnn;
-    matOrtho.m11 = 0.0;
-    matOrtho.m12 = -(left as f32 + right as f32) / rl;
-    matOrtho.m13 = -(top as f32 + bottom as f32) / tb;
-    matOrtho.m14 = -(zfar as f32 + znear as f32) / fnn;
-    matOrtho.m15 = 1.0;
-
-    *RLGL.State.currentMatrix = (*RLGL.State.currentMatrix * matOrtho);
-}
-
-/// Set the viewport area (transformation from normalized device coordinates to window coordinates)
-pub unsafe fn rlViewport(x: i32, y: i32, width: i32, height: i32) {
-    gl::Viewport(x, y, width, height);
-}
-
-pub unsafe fn rlSetClipPlanes(nearPlane: f64, farPlane: f64) {
-    rlCullDistanceNear = nearPlane;
-    rlCullDistanceFar = farPlane;
-}
-
-/// Get cull plane distance near
-pub unsafe fn rlGetCullDistanceNear() -> f64 {
-    return rlCullDistanceNear;
-}
-
-/// Get cull plane distance far
-pub unsafe fn rlGetCullDistanceFar() -> f64 {
-    return rlCullDistanceFar;
-}
-
-// Vertex level operations
-// Initialize drawing mode (how to organize vertex)
-pub unsafe fn rlBegin(mode: i32) {
-   let currentBatch = &mut *(RLGL.currentBatch);
-    // Draw mode can be RL_LINES, RL_TRIANGLES and RL_QUADS
-    // NOTE: In all three cases, vertex are accumulated over default internal vertex buffer
-    if ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode != mode) {
-        if ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].vertexCount
-            > 0)
-        {
-            // Make sure current RLGL.currentBatch.draws[i].vertexCount is aligned a multiple of 4,
-            // that way, following QUADS drawing will keep aligned with index processing
-            // It implies adding some extra alignment vertex at the end of the draw,
-            // those vertex are not processed but they are considered as an additional offset
-            // for the next set of vertex to be drawn
-            if ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode
-                == RL_LINES)
-            {
-                (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
-                    .vertexAlignment = if ((currentBatch).draws
-                    [(currentBatch).drawCounter as usize - 1]
-                    .vertexCount
-                    < 4)
-                {
-                    (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
-                        .vertexCount
-                } else {
-                    (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
-                        .vertexCount
-                        % 4
-                };
-            } else if ((currentBatch).draws[(currentBatch).drawCounter as usize - 1]
-                .mode
-                == RL_TRIANGLES)
-            {
-                (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
-                    .vertexAlignment = if ((currentBatch).draws
-                    [(currentBatch).drawCounter as usize - 1]
-                    .vertexCount
-                    < 4)
-                {
-                    1
-                } else {
-                    4 - ((currentBatch).draws[(currentBatch).drawCounter as usize - 1]
-                        .vertexCount
-                        % 4)
-                };
-            } else {
-                (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
-                    .vertexAlignment = 0;
-            }
-
-            if (!rlCheckRenderBatchLimit(
-                (currentBatch).draws[(currentBatch).drawCounter as usize - 1]
-                    .vertexAlignment,
-            )) {
-                RLGL.State.vertexCounter += (currentBatch).draws
-                    [(currentBatch).drawCounter as usize - 1]
-                    .vertexAlignment;
-                (currentBatch).drawCounter += 1;
-            }
-        }
-
-        if ((currentBatch).drawCounter >= RL_DEFAULT_BATCH_DRAWCALLS) {
-            rlDrawRenderBatch(RLGL.currentBatch);
-        }
-
-        (currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode = mode;
-        (currentBatch).draws[(currentBatch).drawCounter as usize - 1].textureId =
-            RLGL.State.currentTextureId as i32;
-        RLGL.State.currentTextureId = RLGL.State.defaultTextureId;
-    }
-}
-
-pub unsafe fn rlEnd() {
-    // NOTE: Depth increment is dependent on rlOrtho(): z-near and z-far values,
-    // as well as depth buffer bit-depth (16bit or 24bit or 32bit)
-    // Correct increment formula would be: depthInc = (zfar - znear)/pow(2, bits)
-    (*RLGL.currentBatch).currentDepth += (1.0 / 20000.0);
-}
-
-// NOTE: Vertex position data is the basic information required for drawing
-#[rustfmt::skip]
-pub unsafe fn rlVertex3f(x: f32, y: f32, z: f32)
-{
-    let mut tx = x;
-    let mut ty = y;
-    let mut tz = z;
-
-    // Transform provided vector if required
-    if (RLGL.State.transformRequired)
-    {
-        tx = RLGL.State.transform.m0*x + RLGL.State.transform.m4*y + RLGL.State.transform.m8*z + RLGL.State.transform.m12;
-        ty = RLGL.State.transform.m1*x + RLGL.State.transform.m5*y + RLGL.State.transform.m9*z + RLGL.State.transform.m13;
-        tz = RLGL.State.transform.m2*x + RLGL.State.transform.m6*y + RLGL.State.transform.m10*z + RLGL.State.transform.m14;
-    }
-   let currentBatch = &mut *(RLGL.currentBatch);
-
-    // WARNING: Be careful with primitives breaking when launching a new batch!
-    // RL_LINES comes in pairs, RL_TRIANGLES come in groups of 3 vertices and RL_QUADS come in groups of 4 vertices
-    // Checking current draw.mode when a new vertex is required and finish the batch only if the draw.mode draw.vertexCount is %2, %3 or %4
-    if (RLGL.State.vertexCounter > ((currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].elementCount*4 - 4))
-    {
-        if (((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode == RL_LINES) &&
-            ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].vertexCount%2 == 0))
-        {
-            // Reached the maximum number of vertices for RL_LINES drawing
-            // Launch a draw call but keep current state for next vertices comming
-            // NOTE: Adding +1 vertex to the check for some safety
-            rlCheckRenderBatchLimit(2 + 1);
-        }
-        else if (((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode == RL_TRIANGLES) &&
-            ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].vertexCount%3 == 0))
-        {
-            rlCheckRenderBatchLimit(3 + 1);
-        }
-        else if (((currentBatch).draws[(currentBatch).drawCounter as usize - 1].mode == RL_QUADS) &&
-            ((currentBatch).draws[(currentBatch).drawCounter as usize - 1].vertexCount%4 == 0))
-        {
-            rlCheckRenderBatchLimit(4 + 1);
-        }
-    }
-
-    // Add vertices
-    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize] = tx;
-    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize + 1] = ty;
-    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].vertices[3 * RLGL.State.vertexCounter as usize + 2] = tz;
-
-    // Add current texcoord
-    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].texcoords[2* RLGL.State.vertexCounter as usize] = RLGL.State.texcoordx;
-    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].texcoords[2* RLGL.State.vertexCounter as usize + 1] = RLGL.State.texcoordy;
-
-    // Add current normal
-    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize] = RLGL.State.normalx;
-    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize + 1] = RLGL.State.normaly;
-    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].normals[3*RLGL.State.vertexCounter as usize + 2] = RLGL.State.normalz;
-
-    // Add current color
-    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize] = RLGL.State.colorr;
-    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 1] = RLGL.State.colorg;
-    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 2] = RLGL.State.colorb;
-    (currentBatch).vertexBuffer[(currentBatch).currentBuffer as usize].colors[4*RLGL.State.vertexCounter as usize + 3] = RLGL.State.colora;
-
-    RLGL.State.vertexCounter+=1;
-    (currentBatch).draws[(*RLGL.currentBatch).drawCounter as usize - 1].vertexCount+=1;
-}
-
-// Define one vertex (position)
-pub unsafe fn rlVertex2f(x: f32, y: f32) {
-    rlVertex3f(x, y, (*RLGL.currentBatch).currentDepth);
-}
-pub unsafe fn rlVertex2i(x: i32, y: i32) {
-    rlVertex3f(x as f32, y as f32, (*RLGL.currentBatch).currentDepth);
-}
-
-// Define one vertex (texture coordinate)
-// NOTE: Texture coordinates are limited to QUADS only
-pub unsafe fn rlTexCoord2f(x: f32, y: f32) {
-    RLGL.State.texcoordx = x;
-    RLGL.State.texcoordy = y;
-}
-
-// Define one vertex (normal)
-// NOTE: Normals limited to TRIANGLES only?
-pub unsafe fn rlNormal3f(x: f32, y: f32, z: f32) {
-    let mut normalx = x;
-    let mut normaly = y;
-    let mut normalz = z;
-    if (RLGL.State.transformRequired) {
-        normalx =
-            RLGL.State.transform.m0 * x + RLGL.State.transform.m4 * y + RLGL.State.transform.m8 * z;
-        normaly =
-            RLGL.State.transform.m1 * x + RLGL.State.transform.m5 * y + RLGL.State.transform.m9 * z;
-        normalz = RLGL.State.transform.m2 * x
-            + RLGL.State.transform.m6 * y
-            + RLGL.State.transform.m10 * z;
-    }
-
-    // NOTE: Default behavior assumes the normal vector is in the correct space for what the shader expects,
-    // it could be not normalized to 0.0f..1.0f, magnitud can be useed for some effects
-    /*
-    // WARNING: Vector normalization if required
-    float length = sqrtf(normalx*normalx + normaly*normaly + normalz*normalz);
-    if (length != 0.0f)
-    {
-        float ilength = 1.0f/length;
-        normalx *= ilength;
-        normaly *= ilength;
-        normalz *= ilength;
-    }
-    */
-    RLGL.State.normalx = normalx;
-    RLGL.State.normaly = normaly;
-    RLGL.State.normalz = normalz;
-}
-
-pub unsafe fn rlColor4ub(x: u8, y: u8, z: u8, w: u8) {
-    RLGL.State.colorr = x;
-    RLGL.State.colorg = y;
-    RLGL.State.colorb = z;
-    RLGL.State.colora = w;
-}
-
-pub unsafe fn rlColor4f(r: f32, g: f32, b: f32, a: f32) {
-    rlColor4ub(
-        (r * 255.0) as u8,
-        (g * 255.0) as u8,
-        (b * 255.0) as u8,
-        (a * 255.0) as u8,
-    );
-}
-
-// Define one vertex (color)
-pub unsafe fn rlColor3f(x: f32, y: f32, z: f32) {
-    rlColor4ub((x * 255.0) as u8, (y * 255.0) as u8, (z * 255.0) as u8, 255);
-}
-
-pub unsafe fn rlSetTexture(id: u32) {
-    if id == 0 {
-        // NOTE: If quads batch limit is reached, force a draw call and next batch starts
-        if RLGL.State.vertexCounter
-            >= (&(*RLGL.currentBatch).vertexBuffer)[(*RLGL.currentBatch).currentBuffer as usize]
-                .elementCount
-                * 4
-        {
-            rlDrawRenderBatch(RLGL.currentBatch);
-        }
-        RLGL.State.currentTextureId = RLGL.State.defaultTextureId;
-    } else {
-        RLGL.State.currentTextureId = id;
-        let drawCountersub1 = (*RLGL.currentBatch).drawCounter as usize - 1;
-        if (&(*RLGL.currentBatch).draws)[drawCountersub1].textureId
-            != id as i32
-        {
-            if (&(*RLGL.currentBatch).draws)[drawCountersub1].vertexCount
-                > 0
-            {
-                // Make sure current RLGL.currentBatch.draws[i].vertexCount is aligned a multiple of 4,
-                // that way, following QUADS drawing will keep aligned with index processing
-                // It implies adding some extra alignment vertex at the end of the draw,
-                // those vertex are not processed but they are considered as an additional offset
-                // for the next set of vertex to be drawn
-                if (&(*RLGL.currentBatch).draws)[drawCountersub1].mode
-                    == RL_LINES
-                {
-                    (&mut (*RLGL.currentBatch).draws)[drawCountersub1]
-                        .vertexAlignment = if (&(*RLGL.currentBatch).draws)
-                        [drawCountersub1]
-                        .vertexCount
-                        < 4
-                    {
-                        (&(*RLGL.currentBatch).draws)[drawCountersub1]
-                            .vertexCount
-                    } else {
-                        (&(*RLGL.currentBatch).draws)[drawCountersub1]
-                            .vertexCount
-                            % 4
-                    };
-                } else if (&(*RLGL.currentBatch).draws)[drawCountersub1]
-                    .mode
-                    == RL_TRIANGLES
-                {
-                    (&mut (*RLGL.currentBatch).draws)[drawCountersub1]
-                        .vertexAlignment = if (&(*RLGL.currentBatch).draws)
-                        [drawCountersub1]
-                        .vertexCount
-                        < 4
-                    {
-                        1
-                    } else {
-                        4 - ((&(*RLGL.currentBatch).draws)
-                            [drawCountersub1]
-                            .vertexCount
-                            % 4)
-                    };
-                } else {
-                    (&mut (*RLGL.currentBatch).draws)[drawCountersub1]
-                        .vertexAlignment = 0;
-                }
-
-                if !rlCheckRenderBatchLimit(
-                    (&(*RLGL.currentBatch).draws)[drawCountersub1]
-                        .vertexAlignment,
-                ) {
-                    RLGL.State.vertexCounter += (&(*RLGL.currentBatch).draws)
-                        [drawCountersub1]
-                        .vertexAlignment;
-
-                    (*RLGL.currentBatch).drawCounter += 1;
-
-                    (&mut (*RLGL.currentBatch).draws)[drawCountersub1]
-                        .mode = (&(*RLGL.currentBatch).draws)
-                        [(*RLGL.currentBatch).drawCounter as usize - 2]
-                        .mode;
-                }
-            }
-
-            if (*RLGL.currentBatch).drawCounter >= RL_DEFAULT_BATCH_DRAWCALLS {
-                rlDrawRenderBatch(RLGL.currentBatch);
-            }
-
-            (&mut (*RLGL.currentBatch).draws)[drawCountersub1].textureId =
-                id as i32;
-            (&mut (*RLGL.currentBatch).draws)[drawCountersub1].vertexCount =
-                0;
-        }
-    }
-}
-
-pub unsafe fn rlActiveTextureSlot(slot: i32) {
-    gl::ActiveTexture(gl::TEXTURE0 + slot as u32);
-}
-
-pub unsafe fn rlEnableTexture(id: u32) {
-    gl::BindTexture(gl::TEXTURE_2D, id);
-}
-
-pub unsafe fn rlDisableTexture() {
-    gl::BindTexture(gl::TEXTURE_2D, 0);
-}
-
-pub unsafe fn rlEnableTextureCubemap(id: u32) {
-    gl::BindTexture(gl::TEXTURE_CUBE_MAP, id);
-}
-
-pub unsafe fn rlDisableTextureCubemap() {
-    gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0);
-}
-
-pub const GL_TEXTURE_MAX_ANISOTROPY_EXT: u32 = 0x84FE;
-/// Set texture parameters (wrap mode/filter mode)
-pub unsafe fn rlTextureParameters(id: u32, param: i32, value: i32) {
-    gl::BindTexture(gl::TEXTURE_2D, id);
-    match param as u32 {
-        RL_TEXTURE_WRAP_S | RL_TEXTURE_WRAP_T => {
-            if value as u32 == RL_TEXTURE_WRAP_MIRROR_CLAMP {
-                if RLGL.ExtSupported.texMirrorClamp {
-                    gl::TexParameteri(gl::TEXTURE_2D, param as u32, value);
-                } else {
-                    warn!("GL: Clamp mirror wrap mode not supported (GL_MIRROR_CLAMP_EXT)",);
-                }
-            } else {
-                gl::TexParameteri(gl::TEXTURE_2D, param as u32, value);
-            }
-        }
-
-        RL_TEXTURE_MAG_FILTER | RL_TEXTURE_MIN_FILTER => {
-            gl::TexParameteri(gl::TEXTURE_2D, param as u32, value);
-        }
-
-        RL_TEXTURE_FILTER_ANISOTROPIC => {
-            // Reset anisotropy filter, in case it was set
-            gl::TexParameterf(gl::TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1.0);
-
-            if (value as f32) <= RLGL.ExtSupported.maxAnisotropyLevel {
-                gl::TexParameterf(gl::TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, value as f32);
-            } else if RLGL.ExtSupported.maxAnisotropyLevel > 0.0 {
-                warn!(
-                    "GL: Maximum anisotropic filter level supported is {}X level {}",
-                    id, RLGL.ExtSupported.maxAnisotropyLevel as i32,
-                );
-
-                gl::TexParameterf(gl::TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, value as f32);
-            } else {
-                warn!("GL: Anisotropic filtering not supported");
-            }
-        }
-
-        #[cfg(feature = "opengl_33")]
-        RL_TEXTURE_MIPMAP_BIAS_RATIO => {
-            gl::TexParameterf(gl::TEXTURE_2D, gl::TEXTURE_LOD_BIAS, value as f32 / 100.0);
-        }
-
-        _ => {}
-    }
-
-    gl::BindTexture(gl::TEXTURE_2D, 0);
-}
-
-pub unsafe fn rlCubemapParameters(id: u32, param: i32, value: i32) {
-    gl::BindTexture(gl::TEXTURE_CUBE_MAP, id);
-
-    // Reset anisotropy filter, in case it was set
-    gl::TexParameterf(gl::TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1.0);
-
-    match param as u32 {
-        RL_TEXTURE_WRAP_S | RL_TEXTURE_WRAP_T => {
-            if value == RL_TEXTURE_WRAP_MIRROR_CLAMP as i32 {
-                if RLGL.ExtSupported.texMirrorClamp {
-                    gl::TexParameteri(gl::TEXTURE_CUBE_MAP, param as u32, value);
-                } else {
-                    warn!("GL: Clamp mirror wrap mode not supported (GL_MIRROR_CLAMP_EXT)");
-                }
-            } else {
-                gl::TexParameteri(gl::TEXTURE_CUBE_MAP, param as u32, value);
-            }
-        }
-
-        RL_TEXTURE_MAG_FILTER | RL_TEXTURE_MIN_FILTER => {
-            gl::TexParameteri(gl::TEXTURE_CUBE_MAP, param as u32, value);
-        }
-
-        RL_TEXTURE_FILTER_ANISOTROPIC => {
-            if (value as f32) <= RLGL.ExtSupported.maxAnisotropyLevel {
-                gl::TexParameterf(
-                    gl::TEXTURE_CUBE_MAP,
-                    GL_TEXTURE_MAX_ANISOTROPY_EXT,
-                    value as f32,
-                );
-            } else if RLGL.ExtSupported.maxAnisotropyLevel > 0.0 {
-                warn!(
-                    "GL: Maximum anisotropic filter level supported is {}X, level {}",
-                    id, RLGL.ExtSupported.maxAnisotropyLevel as i32,
-                );
-
-                gl::TexParameterf(
-                    gl::TEXTURE_CUBE_MAP,
-                    GL_TEXTURE_MAX_ANISOTROPY_EXT,
-                    value as f32,
-                );
-            } else {
-                warn!("GL: Anisotropic filtering not supported");
-            }
-        }
-
-        #[cfg(feature = "opengl_33")]
-        RL_TEXTURE_MIPMAP_BIAS_RATIO => {
-            gl::TexParameterf(
-                gl::TEXTURE_CUBE_MAP,
-                gl::TEXTURE_LOD_BIAS,
-                value as f32 / 100.0,
-            );
-        }
-
-        _ => {}
-    }
-
-    gl::BindTexture(gl::TEXTURE_CUBE_MAP, 0);
-}
-
-pub unsafe fn rlEnableShader(id: u32) {
-    gl::UseProgram(id);
-}
-
-// Disable shader program
-pub unsafe fn rlDisableShader() {
-    gl::UseProgram(0);
-}
-
-// Enable rendering to texture (fbo)
-pub unsafe fn rlEnableFramebuffer(id: u32) {
-    gl::BindFramebuffer(gl::FRAMEBUFFER, id);
-}
-
-// return the active render texture (fbo)
-pub unsafe fn rlGetActiveFramebuffer() -> u32 {
-    let mut fboId: i32 = 0;
-
-    #[cfg(any(feature = "opengl_33", feature = "opengl_es3",))]
-    {
-        gl::GetIntegerv(gl::DRAW_FRAMEBUFFER_BINDING, &mut fboId);
-    }
-
-    fboId as u32
-}
-
-// Disable rendering to texture
-pub unsafe fn rlDisableFramebuffer() {
-    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-}
-
-// Blit active framebuffer to main framebuffer
-pub unsafe fn rlBlitFramebuffer(
-    srcX: i32,
-    srcY: i32,
-    srcWidth: i32,
-    srcHeight: i32,
-    dstX: i32,
-    dstY: i32,
-    dstWidth: i32,
-    dstHeight: i32,
-    bufferMask: i32,
-) {
-    #[cfg(any(feature = "opengl_33", feature = "opengl_es3"))]
-    {
-        gl::BlitFramebuffer(
-            srcX,
-            srcY,
-            srcWidth,
-            srcHeight,
-            dstX,
-            dstY,
-            dstWidth,
-            dstHeight,
-            bufferMask as u32,
-            gl::NEAREST,
-        );
-    }
-}
-
-// Bind framebuffer object (fbo)
-pub unsafe fn rlBindFramebuffer(target: u32, framebuffer: u32) {
-    gl::BindFramebuffer(target, framebuffer);
-}
-
-// Activate multiple draw color buffers
-// NOTE: One color buffer is always active by default
-pub unsafe fn rlActiveDrawBuffers(count: i32) {
-    #[cfg(any(feature = "opengl_33", feature = "opengl_es3"))]
-    {
-        // NOTE: Maximum number of draw buffers supported is implementation dependent,
-        // it can be queried with glGet*() but it must be at least 8
-        //GLint maxDrawBuffers = 0;
-        //glGetIntegerv(GL_MAX_DRAW_BUFFERS, &maxDrawBuffers);
-
-        if (count > 0) {
-            if (count > 8) {
-                warn!("GL: Max color buffers limited to 8");
-            } else {
-                let buffers = [
-                    gl::COLOR_ATTACHMENT0,
-                    gl::COLOR_ATTACHMENT1,
-                    gl::COLOR_ATTACHMENT2,
-                    gl::COLOR_ATTACHMENT3,
-                    gl::COLOR_ATTACHMENT4,
-                    gl::COLOR_ATTACHMENT5,
-                    gl::COLOR_ATTACHMENT6,
-                    gl::COLOR_ATTACHMENT7,
-                ];
-
-                gl::DrawBuffers(count, buffers.as_ptr());
-            }
-        } else {
-            warn!("GL: One color buffer active by default");
-        }
-    }
-}
-
-// Render state configuration
-pub unsafe fn rlEnableColorBlend() {
-    gl::Enable(gl::BLEND);
-}
-pub unsafe fn rlDisableColorBlend() {
-    gl::Disable(gl::BLEND);
-}
-pub unsafe fn rlEnableDepthTest() {
-    gl::Enable(gl::DEPTH_TEST);
-}
-pub unsafe fn rlDisableDepthTest() {
-    gl::Disable(gl::DEPTH_TEST);
-}
-pub unsafe fn rlEnableDepthMask() {
-    gl::DepthMask(gl::TRUE);
-}
-pub unsafe fn rlDisableDepthMask() {
-    gl::DepthMask(gl::FALSE);
-}
-pub unsafe fn rlEnableBackfaceCulling() {
-    gl::Enable(gl::CULL_FACE);
-}
-pub unsafe fn rlDisableBackfaceCulling() {
-    gl::Disable(gl::CULL_FACE);
-}
-
-/// Set color mask active for screen read/draw
-pub unsafe fn rlColorMask(r: bool, g: bool, b: bool, a: bool) {
-    gl::ColorMask(r as u8, g as u8, b as u8, a as u8);
-}
-
-pub unsafe fn rlSetCullFace(mode: i32) {
-    match mode {
-        RL_CULL_FACE_BACK => gl::CullFace(gl::BACK),
-        RL_CULL_FACE_FRONT => gl::CullFace(gl::FRONT),
-        _ => {}
-    }
-}
-pub unsafe fn rlEnableScissorTest() {
-    gl::Enable(gl::SCISSOR_TEST);
-}
-pub unsafe fn rlDisableScissorTest() {
-    gl::Disable(gl::SCISSOR_TEST);
-}
-pub unsafe fn rlScissor(x: i32, y: i32, width: i32, height: i32) {
-    gl::Scissor(x, y, width, height);
-}
-
-pub unsafe fn rlEnableWireMode() {
-    // NOTE: glPolygonMode() not available on OpenGL ES
-    #[cfg(feature = "opengl_33")]
-    gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
-}
-
-pub unsafe fn rlDisableWireMode() {
-    // NOTE: glPolygonMode() not available on OpenGL ES
-    #[cfg(feature = "opengl_33")]
-    gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
-}
-
-pub unsafe fn rlEnablePointMode() {
-    #[cfg(feature = "opengl_33")]
-    {
-        // NOTE: glPolygonMode() not available on OpenGL ES
-        gl::PolygonMode(gl::FRONT_AND_BACK, gl::POINT);
-        gl::Enable(gl::PROGRAM_POINT_SIZE);
-    }
-}
-
-pub unsafe fn rlDisablePointMode() {
-    #[cfg(feature = "opengl_33")]
-    // NOTE: glPolygonMode() not available on OpenGL ES
-    gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
-}
-
-pub unsafe fn rlSetLineWidth(width: f32) {
-    gl::LineWidth(width);
-}
-
-pub unsafe fn rlGetLineWidth() -> f32 {
-    let mut width: f32 = 0.0;
-    gl::GetFloatv(gl::LINE_WIDTH, &mut width);
-    width
-}
-
-pub unsafe fn rlSetPointSize(_size: f32) {
-    // gl 11
-    //gl::PointSize(size);
-}
-
-pub unsafe fn rlGetPointSize() -> f32 {
-    let size: f32 = 1.0;
-    // gl 11
-    //gl::GetFloatv(gl::POINT_SIZE, &mut size);
-    size
-}
-
-pub unsafe fn rlEnableSmoothLines() {
-    #[cfg(feature = "opengl_33")]
-    gl::Enable(gl::LINE_SMOOTH);
-}
-
-pub unsafe fn rlDisableSmoothLines() {
-    #[cfg(feature = "opengl_33")]
-    gl::Disable(gl::LINE_SMOOTH);
-}
-
-// Enable stereo rendering
-pub unsafe fn rlEnableStereoRender() {
-    RLGL.State.stereoRender = true;
-}
-
-// Disable stereo rendering
-pub unsafe fn rlDisableStereoRender() {
-    RLGL.State.stereoRender = false;
-}
-
-// Check if stereo render is enabled
-pub unsafe fn rlIsStereoRenderEnabled() -> bool {
-    return RLGL.State.stereoRender;
-}
-
-/// Clear color buffer with color
-pub unsafe fn rlClearColor(r: u8, g: u8, b: u8, a: u8) {
-    // Color values clamp to 0.0f(0) and 1.0f(255)
-    gl::ClearColor(
-        r as f32 / 255.0,
-        g as f32 / 255.0,
-        b as f32 / 255.0,
-        a as f32 / 255.0,
-    );
-}
-
-/// Clear used screen buffers (color and depth)
-pub unsafe fn rlClearScreenBuffers() {
-    gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); // Clear used buffers: Color and Depth (Depth is used for 3D)
-
-    //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);     // Stencil buffer not used...
-}
-
-// Check and log OpenGL error codes
-#[rustfmt::skip]
-pub unsafe fn rlCheckErrors()
-{
-    let mut check = true;
-    while check
-    {
-        let err = gl::GetError();
-        match err
-        {
-            gl::NO_ERROR => { check = false; break;}
-            0x0500 => { warn!("GL: Error detected: GL_INVALID_ENUM"); break;}
-            0x0501 => { warn!("GL: Error detected: GL_INVALID_VALUE"); break;}
-            0x0502 => { warn!("GL: Error detected: GL_INVALID_OPERATION"); break;}
-            0x0503 => { warn!("GL: Error detected: GL_STACK_OVERFLOW"); break;}
-            0x0504 => { warn!("GL: Error detected: GL_STACK_UNDERFLOW");  break;}
-            0x0505 => { warn!("GL: Error detected: GL_OUT_OF_MEMORY"); break;}
-            0x0506 => { warn!("GL: Error detected: GL_INVALID_FRAMEBUFFER_OPERATION"); break;}
-            _ => { warn!("GL: Error detected: Unknown error code: %{}", err); break;}
-        }
-    }
-}
-
-/// Set blend mode
-#[rustfmt::skip]
-pub unsafe fn rlSetBlendMode(mode: i32)
-{
-    if ((RLGL.State.currentBlendMode != mode as u32) || ((mode == rlBlendMode::RL_BLEND_CUSTOM as i32 || mode == rlBlendMode::RL_BLEND_CUSTOM_SEPARATE as i32) && RLGL.State.glCustomBlendModeModified))
-    {
-        rlDrawRenderBatch(RLGL.currentBatch);
-
-        match mode
-        {
-            val if val == rlBlendMode::RL_BLEND_ALPHA as i32 => { gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA); gl::BlendEquation(gl::FUNC_ADD); }
-            val if val == rlBlendMode::RL_BLEND_ADDITIVE as i32 => { gl::BlendFunc(gl::SRC_ALPHA, gl::ONE); gl::BlendEquation(gl::FUNC_ADD); }
-            val if val == rlBlendMode::RL_BLEND_MULTIPLIED as i32 => { gl::BlendFunc(gl::DST_COLOR, gl::ONE_MINUS_SRC_ALPHA); gl::BlendEquation(gl::FUNC_ADD); }
-            val if val == rlBlendMode::RL_BLEND_ADD_COLORS as i32 => { gl::BlendFunc(gl::ONE, gl::ONE); gl::BlendEquation(gl::FUNC_ADD); }
-            val if val == rlBlendMode::RL_BLEND_SUBTRACT_COLORS as i32 => { gl::BlendFunc(gl::ONE, gl::ONE); gl::BlendEquation(gl::FUNC_SUBTRACT); }
-            val if val == rlBlendMode::RL_BLEND_ALPHA_PREMULTIPLY as i32 => { gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA); gl::BlendEquation(gl::FUNC_ADD); }
-            val if val == rlBlendMode::RL_BLEND_CUSTOM as i32 => {
-                // NOTE: Using GL blend src/dst factors and GL equation configured with rlSetBlendFactors()
-                gl::BlendFunc(RLGL.State.glBlendSrcFactor, RLGL.State.glBlendDstFactor);
-                gl::BlendEquation(RLGL.State.glBlendEquation);
-            }
-            val if val == rlBlendMode::RL_BLEND_CUSTOM_SEPARATE as i32 => {
-                // NOTE: Using GL blend src/dst factors and GL equation configured with rlSetBlendFactorsSeparate()
-                gl::BlendFuncSeparate(RLGL.State.glBlendSrcFactorRGB, RLGL.State.glBlendDestFactorRGB, RLGL.State.glBlendSrcFactorAlpha, RLGL.State.glBlendDestFactorAlpha);
-                gl::BlendEquationSeparate(RLGL.State.glBlendEquationRGB, RLGL.State.glBlendEquationAlpha);
-            } 
-            _ => {}
-        }
-
-        RLGL.State.currentBlendMode = mode as u32;
-        RLGL.State.glCustomBlendModeModified = false;
-    }
-}
-
-// Set blending mode factor and equation
-pub unsafe fn rlSetBlendFactors(glSrcFactor: i32, glDstFactor: i32, glEquation: i32) {
-    if ((RLGL.State.glBlendSrcFactor != glSrcFactor as u32)
-        || (RLGL.State.glBlendDstFactor != glDstFactor as u32)
-        || (RLGL.State.glBlendEquation != glEquation as u32))
-    {
-        RLGL.State.glBlendSrcFactor = glSrcFactor as u32;
-        RLGL.State.glBlendDstFactor = glDstFactor as u32;
-        RLGL.State.glBlendEquation = glEquation as u32;
-
-        RLGL.State.glCustomBlendModeModified = true;
-    }
-}
-
-// Set blending mode factor and equation separately for RGB and alpha
-pub unsafe fn rlSetBlendFactorsSeparate(
-    glSrcRGB: i32,
-    glDstRGB: i32,
-    glSrcAlpha: i32,
-    glDstAlpha: i32,
-    glEqRGB: i32,
-    glEqAlpha: i32,
-) {
-    if ((RLGL.State.glBlendSrcFactorRGB != glSrcRGB as u32)
-        || (RLGL.State.glBlendDestFactorRGB != glDstRGB as u32)
-        || (RLGL.State.glBlendSrcFactorAlpha != glSrcAlpha as u32)
-        || (RLGL.State.glBlendDestFactorAlpha != glDstAlpha as u32)
-        || (RLGL.State.glBlendEquationRGB != glEqRGB as u32)
-        || (RLGL.State.glBlendEquationAlpha != glEqAlpha as u32))
-    {
-        RLGL.State.glBlendSrcFactorRGB = glSrcRGB as u32;
-        RLGL.State.glBlendDestFactorRGB = glDstRGB as u32;
-        RLGL.State.glBlendSrcFactorAlpha = glSrcAlpha as u32;
-        RLGL.State.glBlendDestFactorAlpha = glDstAlpha as u32;
-        RLGL.State.glBlendEquationRGB = glEqRGB as u32;
-        RLGL.State.glBlendEquationAlpha = glEqAlpha as u32;
-
-        RLGL.State.glCustomBlendModeModified = true;
-    }
-}
-
-#[cfg(all(feature = "opengl_43", feature = "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"))]
-extern "system" fn rlDebugMessageCallback(
-    source: u32,
-    type_: u32,
-    id: u32,
-    severity: u32,
-    _length: i32,
-    message: *const i8,
-    _user_param: *mut libc::c_void,
-) {
-    // Ignore non-significant error/warning codes (NVidia drivers)
-    if (id == 131169) || (id == 131185) || (id == 131218) || (id == 131204) {
-        return;
-    }
-
-    let msgSource = match source {
-        gl::DEBUG_SOURCE_API => "API",
-        gl::DEBUG_SOURCE_WINDOW_SYSTEM => "WINDOW_SYSTEM",
-        gl::DEBUG_SOURCE_SHADER_COMPILER => "SHADER_COMPILER",
-        gl::DEBUG_SOURCE_THIRD_PARTY => "THIRD_PARTY",
-        gl::DEBUG_SOURCE_APPLICATION => "APPLICATION",
-        gl::DEBUG_SOURCE_OTHER => "OTHER",
-        _ => "UNKNOWN",
-    };
-
-    let msgType = match type_ {
-        gl::DEBUG_TYPE_ERROR => "ERROR",
-        gl::DEBUG_TYPE_DEPRECATED_BEHAVIOR => "DEPRECATED_BEHAVIOR",
-        gl::DEBUG_TYPE_UNDEFINED_BEHAVIOR => "UNDEFINED_BEHAVIOR",
-        gl::DEBUG_TYPE_PORTABILITY => "PORTABILITY",
-        gl::DEBUG_TYPE_PERFORMANCE => "PERFORMANCE",
-        gl::DEBUG_TYPE_MARKER => "MARKER",
-        gl::DEBUG_TYPE_PUSH_GROUP => "PUSH_GROUP",
-        gl::DEBUG_TYPE_POP_GROUP => "POP_GROUP",
-        gl::DEBUG_TYPE_OTHER => "OTHER",
-        _ => "UNKNOWN",
-    };
-
-    let msgSeverity = match severity {
-        gl::DEBUG_SEVERITY_LOW => "LOW",
-        gl::DEBUG_SEVERITY_MEDIUM => "MEDIUM",
-        gl::DEBUG_SEVERITY_HIGH => "HIGH",
-        gl::DEBUG_SEVERITY_NOTIFICATION => "NOTIFICATION",
-        _ => "DEFAULT",
-    };
-
-    let message = if message.is_null() {
-        "<null>"
-    } else {
-        unsafe { CStr::from_ptr(message).to_str().unwrap_or("<invalid utf8>") }
-    };
-
-    info!("GL: OpenGL debug message: {}", message);
-    info!("    > Type: {}", msgType);
-    info!("    > Source = {}", msgSource);
-    info!("    > Severity = {}", msgSeverity);
-}
-
-pub unsafe fn rlglInit(width: i32, height: i32) {
-    IS_GPU_READY = true;
-
-    // Enable OpenGL debug context if requested (and supported)
-    #[cfg(all(
-    feature = "opengl_43",
-    feature = "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"))]
-    //if ((gl::DebugMessageCallback != NULL) && (gl::DebugMessageControl != NULL))
-    {
-        // You must already have loaded OpenGL function pointers with `gl::load_with(...)`
-        gl::DebugMessageCallback(Some(rlDebugMessageCallback), std::ptr::null());
-        //gl::DebugMessageCallback(rlDebugMessageCallback, 0 as *const std::ffi::c_void);
-        gl::DebugMessageControl(gl::DEBUG_SOURCE_API, gl::DEBUG_TYPE_ERROR, gl::DEBUG_SEVERITY_HIGH, 0, std::ptr::null(), gl::TRUE);
-        // Debug context options:
-        //  - GL_DEBUG_OUTPUT - Faster version but not useful for breakpoints
-        //  - GL_DEBUG_OUTPUT_SYNCHRONUS - Callback is in sync with errors, so a breakpoint can be placed on the callback in order to get a stacktrace for the GL error
-        gl::Enable(gl::DEBUG_OUTPUT);
-        gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
-    }
-
-    // Init default white texture
-    let pixels = [255, 255, 255, 255]; // 1 pixel RGBA (4 bytes)
-    RLGL.State.defaultTextureId = rlLoadTexture(
-        pixels.as_ptr() as *const std::ffi::c_void,
-        1,
-        1,
-        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32,
-        1,
-    );
-    RLGL.State.currentTextureId = RLGL.State.defaultTextureId;
-
-    if (RLGL.State.defaultTextureId != 0) {
-        info!(
-            "TEXTURE: [ID {}] Default texture loaded successfully",
-            RLGL.State.defaultTextureId
-        );
-    } else {
-        warn!("TEXTURE: Failed to load default texture");
-    }
-
-    // Init default Shader (customized for GL 3.3 and ES2)
-    // Loaded: RLGL.State.defaultShaderId + RLGL.State.defaultShaderLocs
-    rlLoadShaderDefault();
-    RLGL.State.currentShaderId = RLGL.State.defaultShaderId;
-    RLGL.State.currentShaderLocs = RLGL.State.defaultShaderLocs.as_mut_ptr();
-
-    // Init default vertex arrays buffers
-    // Simulate that the default shader has the location RL_SHADER_LOC_VERTEX_NORMAL to bind the normal buffer for the default render batch
-    *(RLGL
-        .State
-        .currentShaderLocs
-        .add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_NORMAL as usize)) =
-        RL_DEFAULT_SHADER_ATTRIB_LOCATION_NORMAL as i32;
-    RLGL.defaultBatch =
-        rlLoadRenderBatch(RL_DEFAULT_BATCH_BUFFERS, RL_DEFAULT_BATCH_BUFFER_ELEMENTS);
-    *(RLGL
-        .State
-        .currentShaderLocs
-        .add(rlShaderLocationIndex::RL_SHADER_LOC_VERTEX_NORMAL as usize)) = -1;
-    RLGL.currentBatch = &mut RLGL.defaultBatch;
-
-    // Init stack matrices (emulating OpenGL 1.1)
-    for i in 0..RL_MAX_MATRIX_STACK_SIZE {
-        RLGL.State.stack[i] = Matrix::IDENTITY;
-    }
-
-    // Init internal matrices
-    RLGL.State.transform = Matrix::IDENTITY;
-    RLGL.State.projection = Matrix::IDENTITY;
-    RLGL.State.modelview = Matrix::IDENTITY;
-    RLGL.State.currentMatrix = &mut RLGL.State.modelview;
-
-    // Initialize OpenGL default states
-    //----------------------------------------------------------
-    // Init state: Depth test
-    gl::DepthFunc(gl::LEQUAL); // Type of depth testing to apply
-    gl::Disable(gl::DEPTH_TEST); // Disable depth testing for 2D (only used for 3D)
-
-    // Init state: Blending mode
-    gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA); // Color blending function (how colors are mixed)
-    gl::Enable(gl::BLEND); // Enable color blending (required to work with transparencies)
-
-    // Init state: Culling
-    // NOTE: All shapes/models triangles are drawn CCW
-    gl::CullFace(gl::BACK); // Cull the back face (default)
-    gl::FrontFace(gl::CCW); // Front face are defined counter clockwise (default)
-    gl::Enable(gl::CULL_FACE); // Enable backface culling
-
-    // Init state: Cubemap seamless
-    #[cfg(feature = "opengl_33")]
-    gl::Enable(gl::TEXTURE_CUBE_MAP_SEAMLESS); // Seamless cubemaps (not supported on OpenGL ES 2.0)
-
-    // Store screen size into global variables
-    RLGL.State.framebufferWidth = width;
-    RLGL.State.framebufferHeight = height;
-
-    // Init state: Color/Depth buffers clear
-    gl::ClearColor(0.0, 0.0, 0.0, 1.0); // Set clear color (black)
-    gl::ClearDepth(1.0); // Set clear depth value (default)
-    gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); // Clear color and depth buffers (depth buffer required for 3D)
-
-    info!("RLGL: Default OpenGL state initialized successfully");
-    //----------------------------------------------------------
-}
-
-pub unsafe fn rlglClose() {
-    rlUnloadRenderBatch(&mut RLGL.defaultBatch);
-    rlUnloadShaderDefault();
-    gl::DeleteTextures(1, &RLGL.State.defaultTextureId);
-
-    info!(
-        "TEXTURE: [ID {}] Default texture unloaded successfully",
-        RLGL.State.defaultTextureId
-    );
-    IS_GPU_READY = false;
-}
-
-// Get pixel data size in bytes (image or texture)
-// NOTE: Size depends on pixel format
-pub fn rlGetPixelDataSize(width: i32, height: i32, format: i32) -> i32 {
-    let mut dataSize: i32 = 0; // Size in bytes
-    let mut bpp: i32 = 0;      // Bits per pixel
-    let format = PixelFormat::from_repr(format).unwrap();
-    match format {
-        PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE => bpp = 8,
-
-        PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA
-        | PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G6B5
-        | PixelFormat::PIXELFORMAT_UNCOMPRESSED_R5G5B5A1
-        | PixelFormat::PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 => bpp = 16,
-
-        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 => bpp = 32,
-        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8 => bpp = 24,
-
-        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32 => bpp = 32,
-        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32 => bpp = 32 * 3,
-        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 => bpp = 32 * 4,
-
-        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16 => bpp = 16,
-        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16 => bpp = 16 * 3,
-        PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 => bpp = 16 * 4,
-
-        PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB
-        | PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGBA
-        | PixelFormat::PIXELFORMAT_COMPRESSED_ETC1_RGB
-        | PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB
-        | PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGB
-        | PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGBA => {
-            // 8 bytes per each 4x4 block
-            let blockWidth = (width + 3) / 4;
-            let blockHeight = (height + 3) / 4;
-            dataSize = blockWidth * blockHeight * 8;
-        }
-
-        PixelFormat::PIXELFORMAT_COMPRESSED_DXT3_RGBA
-        | PixelFormat::PIXELFORMAT_COMPRESSED_DXT5_RGBA
-        | PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA
-        | PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA => {
-            // 16 bytes per each 4x4 block
-            let blockWidth = (width + 3) / 4;
-            let blockHeight = (height + 3) / 4;
-            dataSize = blockWidth * blockHeight * 16;
-        }
-
-        PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA => {
-            // 4 bytes per each 4x4 block (as in original code)
-            let blockWidth = (width + 3) / 4;
-            let blockHeight = (height + 3) / 4;
-            dataSize = blockWidth * blockHeight * 4;
-        }
-
-        _ => {}
-    }
-
-    // Compute dataSize for uncompressed texture data (no blocks)
-    if (format as i32 >= PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32)
-        && (format as i32 <= PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 as i32)
-    {
-        let bytesPerPixel: f64 = (bpp as f64) / 8.0;
-        dataSize = (bytesPerPixel * (width as f64) * (height as f64)) as i32;
-    }
-
-    dataSize
 }
