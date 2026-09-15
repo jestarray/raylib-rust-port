@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-glam = "0.27"
+glam = "0.33"
 sdl3 = { version = "0.18.3", features = ["use-pkg-config"] }
 libc = "0.2"
 gl = "0.14.0"
@@ -14,14 +14,14 @@ strum = "0.28"
 strum_macros = "0.28"
 
 [features]
-#default = ["opengl_43", "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"]
+default = ["GRAPHICS_API_OPENGL_33", "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"]
 GRAPHICS_API_OPENGL_33 = []
 GRAPHICS_API_OPENGL_43 = ["GRAPHICS_API_OPENGL_33"]
 GRAPHICS_API_OPENGL_ES2 = []
-GRAPHICS_API_OPENGL_ES3 = []
+GRAPHICS_API_OPENGL_ES3 = ["GRAPHICS_API_OPENGL_ES2"]
 RLGL_SHOW_GL_DETAILS_INFO = []
 RLGL_ENABLE_OPENGL_DEBUG_CONTEXT = []
 
 [build-dependencies]
-cc = "1.0"
-bindgen = "0.69"
+cc = "1.4"
+bindgen = "0.73"

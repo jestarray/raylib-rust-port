@@ -1493,7 +1493,7 @@ pub unsafe fn rlSetBlendFactorsSeparate(glSrcRGB: i32, glDstRGB: i32, glSrcAlpha
 // Module Functions Definition - OpenGL Debug
 //----------------------------------------------------------------------------------
 #[cfg(all(feature = "GRAPHICS_API_OPENGL_43", feature = "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"))]
-pub unsafe extern "system" fn rlDebugMessageCallback(source: u32, type_: u32, id: u32, severity: u32, length: i32, message: *const c_char, userParam: *mut c_void)
+pub extern "system" fn rlDebugMessageCallback(source: u32, type_: u32, id: u32, severity: u32, length: i32, message: *const c_char, userParam: *mut c_void)
 {
     // Ignore non-significant error/warning codes (NVidia drivers)
     // NOTE: Here there are the details with a sample output:
@@ -1539,11 +1539,13 @@ pub unsafe extern "system" fn rlDebugMessageCallback(source: u32, type_: u32, id
         _ => "DEFAULT"
     };
 
-    let message = if message.is_null() { "".into() } else { CStr::from_ptr(message).to_string_lossy() };
-    warn!("GL: OpenGL debug message: {}", message);
-    warn!("    > Type: {}", msgType);
-    warn!("    > Source = {}", msgSource);
-    warn!("    > Severity = {}", msgSeverity);
+    unsafe {
+        let message = if message.is_null() { "".into() } else { CStr::from_ptr(message).to_string_lossy() }; 
+        warn!("GL: OpenGL debug message: {}", message);
+        warn!("    > Type: {}", msgType);
+        warn!("    > Source = {}", msgSource);
+        warn!("    > Severity = {}", msgSeverity);
+    }
 }
 
 //----------------------------------------------------------------------------------
