@@ -7,7 +7,7 @@ use raylib_rs::types::{Color, BLUE, GREEN, RED};
 
 fn main() {
     env_logger::init_from_env(env_logger::Env::default().filter_or("MY_LOG_LEVEL", "trace"));
-    InitWindow(800, 450, "raylib-rs - MVP Demo");
+    InitWindow(640, 480, "raylib-rs - MVP Demo");
     unsafe {
         rlgl::rlCheckErrors();
     }
@@ -17,13 +17,7 @@ fn main() {
         draw_rectangle(100, 100, 200, 150, RED);
         draw_circle(400, 225, 50.0, BLUE);
         draw_line(0, 0, 800, 450, GREEN);
-        unsafe {
-            rlgl::rlCheckErrors();
-        }
         EndDrawing();
-        unsafe {
-            rlgl::rlCheckErrors();
-        }
     }
 
     close_window();
