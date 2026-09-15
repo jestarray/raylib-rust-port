@@ -1,3 +1,4 @@
+#![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(missing_safety_doc, unused_parens, non_snake_case, static_mut_refs)]
 #![allow(
     clippy::too_many_arguments,
