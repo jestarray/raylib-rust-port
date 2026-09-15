@@ -318,7 +318,7 @@ pub fn InitPlatform() {
     flags |= WindowFlags::MOUSE_FOCUS.bits();
     flags |= WindowFlags::MOUSE_CAPTURE.bits();
 
-    let gl_version = rlGetVersion();
+    let gl_version = unsafe { rlGetVersion() };
 
     if gl_version != rlGlVersion::RL_OPENGL_SOFTWARE {
         flags |= WindowFlags::OPENGL.bits();
@@ -575,7 +575,7 @@ pub fn begin_drawing() {
         //CORE.Time.previous = CORE.Time.current;
 
         crate::rlgl::rlLoadIdentity();
-        crate::rlgl::rlMultMatrixf(&Matrix::IDENTITY.to_array());
+        crate::rlgl::rlMultMatrixf(Matrix::IDENTITY.to_array().as_ptr());
     }
 }
 
