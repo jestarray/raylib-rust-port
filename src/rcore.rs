@@ -1,9 +1,19 @@
+#![cfg_attr(rustfmt, rustfmt_skip)]
+#![allow(missing_safety_doc, unused_parens, non_snake_case, static_mut_refs)]
+#![allow(
+    clippy::too_many_arguments,
+    clippy::needless_return,
+    clippy::manual_range_contains,
+    clippy::field_reassign_with_default,
+    clippy::manual_map,
+    clippy::match_like_matches_macro,
+    clippy::upper_case_acronyms,
+    clippy::let_and_return
+)]
 use std::ffi::{c_char, CString};
 
 use crate::{
-    rlgl::{self, rlGetTextureIdDefault, rlGetVersion, rlGlVersion},
-    rshapes::SetShapesTexture,
-    types::{Color, Matrix, Rectangle, Texture2D, Vector2},
+    math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{self, rlGetTextureIdDefault, rlGetVersion, rlGlVersion}, rshapes::SetShapesTexture, types::{Color, Matrix, RAYLIB_VERSION, Rectangle, Texture2D, Vector2},
 };
 use gl;
 use sdl3::{self, event::EventType, sys::video, video::WindowFlags};
@@ -288,64 +298,70 @@ static mut CORE: CoreData = CoreData {
 use std::ffi::{c_void, CStr};
 use std::fmt::Write;
 use log::{debug, error, info, trace, warn};
-use crate::types::*;
-use crate::rlgl::*;
-use crate::rcamera::{MatrixLookAt, MatrixOrtho, MatrixPerspective};
 use crate::math::DEG2RAD;
-
-// WARNING: Custom file filters can be specified but following raylib IsFileExtension() convention: ".png;.wav;.glb"
-pub const FILE_FILTER_TAG_ALL: &str = "*.*";        // Filter to include all file types and directories on scan
-pub const FILE_FILTER_TAG_FILE_ONLY: &str = "FILES*"; // Filter to include all file types on scan (no directories)
-pub const FILE_FILTER_TAG_DIR_ONLY: &str = "DIRS*";   // Filter to include only directories on scan
+use crate::rlgl::*;
+use crate::types::{AutomationEvent, AutomationEventList, BlendMode, Camera, Camera2D, CameraProjection, ConfigFlags, GamepadAxis, GamepadButton, Gesture, Image, KeyboardKey, MouseButton, MouseCursor, PixelFormat, Quaternion, Ray, RenderTexture2D, Shader, ShaderLocationIndex, TraceLogLevel, Vector3, VrDeviceInfo, VrStereoConfig};
+#[cfg(feature = "SUPPORT_MODULE_RTEXT")]
+use crate::rtext::{load_font_default as LoadFontDefault, get_font_default as GetFontDefault};
 
 //----------------------------------------------------------------------------------
 // Global Variables Definition
 //----------------------------------------------------------------------------------
-pub static raylib_version: &str = RAYLIB_VERSION;  // raylib version exported symbol, required for some bindings
+pub const raylib_version: &str = "6.1-dev";  // raylib version exported symbol, required for some bindings
 
-static mut logTypeLevel: i32 = LOG_INFO;           // Minimum log type level
+static mut windowTitle: Option<CString> = None; // Own the UTF-8 title passed to the platform as a C string
+
+static mut logTypeLevel: i32 = TraceLogLevel::LOG_INFO as i32; // Minimum log type level
 
 #[cfg(feature = "SUPPORT_SCREEN_CAPTURE")]
-static mut screenshotCounter: i32 = 0;             // Screenshots counter
+static mut screenshotCounter: i32 = 0;                   // Screenshots counter
 
-#[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
-mod automation_event_types
-{
+pub type TraceLogCallback = fn(i32, std::fmt::Arguments<'_>);
+pub type LoadFileDataCallback = unsafe fn(&str, &mut i32) -> *mut u8;
+pub type SaveFileDataCallback = unsafe fn(&str, *const c_void, i32) -> bool;
+pub type LoadFileTextCallback = fn(&str) -> Option<String>;
+pub type SaveFileTextCallback = fn(&str, &str) -> bool;
+static mut traceLog: Option<TraceLogCallback> = None;
+static mut loadFileData: Option<LoadFileDataCallback> = None;
+static mut saveFileData: Option<SaveFileDataCallback> = None;
+static mut loadFileText: Option<LoadFileTextCallback> = None;
+static mut saveFileText: Option<SaveFileTextCallback> = None;
+
 // Automation events type
-pub type AutomationEventType = u32;
-pub const EVENT_NONE: AutomationEventType = 0;
+#[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
+#[repr(u32)]
+pub enum AutomationEventType {
+    EVENT_NONE = 0,
     // Input events
-pub const INPUT_KEY_UP: AutomationEventType = 1;                   // param[0]: key
-pub const INPUT_KEY_DOWN: AutomationEventType = 2;                 // param[0]: key
-pub const INPUT_KEY_PRESSED: AutomationEventType = 3;              // param[0]: key
-pub const INPUT_KEY_RELEASED: AutomationEventType = 4;             // param[0]: key
-pub const INPUT_MOUSE_BUTTON_UP: AutomationEventType = 5;          // param[0]: button
-pub const INPUT_MOUSE_BUTTON_DOWN: AutomationEventType = 6;        // param[0]: button
-pub const INPUT_MOUSE_POSITION: AutomationEventType = 7;           // param[0]: x, param[1]: y
-pub const INPUT_MOUSE_WHEEL_MOTION: AutomationEventType = 8;       // param[0]: x delta, param[1]: y delta
-pub const INPUT_GAMEPAD_CONNECT: AutomationEventType = 9;          // param[0]: gamepad
-pub const INPUT_GAMEPAD_DISCONNECT: AutomationEventType = 10;       // param[0]: gamepad
-pub const INPUT_GAMEPAD_BUTTON_UP: AutomationEventType = 11;        // param[0]: button
-pub const INPUT_GAMEPAD_BUTTON_DOWN: AutomationEventType = 12;      // param[0]: button
-pub const INPUT_GAMEPAD_AXIS_MOTION: AutomationEventType = 13;      // param[0]: axis, param[1]: delta
-pub const INPUT_TOUCH_UP: AutomationEventType = 14;                 // param[0]: id
-pub const INPUT_TOUCH_DOWN: AutomationEventType = 15;               // param[0]: id
-pub const INPUT_TOUCH_POSITION: AutomationEventType = 16;           // param[0]: x, param[1]: y
-pub const INPUT_GESTURE: AutomationEventType = 17;                  // param[0]: gesture
+    INPUT_KEY_UP,                   // param[0]: key
+    INPUT_KEY_DOWN,                 // param[0]: key
+    INPUT_KEY_PRESSED,              // param[0]: key
+    INPUT_KEY_RELEASED,             // param[0]: key
+    INPUT_MOUSE_BUTTON_UP,          // param[0]: button
+    INPUT_MOUSE_BUTTON_DOWN,        // param[0]: button
+    INPUT_MOUSE_POSITION,           // param[0]: x, param[1]: y
+    INPUT_MOUSE_WHEEL_MOTION,       // param[0]: x delta, param[1]: y delta
+    INPUT_GAMEPAD_CONNECT,          // param[0]: gamepad
+    INPUT_GAMEPAD_DISCONNECT,       // param[0]: gamepad
+    INPUT_GAMEPAD_BUTTON_UP,        // param[0]: button
+    INPUT_GAMEPAD_BUTTON_DOWN,      // param[0]: button
+    INPUT_GAMEPAD_AXIS_MOTION,      // param[0]: axis, param[1]: delta
+    INPUT_TOUCH_UP,                 // param[0]: id
+    INPUT_TOUCH_DOWN,               // param[0]: id
+    INPUT_TOUCH_POSITION,           // param[0]: x, param[1]: y
+    INPUT_GESTURE,                  // param[0]: gesture
     // Window events
-pub const WINDOW_CLOSE: AutomationEventType = 18;                   // no params
-pub const WINDOW_MAXIMIZE: AutomationEventType = 19;                // no params
-pub const WINDOW_MINIMIZE: AutomationEventType = 20;                // no params
-pub const WINDOW_RESIZE: AutomationEventType = 21;                  // param[0]: width, param[1]: height
+    WINDOW_CLOSE,                   // no params
+    WINDOW_MAXIMIZE,                // no params
+    WINDOW_MINIMIZE,                // no params
+    WINDOW_RESIZE,                  // param[0]: width, param[1]: height
     // Custom events
-pub const ACTION_TAKE_SCREENSHOT: AutomationEventType = 22;         // no params
-pub const ACTION_SETTARGETFPS: AutomationEventType = 23;             // param[0]: fps
+    ACTION_TAKE_SCREENSHOT,         // no params
+    ACTION_SETTARGETFPS             // param[0]: fps
 }
-#[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
-use automation_event_types::*;
 
-#[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
 // Event type name strings, required for export
+#[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
 static autoEventTypeName: [&str; 24] = [
     "EVENT_NONE",
     "INPUT_KEY_UP",
@@ -374,9 +390,9 @@ static autoEventTypeName: [&str; 24] = [
 ];
 
 #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
-static mut currentEventList: *mut AutomationEventList = std::ptr::null_mut(); // Current automation events list, set by user, keep internal pointer
+static mut currentEventList: *mut AutomationEventList = std::ptr::null_mut();        // Current automation events list, set by user, keep internal pointer
 #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
-static mut automationEventRecording: bool = false; // Recording automation events flag
+static mut automationEventRecording: bool = false;               // Recording automation events flag
 //static short automationEventEnabled = 0b0000001111111111; // TODO: Automation events enabled for recording/playing
 
 //----------------------------------------------------------------------------------
@@ -384,7 +400,7 @@ static mut automationEventRecording: bool = false; // Recording automation event
 //----------------------------------------------------------------------------------
 
 // Initialize window and OpenGL context
-pub unsafe fn InitWindow(mut width: i32, mut height: i32, title: &str)
+pub unsafe fn InitWindow(mut width: i32, mut height: i32, mut title: &str)
 {
     info!("Initializing raylib {}", RAYLIB_VERSION);
 
@@ -480,21 +496,25 @@ pub unsafe fn InitWindow(mut width: i32, mut height: i32, title: &str)
     CORE.Window.screen.y = height as f32;
 
     CORE.Window.eventWaiting = false;
-    CORE.Window.screenScale = MatrixIdentity(); // No draw scaling required by default
-    if !title.is_empty() { CORE.Window.title = CString::new(title).unwrap().into_raw(); }
+    CORE.Window.screenScale = Matrix::identity(); // No draw scaling required by default
+    if (!title.is_empty())
+    {
+        windowTitle = Some(CString::new(title).unwrap());
+        CORE.Window.title = windowTitle.as_ref().unwrap().as_ptr().cast_mut();
+    }
 
     // Initialize global input state
-    CORE.Input = std::mem::zeroed(); // Reset CORE.Input structure to 0
-    CORE.Input.Keyboard.exitKey = KEY_ESCAPE;
-    CORE.Input.Mouse.scale = Vector2::new(1.0, 1.0);
-    CORE.Input.Mouse.cursor = MOUSE_CURSOR_ARROW;
-    CORE.Input.Gamepad.lastButtonPressed = GAMEPAD_BUTTON_UNKNOWN;
+    CORE.Input = InputData::default(); // Reset CORE.Input structure to 0
+    CORE.Input.Keyboard.exitKey = KeyboardKey::KEY_ESCAPE as i32;
+    CORE.Input.Mouse.scale = Vector2 { x: 1.0, y: 1.0 };
+    CORE.Input.Mouse.cursor = MouseCursor::MOUSE_CURSOR_ARROW as i32;
+    CORE.Input.Gamepad.lastButtonPressed = GamepadButton::GAMEPAD_BUTTON_UNKNOWN as i32;
 
     // Initialize platform
     //--------------------------------------------------------------
     let mut result: i32 = InitPlatform();
 
-    if result != 0
+    if (result != 0)
     {
         warn!("SYSTEM: Failed to initialize platform");
         return;
@@ -504,7 +524,7 @@ pub unsafe fn InitWindow(mut width: i32, mut height: i32, title: &str)
     // NOTE: On desktop platforms (GLFW, SDL, etc.), CORE.Window.render.width/height are set during window creation
     // On embedded platforms with no window manager, InitPlatform() doesn't set these values, so they should be initialized
     // here from screen dimensions (which are set from the InitWindow parameters)
-    if (CORE.Window.render.x == 0.0) || (CORE.Window.render.y == 0.0)
+    if ((CORE.Window.render.x == 0.0) || (CORE.Window.render.y == 0.0))
     {
         CORE.Window.render.x = CORE.Window.screen.x;
         CORE.Window.render.y = CORE.Window.screen.y;
@@ -528,7 +548,7 @@ pub unsafe fn InitWindow(mut width: i32, mut height: i32, title: &str)
     // Set font white rectangle for shapes drawing, so shapes and text can be batched together
     // WARNING: rshapes module is required, if not available, default internal white rectangle is used
     let mut rec: Rectangle = *GetFontDefault().recs.add(95);
-    if ((CORE.Window.flags & FLAG_MSAA_4X_HINT) != 0)
+    if (((CORE.Window.flags & ConfigFlags::FLAG_MSAA_4X_HINT as u32) == ConfigFlags::FLAG_MSAA_4X_HINT as u32))
     {
         // NOTE: Try to maximize rec padding to avoid pixel bleeding on MSAA filtering
         SetShapesTexture(GetFontDefault().texture, Rectangle { x: rec.x + 2.0, y: rec.y + 2.0, width: 1.0, height: 1.0 });
@@ -546,7 +566,7 @@ pub unsafe fn InitWindow(mut width: i32, mut height: i32, title: &str)
     {
     // Set default texture and rectangle to be used for shapes drawing
     // NOTE: rlgl default texture is a 1x1 pixel UNCOMPRESSED_R8G8B8A8
-    let mut texture: Texture2D = Texture2D { id: rlGetTextureIdDefault(), width: 1, height: 1, mipmaps: 1, format: PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+    let mut texture: Texture2D = Texture2D { id: rlGetTextureIdDefault(), width: 1, height: 1, mipmaps: 1, format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 };
     SetShapesTexture(texture, Rectangle { x: 0.0, y: 0.0, width: 1.0, height: 1.0 });    // WARNING: Module required: rshapes
     }
 }
@@ -580,6 +600,8 @@ pub unsafe fn CloseWindow()
     // De-initialize platform
     //--------------------------------------------------------------
     ClosePlatform();
+    windowTitle = None;
+    CORE.Window.title = std::ptr::null_mut();
     //--------------------------------------------------------------
 
     CORE.Window.ready = false;
@@ -595,31 +617,31 @@ pub unsafe fn IsWindowReady() -> bool
 // Check if window is currently fullscreen
 pub unsafe fn IsWindowFullscreen() -> bool
 {
-    return ((CORE.Window.flags & FLAG_FULLSCREEN_MODE) != 0);
+    return ((CORE.Window.flags & ConfigFlags::FLAG_FULLSCREEN_MODE as u32) == ConfigFlags::FLAG_FULLSCREEN_MODE as u32);
 }
 
 // Check if window is currently hidden
 pub unsafe fn IsWindowHidden() -> bool
 {
-    return ((CORE.Window.flags & FLAG_WINDOW_HIDDEN) != 0);
+    return ((CORE.Window.flags & ConfigFlags::FLAG_WINDOW_HIDDEN as u32) == ConfigFlags::FLAG_WINDOW_HIDDEN as u32);
 }
 
 // Check if window has been minimized
 pub unsafe fn IsWindowMinimized() -> bool
 {
-    return ((CORE.Window.flags & FLAG_WINDOW_MINIMIZED) != 0);
+    return ((CORE.Window.flags & ConfigFlags::FLAG_WINDOW_MINIMIZED as u32) == ConfigFlags::FLAG_WINDOW_MINIMIZED as u32);
 }
 
 // Check if window has been maximized
 pub unsafe fn IsWindowMaximized() -> bool
 {
-    return ((CORE.Window.flags & FLAG_WINDOW_MAXIMIZED) != 0);
+    return ((CORE.Window.flags & ConfigFlags::FLAG_WINDOW_MAXIMIZED as u32) == ConfigFlags::FLAG_WINDOW_MAXIMIZED as u32);
 }
 
 // Check if window has the focus
 pub unsafe fn IsWindowFocused() -> bool
 {
-    return !((CORE.Window.flags & FLAG_WINDOW_UNFOCUSED) != 0);
+    return !((CORE.Window.flags & ConfigFlags::FLAG_WINDOW_UNFOCUSED as u32) == ConfigFlags::FLAG_WINDOW_UNFOCUSED as u32);
 }
 
 // Check if window has been resizedLastFrame
@@ -631,7 +653,7 @@ pub unsafe fn IsWindowResized() -> bool
 // Check if one specific window flag is enabled
 pub unsafe fn IsWindowState(mut flag: u32) -> bool
 {
-    return ((CORE.Window.flags & flag) != 0);
+    return ((CORE.Window.flags & flag) == flag);
 }
 
 // Get current screen width
@@ -651,7 +673,7 @@ pub unsafe fn GetRenderWidth() -> i32
 {
     let mut width: i32 = 0;
 
-    if CORE.Window.usingFbo { width = CORE.Window.currentFbo.x as i32; }
+    if (CORE.Window.usingFbo) { width = CORE.Window.currentFbo.x as i32; }
     else { width = CORE.Window.render.x as i32; }
 
     return width;
@@ -662,7 +684,7 @@ pub unsafe fn GetRenderHeight() -> i32
 {
     let mut height: i32 = 0;
 
-    if CORE.Window.usingFbo { height = CORE.Window.currentFbo.y as i32; }
+    if (CORE.Window.usingFbo) { height = CORE.Window.currentFbo.y as i32; }
     else { height = CORE.Window.render.y as i32; }
 
     return height;
@@ -714,7 +736,7 @@ pub unsafe fn BeginDrawing()
     CORE.Time.previous = CORE.Time.current;
 
     rlLoadIdentity();                   // Reset current matrix (modelview)
-    rlMultMatrixf(MatrixToFloat(CORE.Window.screenScale).as_ptr()); // Apply screen scaling
+    rlMultMatrixf(CORE.Window.screenScale.to_array().as_ptr()); // Apply screen scaling
 
     //rlTranslatef(0.375, 0.375, 0);    // HACK to have 2D pixel-perfect drawing on OpenGL 1.1
                                         // NOTE: Not required with OpenGL 3.3+
@@ -727,7 +749,7 @@ pub unsafe fn EndDrawing()
 
 #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
 {
-    if automationEventRecording { RecordAutomationEvent(); }    // Event recording
+    if (automationEventRecording) { RecordAutomationEvent(); }    // Event recording
 }
 
 #[cfg(not(feature = "SUPPORT_CUSTOM_FRAME_CONTROL"))]
@@ -742,7 +764,7 @@ pub unsafe fn EndDrawing()
     CORE.Time.frame = CORE.Time.update + CORE.Time.draw;
 
     // Wait for some milliseconds...
-    if CORE.Time.frame < CORE.Time.target
+    if (CORE.Time.frame < CORE.Time.target)
     {
         WaitTime(CORE.Time.target - CORE.Time.frame);
 
@@ -758,7 +780,7 @@ pub unsafe fn EndDrawing()
 
 #[cfg(feature = "SUPPORT_SCREEN_CAPTURE")]
 {
-    if IsKeyPressed(KEY_F12)
+    if (IsKeyPressed(KeyboardKey::KEY_F12 as i32))
     {
         TakeScreenshot(&format!("screenshot{:03}.png", screenshotCounter));
         screenshotCounter += 1;
@@ -776,7 +798,7 @@ pub unsafe fn BeginMode2D(mut camera: Camera2D)
     rlLoadIdentity();               // Reset current matrix (modelview)
 
     // Apply 2d camera transformation to modelview
-    rlMultMatrixf(MatrixToFloat(GetCameraMatrix2D(camera)).as_ptr());
+    rlMultMatrixf(GetCameraMatrix2D(camera).to_array().as_ptr());
 }
 
 // End 2D mode with custom camera
@@ -786,7 +808,7 @@ pub unsafe fn EndMode2D()
 
     rlLoadIdentity();               // Reset current matrix (modelview)
 
-    if rlGetActiveFramebuffer() == 0 { rlMultMatrixf(MatrixToFloat(CORE.Window.screenScale).as_ptr()); } // Apply screen scaling if required
+    if (rlGetActiveFramebuffer() == 0) { rlMultMatrixf(CORE.Window.screenScale.to_array().as_ptr()); } // Apply screen scaling if required
 }
 
 // Initializes 3D mode with custom camera (3D)
@@ -801,15 +823,15 @@ pub unsafe fn BeginMode3D(mut camera: Camera)
     let mut aspect: f32 = (CORE.Window.currentFbo.x as f32)/(CORE.Window.currentFbo.y as f32);
 
     // NOTE: zNear and zFar values are important when computing depth buffer values
-    if camera.projection == CAMERA_PERSPECTIVE
+    if (camera.projection == CameraProjection::Perspective as i32)
     {
         // Setup perspective projection
-        let mut top: f64 = rlGetCullDistanceNear()*((camera.fovy as f64)*0.5*(DEG2RAD as f64)).tan();
+        let mut top: f64 = rlGetCullDistanceNear()*(camera.fovy as f64*0.5*DEG2RAD as f64).tan();
         let mut right: f64 = top*aspect as f64;
 
         rlFrustum(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
     }
-    else if camera.projection == CAMERA_ORTHOGRAPHIC
+    else if (camera.projection == CameraProjection::Orthographic as i32)
     {
         // Setup orthographic projection
         let mut top: f64 = camera.fovy as f64/2.0;
@@ -822,8 +844,8 @@ pub unsafe fn BeginMode3D(mut camera: Camera)
     rlLoadIdentity();               // Reset current matrix (modelview)
 
     // Setup Camera view
-    let mut matView: Matrix = MatrixLookAt(camera.position, camera.target, camera.up);
-    rlMultMatrixf(MatrixToFloat(matView).as_ptr());      // Multiply modelview matrix by view matrix (camera)
+    let mut matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
+    rlMultMatrixf(matView.to_array().as_ptr());      // Multiply modelview matrix by view matrix (camera)
 
     rlEnableDepthTest();            // Enable DEPTH_TEST for 3D
 }
@@ -839,7 +861,7 @@ pub unsafe fn EndMode3D()
     rlMatrixMode(RL_MODELVIEW);     // Switch back to modelview matrix
     rlLoadIdentity();               // Reset current matrix (modelview)
 
-    if rlGetActiveFramebuffer() == 0 { rlMultMatrixf(MatrixToFloat(CORE.Window.screenScale).as_ptr()); } // Apply screen scaling if required
+    if (rlGetActiveFramebuffer() == 0) { rlMultMatrixf(CORE.Window.screenScale.to_array().as_ptr()); } // Apply screen scaling if required
 
     rlDisableDepthTest();           // Disable DEPTH_TEST for 2D
 }
@@ -888,7 +910,7 @@ pub unsafe fn EndTextureMode()
     // Go back to the modelview state from BeginDrawing, back to the main framebuffer
     rlMatrixMode(RL_MODELVIEW);     // Switch back to modelview matrix
     rlLoadIdentity();               // Reset current matrix (modelview)
-    rlMultMatrixf(MatrixToFloat(CORE.Window.screenScale).as_ptr()); // Apply screen scaling if required
+    rlMultMatrixf(CORE.Window.screenScale.to_array().as_ptr()); // Apply screen scaling if required
 
     // Reset current fbo to screen size
     CORE.Window.currentFbo.x = CORE.Window.render.x;
@@ -918,7 +940,7 @@ pub unsafe fn BeginBlendMode(mut mode: i32)
 // End blending mode (reset to default: alpha blending)
 pub unsafe fn EndBlendMode()
 {
-    rlSetBlendMode(BLEND_ALPHA);
+    rlSetBlendMode(BlendMode::BLEND_ALPHA as i32);
 }
 
 // Begin scissor mode (define screen area for following drawing)
@@ -930,19 +952,19 @@ pub unsafe fn BeginScissorMode(mut x: i32, mut y: i32, mut width: i32, mut heigh
     rlEnableScissorTest();
 
 #[cfg(target_vendor = "apple")]
-    if !CORE.Window.usingFbo
+    if (!CORE.Window.usingFbo)
     {
-        let scale: Vector2 = GetWindowScaleDPI();
-        rlScissor((x as f32*scale.x) as i32, (GetScreenHeight() as f32*scale.y - ((y + height) as f32*scale.y)) as i32, (width as f32*scale.x) as i32, (height as f32*scale.y) as i32);
+        let scale = GetWindowScaleDPI();
+        rlScissor((x as f32*scale.x) as i32, (GetScreenHeight() as f32*scale.y - (y + height) as f32*scale.y) as i32, (width as f32*scale.x) as i32, (height as f32*scale.y) as i32);
     }
     else
     {
         rlScissor(x, CORE.Window.currentFbo.y as i32 - (y + height), width, height);
     }
-#[cfg(not(target_vendor = "apple"))]
-    if !CORE.Window.usingFbo && ((CORE.Window.flags & FLAG_WINDOW_HIGHDPI) != 0)
+    #[cfg(not(target_vendor = "apple"))]
+    if (!CORE.Window.usingFbo && ((CORE.Window.flags & ConfigFlags::FLAG_WINDOW_HIGHDPI as u32) == ConfigFlags::FLAG_WINDOW_HIGHDPI as u32))
     {
-        let scale: Vector2 = GetWindowScaleDPI();
+        let scale = GetWindowScaleDPI();
         rlScissor((x as f32*scale.x) as i32, (CORE.Window.currentFbo.y - (y + height) as f32*scale.y) as i32, (width as f32*scale.x) as i32, (height as f32*scale.y) as i32);
     }
     else
@@ -950,6 +972,7 @@ pub unsafe fn BeginScissorMode(mut x: i32, mut y: i32, mut width: i32, mut heigh
         rlScissor(x, CORE.Window.currentFbo.y as i32 - (y + height), width, height);
     }
 }
+
 // End scissor mode
 pub unsafe fn EndScissorMode()
 {
@@ -980,9 +1003,9 @@ pub unsafe fn EndVrStereoMode()
 // Load VR stereo config for VR simulator device parameters
 pub unsafe fn LoadVrStereoConfig(mut device: VrDeviceInfo) -> VrStereoConfig
 {
-    let mut config: VrStereoConfig = std::mem::zeroed();
+    let mut config: VrStereoConfig = unsafe { std::mem::zeroed() };
 
-    if rlGetVersion() != RL_OPENGL_11
+    if (rlGetVersion() != rlGlVersion::RL_OPENGL_11)
     {
         // Compute aspect ratio
         let mut aspect: f32 = ((device.hResolution as f32)*0.5)/(device.vResolution as f32);
@@ -1021,17 +1044,17 @@ pub unsafe fn LoadVrStereoConfig(mut device: VrDeviceInfo) -> VrStereoConfig
 
         // Compute camera projection matrices
         let mut projOffset: f32 = 4.0*lensShift;      // Scaled to projection space coordinates [-1..1]
-        let mut proj: Matrix = MatrixPerspective(fovy as f64, aspect as f64, rlGetCullDistanceNear(), rlGetCullDistanceFar());
+        let mut proj: Matrix = Matrix::perspective(fovy as f64, aspect as f64, rlGetCullDistanceNear(), rlGetCullDistanceFar());
 
-        config.projection[0] = MatrixMultiply(proj, MatrixTranslate(projOffset, 0.0, 0.0));
-        config.projection[1] = MatrixMultiply(proj, MatrixTranslate(-projOffset, 0.0, 0.0));
+        config.projection[0] = Matrix::multiply(proj, Matrix::translate(projOffset, 0.0, 0.0));
+        config.projection[1] = Matrix::multiply(proj, Matrix::translate(-projOffset, 0.0, 0.0));
 
         // Compute camera transformation matrices
         // NOTE: Camera movement might seem more natural if modelling the head
         // Axis of rotation is the base of the head, so adding some y (base of head to eye level
         // and -z (center of head to eye protrusion) to the camera positions
-        config.viewOffset[0] = MatrixTranslate(device.interpupillaryDistance*0.5, 0.075, 0.045);
-        config.viewOffset[1] = MatrixTranslate(-device.interpupillaryDistance*0.5, 0.075, 0.045);
+        config.viewOffset[0] = Matrix::translate(device.interpupillaryDistance*0.5, 0.075, 0.045);
+        config.viewOffset[1] = Matrix::translate(-device.interpupillaryDistance*0.5, 0.075, 0.045);
 
         // Compute eyes Viewports
         /*
@@ -1065,15 +1088,15 @@ pub fn UnloadVrStereoConfig(mut config: VrStereoConfig)
 // NOTE: If shader filename is NULL, using default vertex/fragment shaders
 pub unsafe fn LoadShader(vsFileName: Option<&str>, fsFileName: Option<&str>) -> Shader
 {
-    let mut shader: Shader = std::mem::zeroed();
+    let mut shader: Shader = unsafe { std::mem::zeroed() };
 
     let mut vShaderStr: Option<String> = None;
     let mut fShaderStr: Option<String> = None;
 
-    if let Some(vsFileName) = vsFileName { vShaderStr = LoadFileText(Some(vsFileName)); }
-    if let Some(fsFileName) = fsFileName { fShaderStr = LoadFileText(Some(fsFileName)); }
+    if let Some(vsFileName) = vsFileName { vShaderStr = LoadFileText(vsFileName); }
+    if let Some(fsFileName) = fsFileName { fShaderStr = LoadFileText(fsFileName); }
 
-    if vShaderStr.is_none() && fShaderStr.is_none() { warn!("SHADER: Shader files provided are not valid, using default shader"); }
+    if (vShaderStr.is_none() && fShaderStr.is_none()) { warn!("SHADER: Shader files provided are not valid, using default shader"); }
 
     shader = LoadShaderFromMemory(vShaderStr.as_deref(), fShaderStr.as_deref());
 
@@ -1086,21 +1109,21 @@ pub unsafe fn LoadShader(vsFileName: Option<&str>, fsFileName: Option<&str>) -> 
 // Load shader from code strings and bind default locations
 pub unsafe fn LoadShaderFromMemory(vsCode: Option<&str>, fsCode: Option<&str>) -> Shader
 {
-    let mut shader: Shader = std::mem::zeroed();
+    let mut shader: Shader = unsafe { std::mem::zeroed() };
 
     let vsCode = vsCode.map(|code| CString::new(code).unwrap());
     let fsCode = fsCode.map(|code| CString::new(code).unwrap());
     shader.id = rlLoadShaderProgram(vsCode.as_ref().map_or(std::ptr::null(), |code| code.as_ptr()), fsCode.as_ref().map_or(std::ptr::null(), |code| code.as_ptr()));
 
-    if shader.id == 0
+    if (shader.id == 0)
     {
         // Shader could not be loaded but still loading the location points to avoid potential crashes
         // NOTE: All locations set to -1 (no location found)
-        shader.locs = (libc::calloc(RL_MAX_SHADER_LOCATIONS as usize, std::mem::size_of::<i32>()) as *mut i32);
-        for i in 0..RL_MAX_SHADER_LOCATIONS { (*shader.locs.add(i as usize as usize)) = -1; }
+        shader.locs = libc::calloc(RL_MAX_SHADER_LOCATIONS, std::mem::size_of::<i32>()) as *mut i32;
+        for i in 0..RL_MAX_SHADER_LOCATIONS { *shader.locs.add((i) as usize) = -1; }
     }
-    else if shader.id == rlGetShaderIdDefault() { shader.locs = rlGetShaderLocsDefault(); }
-    else if shader.id > 0
+    else if (shader.id == rlGetShaderIdDefault()) { shader.locs = rlGetShaderLocsDefault(); }
+    else if (shader.id > 0)
     {
         // After custom shader loading, trying to set default location names
         // Default shader attribute locations have been binded before linking:
@@ -1117,33 +1140,33 @@ pub unsafe fn LoadShaderFromMemory(vsCode: Option<&str>, fsCode: Option<&str>) -
 
         // Load shader locations array
         // NOTE: All locations set to -1 (no location)
-        shader.locs = (libc::calloc(RL_MAX_SHADER_LOCATIONS as usize, std::mem::size_of::<i32>()) as *mut i32);
-        for i in 0..RL_MAX_SHADER_LOCATIONS { (*shader.locs.add(i as usize as usize)) = -1; }
+        shader.locs = libc::calloc(RL_MAX_SHADER_LOCATIONS, std::mem::size_of::<i32>()) as *mut i32;
+        for i in 0..RL_MAX_SHADER_LOCATIONS { *shader.locs.add((i) as usize) = -1; }
 
         // Get handles to GLSL input attribute locations
-        (*shader.locs.add(SHADER_LOC_VERTEX_POSITION as usize)) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_POSITION.as_ptr());
-        (*shader.locs.add(SHADER_LOC_VERTEX_TEXCOORD01 as usize)) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD.as_ptr());
-        (*shader.locs.add(SHADER_LOC_VERTEX_TEXCOORD02 as usize)) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD2.as_ptr());
-        (*shader.locs.add(SHADER_LOC_VERTEX_NORMAL as usize)) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_NORMAL.as_ptr());
-        (*shader.locs.add(SHADER_LOC_VERTEX_TANGENT as usize)) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_TANGENT.as_ptr());
-        (*shader.locs.add(SHADER_LOC_VERTEX_COLOR as usize)) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_COLOR.as_ptr());
-        (*shader.locs.add(SHADER_LOC_VERTEX_BONEIDS as usize)) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_BONEINDICES.as_ptr());
-        (*shader.locs.add(SHADER_LOC_VERTEX_BONEWEIGHTS as usize)) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_BONEWEIGHTS.as_ptr());
-        (*shader.locs.add(SHADER_LOC_VERTEX_INSTANCETRANSFORM as usize)) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_INSTANCETRANSFORM.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_POSITION as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_POSITION.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_TEXCOORD01 as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_TEXCOORD02 as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD2.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_NORMAL as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_NORMAL.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_TANGENT as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_TANGENT.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_COLOR as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_COLOR.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_BONEIDS as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_BONEINDICES.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_BONEWEIGHTS as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_BONEWEIGHTS.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_INSTANCETRANSFORM as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_INSTANCETRANSFORM.as_ptr());
 
         // Get handles to GLSL uniform locations (vertex shader)
-        (*shader.locs.add(SHADER_LOC_MATRIX_MVP as usize)) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_MVP.as_ptr());
-        (*shader.locs.add(SHADER_LOC_MATRIX_VIEW as usize)) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_VIEW.as_ptr());
-        (*shader.locs.add(SHADER_LOC_MATRIX_PROJECTION as usize)) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_PROJECTION.as_ptr());
-        (*shader.locs.add(SHADER_LOC_MATRIX_MODEL as usize)) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_MODEL.as_ptr());
-        (*shader.locs.add(SHADER_LOC_MATRIX_NORMAL as usize)) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_NORMAL.as_ptr());
-        (*shader.locs.add(SHADER_LOC_MATRIX_BONETRANSFORMS as usize)) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_BONEMATRICES.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MATRIX_MVP as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_MVP.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MATRIX_VIEW as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_VIEW.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MATRIX_PROJECTION as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_PROJECTION.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MATRIX_MODEL as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_MODEL.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MATRIX_NORMAL as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_NORMAL.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MATRIX_BONETRANSFORMS as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_BONEMATRICES.as_ptr());
 
         // Get handles to GLSL uniform locations (fragment shader)
-        (*shader.locs.add(SHADER_LOC_COLOR_DIFFUSE as usize)) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_COLOR.as_ptr());
-        (*shader.locs.add(SHADER_LOC_MAP_DIFFUSE as usize)) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE0.as_ptr());  // SHADER_LOC_MAP_ALBEDO
-        (*shader.locs.add(SHADER_LOC_MAP_SPECULAR as usize)) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE1.as_ptr()); // SHADER_LOC_MAP_METALNESS
-        (*shader.locs.add(SHADER_LOC_MAP_NORMAL as usize)) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE2.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_COLOR_DIFFUSE as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_COLOR.as_ptr());
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MAP_ALBEDO as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE0.as_ptr());  // SHADER_LOC_MAP_ALBEDO
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MAP_METALNESS as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE1.as_ptr()); // SHADER_LOC_MAP_METALNESS
+        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MAP_NORMAL as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE2.as_ptr());
     }
 
     return shader;
@@ -1153,7 +1176,7 @@ pub unsafe fn LoadShaderFromMemory(vsCode: Option<&str>, fsCode: Option<&str>) -
 pub fn IsShaderValid(mut shader: Shader) -> bool
 {
     return ((shader.id > 0) &&          // Validate shader id (GPU loaded successfully)
-            (shader.locs != std::ptr::null_mut()));     // Validate memory has been allocated for default shader locations
+            (!shader.locs.is_null()));     // Validate memory has been allocated for default shader locations
 
     // The following locations are tried to be set automatically (locs[i] >= 0),
     // any of them can be checked for validation but the only mandatory one is, afaik, SHADER_LOC_VERTEX_POSITION
@@ -1184,7 +1207,7 @@ pub fn IsShaderValid(mut shader: Shader) -> bool
 // Unload shader from GPU memory (VRAM)
 pub unsafe fn UnloadShader(mut shader: Shader)
 {
-    if shader.id != rlGetShaderIdDefault()
+    if (shader.id != rlGetShaderIdDefault())
     {
         rlUnloadShaderProgram(shader.id);
 
@@ -1194,29 +1217,27 @@ pub unsafe fn UnloadShader(mut shader: Shader)
 }
 
 // Get shader uniform location
-pub unsafe fn GetShaderLocation(mut shader: Shader, uniformName: &str) -> i32
+pub unsafe fn GetShaderLocation(mut shader: Shader, mut uniformName: &str) -> i32
 {
-    let uniformName = CString::new(uniformName).unwrap();
-    return rlGetLocationUniform(shader.id, uniformName.as_ptr());
+    return rlGetLocationUniform(shader.id, CString::new(uniformName).unwrap().as_ptr());
 }
 
 // Get shader attribute location
-pub unsafe fn GetShaderLocationAttrib(mut shader: Shader, attribName: &str) -> i32
+pub unsafe fn GetShaderLocationAttrib(mut shader: Shader, mut attribName: &str) -> i32
 {
-    let attribName = CString::new(attribName).unwrap();
-    return rlGetLocationAttrib(shader.id, attribName.as_ptr());
+    return rlGetLocationAttrib(shader.id, CString::new(attribName).unwrap().as_ptr());
 }
 
 // Set shader uniform value
-pub unsafe fn SetShaderValue(mut shader: Shader, mut locIndex: i32, mut value: *const (), mut uniformType: i32)
+pub unsafe fn SetShaderValue(mut shader: Shader, mut locIndex: i32, mut value: *const std::ffi::c_void, mut uniformType: i32)
 {
     SetShaderValueV(shader, locIndex, value, uniformType, 1);
 }
 
 // Set shader uniform value vector
-pub unsafe fn SetShaderValueV(mut shader: Shader, mut locIndex: i32, mut value: *const (), mut uniformType: i32, mut count: i32)
+pub unsafe fn SetShaderValueV(mut shader: Shader, mut locIndex: i32, mut value: *const std::ffi::c_void, mut uniformType: i32, mut count: i32)
 {
-    if locIndex > -1
+    if (locIndex > -1)
     {
         rlEnableShader(shader.id);
         rlSetUniform(locIndex, value, uniformType, count);
@@ -1227,7 +1248,7 @@ pub unsafe fn SetShaderValueV(mut shader: Shader, mut locIndex: i32, mut value: 
 // Set shader uniform value (matrix 4x4)
 pub unsafe fn SetShaderValueMatrix(mut shader: Shader, mut locIndex: i32, mut mat: Matrix)
 {
-    if locIndex > -1
+    if (locIndex > -1)
     {
         rlEnableShader(shader.id);
         rlSetUniformMatrix(locIndex, mat);
@@ -1238,7 +1259,7 @@ pub unsafe fn SetShaderValueMatrix(mut shader: Shader, mut locIndex: i32, mut ma
 // Set shader uniform value for texture
 pub unsafe fn SetShaderValueTexture(mut shader: Shader, mut locIndex: i32, mut texture: Texture2D)
 {
-    if locIndex > -1
+    if (locIndex > -1)
     {
         rlEnableShader(shader.id);
         rlSetUniformSampler(locIndex, texture.id);
@@ -1261,7 +1282,7 @@ pub unsafe fn GetScreenToWorldRay(mut position: Vector2, mut camera: Camera) -> 
 // Get a ray trace from the screen position (i.e mouse) within a specific section of the screen
 pub unsafe fn GetScreenToWorldRayEx(mut position: Vector2, mut camera: Camera, mut width: i32, mut height: i32) -> Ray
 {
-    let mut ray: Ray = std::mem::zeroed();
+    let mut ray: Ray = unsafe { std::mem::zeroed() };
 
     // Calculate normalized device coordinates
     // NOTE: y value is negative
@@ -1270,43 +1291,43 @@ pub unsafe fn GetScreenToWorldRayEx(mut position: Vector2, mut camera: Camera, m
     let mut z: f32 = 1.0;
 
     // Store values in a vector
-    let mut deviceCoords: Vector3 = Vector3::new(x, y, z);
+    let mut deviceCoords: Vector3 = Vector3 { x: x, y: y, z: z };
 
     // Calculate view matrix from camera look at
-    let mut matView: Matrix = MatrixLookAt(camera.position, camera.target, camera.up);
+    let mut matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
 
-    let mut matProj: Matrix = MatrixIdentity();
+    let mut matProj: Matrix = Matrix::identity();
 
-    if camera.projection == CAMERA_PERSPECTIVE
+    if (camera.projection == CameraProjection::Perspective as i32)
     {
         // Calculate projection matrix from perspective
-        matProj = MatrixPerspective((camera.fovy*DEG2RAD) as f64, ((width as f64)/(height as f64)), rlGetCullDistanceNear(), rlGetCullDistanceFar());
+        matProj = Matrix::perspective((camera.fovy*DEG2RAD) as f64, ((width as f64)/(height as f64)), rlGetCullDistanceNear(), rlGetCullDistanceFar());
     }
-    else if camera.projection == CAMERA_ORTHOGRAPHIC
+    else if (camera.projection == CameraProjection::Orthographic as i32)
     {
         let mut aspect: f64 = (width as f64)/(height as f64);
         let mut top: f64 = camera.fovy as f64/2.0;
         let mut right: f64 = top*aspect as f64;
 
         // Calculate projection matrix from orthographic
-        matProj = MatrixOrtho(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
+        matProj = Matrix::ortho(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
     }
 
     // Unproject far/near points
-    let mut nearPoint: Vector3 = Vector3Unproject(Vector3::new(deviceCoords.x, deviceCoords.y, 0.0), matProj, matView);
-    let mut farPoint: Vector3 = Vector3Unproject(Vector3::new(deviceCoords.x, deviceCoords.y, 1.0), matProj, matView);
+    let mut nearPoint: Vector3 = Vector3Unproject(Vector3 { x: deviceCoords.x, y: deviceCoords.y, z: 0.0 }, matProj, matView);
+    let mut farPoint: Vector3 = Vector3Unproject(Vector3 { x: deviceCoords.x, y: deviceCoords.y, z: 1.0 }, matProj, matView);
 
     // Unproject the mouse cursor in the near plane
     // It is needed as the source position because orthographic projects,
     // compared to perspective doesn't have a convergence point,
     // meaning that the "eye" of the camera is more like a plane than a point
-    let mut cameraPlanePointerPos: Vector3 = Vector3Unproject(Vector3::new(deviceCoords.x, deviceCoords.y, -1.0), matProj, matView);
+    let mut cameraPlanePointerPos: Vector3 = Vector3Unproject(Vector3 { x: deviceCoords.x, y: deviceCoords.y, z: -1.0 }, matProj, matView);
 
     // Calculate normalized direction vector
-    let mut direction: Vector3 = Vector3Normalize(Vector3Subtract(farPoint, nearPoint));
+    let mut direction: Vector3 = (farPoint - nearPoint).normalize_or_zero();
 
-    if camera.projection == CAMERA_PERSPECTIVE { ray.position = camera.position; }
-    else if camera.projection == CAMERA_ORTHOGRAPHIC { ray.position = cameraPlanePointerPos; }
+    if (camera.projection == CameraProjection::Perspective as i32) { ray.position = camera.position; }
+    else if (camera.projection == CameraProjection::Orthographic as i32) { ray.position = cameraPlanePointerPos; }
 
     // Apply calculated vectors to ray
     ray.direction = direction;
@@ -1317,7 +1338,7 @@ pub unsafe fn GetScreenToWorldRayEx(mut position: Vector2, mut camera: Camera, m
 // Get transform matrix for camera
 pub fn GetCameraMatrix(mut camera: Camera) -> Matrix
 {
-    let mut mat: Matrix = MatrixLookAt(camera.position, camera.target, camera.up);
+    let mut mat: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
 
     return mat;
 }
@@ -1340,12 +1361,12 @@ pub fn GetCameraMatrix2D(mut camera: Camera2D) -> Matrix
     //   1. Move to offset
     //   2. Rotate and Scale
     //   3. Move by -target
-    let mut matOrigin: Matrix = MatrixTranslate(-camera.target.x, -camera.target.y, 0.0);
-    let mut matRotation: Matrix = MatrixRotate(Vector3::new(0.0, 0.0, 1.0), camera.rotation*DEG2RAD);
-    let mut matScale: Matrix = MatrixScale(camera.zoom, camera.zoom, 1.0);
-    let mut matTranslation: Matrix = MatrixTranslate(camera.offset.x, camera.offset.y, 0.0);
+    let mut matOrigin: Matrix = Matrix::translate(-camera.target.x, -camera.target.y, 0.0);
+    let mut matRotation: Matrix = Matrix::rotate(Vector3 { x: 0.0, y: 0.0, z: 1.0 }, camera.rotation*DEG2RAD);
+    let mut matScale: Matrix = Matrix::scale(camera.zoom, camera.zoom, 1.0);
+    let mut matTranslation: Matrix = Matrix::translate(camera.offset.x, camera.offset.y, 0.0);
 
-    matTransform = MatrixMultiply(MatrixMultiply(matOrigin, MatrixMultiply(matScale, matRotation)), matTranslation);
+    matTransform = Matrix::multiply(Matrix::multiply(matOrigin, Matrix::multiply(matScale, matRotation)), matTranslation);
 
     return matTransform;
 }
@@ -1362,25 +1383,25 @@ pub unsafe fn GetWorldToScreen(mut position: Vector3, mut camera: Camera) -> Vec
 pub unsafe fn GetWorldToScreenEx(mut position: Vector3, mut camera: Camera, mut width: i32, mut height: i32) -> Vector2
 {
     // Calculate projection matrix (from perspective instead of frustum
-    let mut matProj: Matrix = MatrixIdentity();
+    let mut matProj: Matrix = Matrix::identity();
 
-    if camera.projection == CAMERA_PERSPECTIVE
+    if (camera.projection == CameraProjection::Perspective as i32)
     {
         // Calculate projection matrix from perspective
-        matProj = MatrixPerspective((camera.fovy*DEG2RAD) as f64, ((width as f64)/(height as f64)), rlGetCullDistanceNear(), rlGetCullDistanceFar());
+        matProj = Matrix::perspective((camera.fovy*DEG2RAD) as f64, ((width as f64)/(height as f64)), rlGetCullDistanceNear(), rlGetCullDistanceFar());
     }
-    else if camera.projection == CAMERA_ORTHOGRAPHIC
+    else if (camera.projection == CameraProjection::Orthographic as i32)
     {
         let mut aspect: f64 = (width as f64)/(height as f64);
         let mut top: f64 = camera.fovy as f64/2.0;
         let mut right: f64 = top*aspect as f64;
 
         // Calculate projection matrix from orthographic
-        matProj = MatrixOrtho(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
+        matProj = Matrix::ortho(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
     }
 
     // Calculate view matrix from camera look at (and transpose it)
-    let mut matView: Matrix = MatrixLookAt(camera.position, camera.target, camera.up);
+    let mut matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
 
     // Convert world position vector to quaternion
     let mut worldPos: Quaternion = Quaternion::new(position.x, position.y, position.z, 1.0);
@@ -1392,30 +1413,30 @@ pub unsafe fn GetWorldToScreenEx(mut position: Vector3, mut camera: Camera, mut 
     worldPos = QuaternionTransform(worldPos, matProj);
 
     // Calculate normalized device coordinates (inverted y)
-    let mut ndcPos: Vector3 = Vector3::new(worldPos.x/worldPos.w, -worldPos.y/worldPos.w, worldPos.z/worldPos.w);
+    let mut ndcPos: Vector3 = Vector3 { x: worldPos.x/worldPos.w, y: -worldPos.y/worldPos.w, z: worldPos.z/worldPos.w };
 
     // Calculate 2d screen position vector
-    let mut screenPosition: Vector2 = Vector2::new((ndcPos.x + 1.0)/2.0*(width as f32), (ndcPos.y + 1.0)/2.0*(height as f32));
+    let mut screenPosition: Vector2 = Vector2 { x: (ndcPos.x + 1.0)/2.0*(width as f32), y: (ndcPos.y + 1.0)/2.0*(height as f32) };
 
     return screenPosition;
 }
 
 // Get screen space position for a 2d camera world space position
-pub fn GetWorldToScreen2D(mut position: Vector2, mut camera: Camera2D) -> Vector2
+pub unsafe fn GetWorldToScreen2D(mut position: Vector2, mut camera: Camera2D) -> Vector2
 {
     let mut matCamera: Matrix = GetCameraMatrix2D(camera);
-    let mut transform: Vector3 = Vector3Transform(Vector3::new(position.x, position.y, 0.0), matCamera);
+    let mut transform: Vector3 = Vector3Transform(Vector3 { x: position.x, y: position.y, z: 0.0 }, matCamera);
 
-    return Vector2::new(transform.x, transform.y);
+    return Vector2 { x: transform.x, y: transform.y };
 }
 
 // Get world space position for a 2d camera screen space position
-pub fn GetScreenToWorld2D(mut position: Vector2, mut camera: Camera2D) -> Vector2
+pub unsafe fn GetScreenToWorld2D(mut position: Vector2, mut camera: Camera2D) -> Vector2
 {
-    let mut invMatCamera: Matrix = MatrixInvert(GetCameraMatrix2D(camera));
-    let mut transform: Vector3 = Vector3Transform(Vector3::new(position.x, position.y, 0.0), invMatCamera);
+    let mut invMatCamera: Matrix = Matrix::invert(GetCameraMatrix2D(camera));
+    let mut transform: Vector3 = Vector3Transform(Vector3 { x: position.x, y: position.y, z: 0.0 }, invMatCamera);
 
-    return Vector2::new(transform.x, transform.y);
+    return Vector2 { x: transform.x, y: transform.y };
 }
 
 //----------------------------------------------------------------------------------
@@ -1425,14 +1446,13 @@ pub fn GetScreenToWorld2D(mut position: Vector2, mut camera: Camera2D) -> Vector
 // NOTE: Functions with a platform-specific implementation on rcore_<platform>.c
 //double GetTime(void)
 
-
 // Set target FPS (maximum)
-pub unsafe fn SetTargetFPS(fps: i32)
+pub unsafe fn SetTargetFPS(mut fps: i32)
 {
-    if fps < 1 { CORE.Time.target = 0.0; }
-    else { CORE.Time.target = 1.0/fps as f64; }
+    if (fps < 1) { CORE.Time.target = 0.0; }
+    else { CORE.Time.target = 1.0/(fps as f64); }
 
-    info!("TIMER: Target time per frame: {:02.3} milliseconds", CORE.Time.target as f32*1000.0);
+    info!("TIMER: Target time per frame: {:.3} milliseconds", (CORE.Time.target as f32)*1000.0);
 }
 
 // Get current FPS
@@ -1444,37 +1464,37 @@ pub unsafe fn GetFPS() -> i32
 #[cfg(not(feature = "SUPPORT_CUSTOM_FRAME_CONTROL"))]
 {
     const FPS_CAPTURE_FRAMES_COUNT: usize = 30;      // 30 captures
-    const FPS_AVERAGE_TIME_SECONDS: f32 = 0.5;       // 500 milliseconds
+    const FPS_AVERAGE_TIME_SECONDS: f32 = 0.5;     // 500 milliseconds
     const FPS_STEP: f32 = FPS_AVERAGE_TIME_SECONDS/FPS_CAPTURE_FRAMES_COUNT as f32;
 
     static mut index: usize = 0;
     static mut history: [f32; FPS_CAPTURE_FRAMES_COUNT] = [0.0; FPS_CAPTURE_FRAMES_COUNT];
     static mut average: f32 = 0.0;
     static mut last: f32 = 0.0;
-    let fpsFrame: f32 = GetFrameTime();
+    let mut fpsFrame: f32 = GetFrameTime();
 
     // If reseting the window, reset the FPS info
-    if CORE.Time.frameCounter == 0
+    if (CORE.Time.frameCounter == 0)
     {
         average = 0.0;
         last = 0.0;
         index = 0;
 
-        for i in 0..FPS_CAPTURE_FRAMES_COUNT { history[i] = 0.0; }
+        for i in 0..FPS_CAPTURE_FRAMES_COUNT { history[(i) as usize] = 0.0; }
     }
 
-    if fpsFrame != 0.0
+    if (fpsFrame != 0.0)
     {
-        if (GetTime() - last as f64) > FPS_STEP as f64
+        if ((GetTime() - last as f64) > FPS_STEP as f64)
         {
-            last = GetTime() as f32;
+            last = (GetTime() as f32);
             index = (index + 1)%FPS_CAPTURE_FRAMES_COUNT;
-            average -= history[index];
-            history[index] = fpsFrame/FPS_CAPTURE_FRAMES_COUNT as f32;
-            average += history[index];
+            average -= history[(index) as usize];
+            history[(index) as usize] = fpsFrame/FPS_CAPTURE_FRAMES_COUNT as f32;
+            average += history[(index) as usize];
         }
 
-        fps = (1.0/average).round() as i32;
+        fps = ((1.0/average).round() as i32);
     }
     else { fps = 0; }
 }
@@ -1485,7 +1505,7 @@ pub unsafe fn GetFPS() -> i32
 // Get time in seconds for last frame drawn (delta time)
 pub unsafe fn GetFrameTime() -> f32
 {
-    return CORE.Time.frame as f32;
+    return (CORE.Time.frame as f32);
 }
 
 //----------------------------------------------------------------------------------
@@ -1501,41 +1521,49 @@ pub unsafe fn GetFrameTime() -> f32
 // take longer than expected... for that reason a busy wait loop is used
 // REF: http://stackoverflow.com/questions/43057578/c-programming-win32-games-sleep-taking-longer-than-expected
 // REF: http://www.geisswerks.com/ryan/FAQS/timing.html --> All about timing on Win32!
-pub unsafe fn WaitTime(seconds: f64)
+pub unsafe fn WaitTime(mut seconds: f64)
 {
-    if seconds < 0.0 { return; }    // Security check
+    if (seconds < 0.0) { return; }    // Security check
 
 #[cfg(any(feature = "SUPPORT_BUSY_WAIT_LOOP", feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP"))]
-    let destinationTime: f64 = GetTime() + seconds;
+    let mut destinationTime: f64 = GetTime() + seconds;
 
 #[cfg(feature = "SUPPORT_BUSY_WAIT_LOOP")]
-    while GetTime() < destinationTime { }
-#[cfg(not(feature = "SUPPORT_BUSY_WAIT_LOOP"))]
+{
+    while (GetTime() < destinationTime) { }
+}
+#[cfg(not(any(feature = "SUPPORT_BUSY_WAIT_LOOP")))]
 {
     #[cfg(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP")]
-        let sleepSeconds: f64 = seconds - seconds*0.05;  // NOTE: Reserve a percentage of the time for busy waiting
+        let mut sleepSeconds: f64 = seconds - seconds*0.05;  // NOTE: Reserve a percentage of the time for busy waiting
     #[cfg(not(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP"))]
-        let sleepSeconds: f64 = seconds;
+        let mut sleepSeconds: f64 = seconds;
 
     // System halt functions
     #[cfg(target_os = "windows")]
-        Sleep((sleepSeconds*1000.0) as u32);
+    {
+        Sleep(((sleepSeconds*1000.0) as libc::c_ulong));
+    }
     #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "emscripten"))]
     {
         let mut req: libc::timespec = std::mem::zeroed();
-        let sec: libc::time_t = sleepSeconds as libc::time_t;
-        let nsec: libc::c_long = ((sleepSeconds - sec as f64)*1000000000.0) as libc::c_long;
+        let mut sec: libc::time_t = sleepSeconds as libc::time_t;
+        let mut nsec: libc::c_long = ((sleepSeconds - sec as f64)*1000000000.0) as libc::c_long;
         req.tv_sec = sec;
         req.tv_nsec = nsec;
 
         // NOTE: Use nanosleep() on Unix platforms... usleep() it's deprecated
-        while libc::nanosleep(&req, &mut req) == -1 { continue; }
+        while (libc::nanosleep(&req, &mut req) == -1) { continue; }
     }
     #[cfg(target_vendor = "apple")]
-        libc::usleep((sleepSeconds*1000000.0) as libc::useconds_t);
+    {
+        libc::usleep((sleepSeconds*1000000.0) as u32);
+    }
 
     #[cfg(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP")]
-        while GetTime() < destinationTime { }
+    {
+        while (GetTime() < destinationTime) { }
+    }
 }
 }
 
@@ -1547,12 +1575,16 @@ pub unsafe fn WaitTime(seconds: f64)
 //void OpenURL(const char *url)
 
 // Set the seed for the random number generator
-pub unsafe fn SetRandomSeed(seed: u32)
+pub unsafe fn SetRandomSeed(mut seed: u32)
 {
 #[cfg(feature = "SUPPORT_RPRAND_GENERATOR")]
+{
     rprand_set_seed(seed);
-#[cfg(not(feature = "SUPPORT_RPRAND_GENERATOR"))]
+}
+#[cfg(not(any(feature = "SUPPORT_RPRAND_GENERATOR")))]
+{
     libc::srand(seed);
+}
 }
 
 // Get a random value between min and max included
@@ -1560,9 +1592,9 @@ pub unsafe fn GetRandomValue(mut min: i32, mut max: i32) -> i32
 {
     let mut value: i32 = 0;
 
-    if min > max
+    if (min > max)
     {
-        let tmp: i32 = max;
+        let mut tmp: i32 = max;
         max = min;
         min = tmp;
     }
@@ -1571,13 +1603,13 @@ pub unsafe fn GetRandomValue(mut min: i32, mut max: i32) -> i32
 {
     value = rprand_get_value(min, max);
 }
-#[cfg(not(feature = "SUPPORT_RPRAND_GENERATOR"))]
+#[cfg(not(any(feature = "SUPPORT_RPRAND_GENERATOR")))]
 {
     // WARNING: Ranges higher than RAND_MAX will return invalid results
     // More specifically, if (max - min) > INT_MAX there will be an overflow,
     // and otherwise if (max - min) > RAND_MAX the random value will incorrectly never exceed a certain threshold
     // NOTE: Depending on the library it can be as low as 32767
-    if max.wrapping_sub(min) as u32 > libc::RAND_MAX as u32
+    if ((max.wrapping_sub(min) as u32) > (libc::RAND_MAX as u32))
     {
         warn!("Invalid GetRandomValue() arguments, range should not be higher than {}", libc::RAND_MAX);
     }
@@ -1588,25 +1620,25 @@ pub unsafe fn GetRandomValue(mut min: i32, mut max: i32) -> i32
     //value = (rand()%(abs(max - min) + 1) + min);
 
     // More uniform range solution
-    let range: i32 = max.wrapping_sub(min).wrapping_add(1);
+    let mut range: i32 = max.wrapping_sub(min).wrapping_add(1);
 
     // Degenerate/overflow case: fall back to min (same behavior as "always min" instead of UB)
-    if range <= 0 { value = min; }
+    if (range <= 0) { value = min; }
     else
     {
         // Rejection sampling to get a uniform integer in [min, max]
-        let c: libc::c_ulong = libc::RAND_MAX as libc::c_ulong + 1; // Number of possible results
-        let m: libc::c_ulong = range as libc::c_ulong;          // Size of the target interval
-        let t: libc::c_ulong = c - (c%m);                     // Largest multiple of m <= c
+        let mut c: libc::c_ulong = (libc::RAND_MAX as libc::c_ulong) + 1; // Number of possible results
+        let mut m: libc::c_ulong = (range as libc::c_ulong);          // Size of the target interval
+        let mut t: libc::c_ulong = c - (c%m);                     // Largest multiple of m <= c
         let mut r: libc::c_ulong = 0;
 
         loop
         {
-            r = libc::rand() as libc::c_ulong;
-            if r < t { break; }   // Only accept values within the fair region
+            r = (libc::rand() as libc::c_ulong);
+            if (r < t) { break; }   // Only accept values within the fair region
         }
 
-        value = min + (r%m) as i32;
+        value = min + ((r%m) as i32);
     }
 }
 
@@ -1622,33 +1654,33 @@ pub unsafe fn LoadRandomSequence(count: u32, min: i32, max: i32) -> *mut i32
 {
     values = rprand_load_sequence(count, min, max);
 }
-#[cfg(not(feature = "SUPPORT_RPRAND_GENERATOR"))]
+#[cfg(not(any(feature = "SUPPORT_RPRAND_GENERATOR")))]
 {
-    if count > max.wrapping_sub(min).unsigned_abs().wrapping_add(1) { return values; }  // Security check
+    if (count > ((max.wrapping_sub(min).wrapping_abs() as u32) + 1)) { return values; }  // Security check
 
-    values = libc::calloc(count as usize, std::mem::size_of::<i32>()).cast();
+    values = libc::calloc(count as usize, std::mem::size_of::<i32>()) as *mut i32;
 
     let mut value: i32 = 0;
     let mut dupValue: bool = false;
 
     let mut i: i32 = 0;
-    while i < count as i32
+    while (i < count as i32)
     {
         value = GetRandomValue(min, max);
         dupValue = false;
 
         for j in 0..i
         {
-            if *values.add(j as usize) == value
+            if (*values.add((j) as usize) == value)
             {
                 dupValue = true;
                 break;
             }
         }
 
-        if !dupValue
+        if (!dupValue)
         {
-            *values.add(i as usize) = value;
+            *values.add((i) as usize) = value;
             i += 1;
         }
     }
@@ -1658,53 +1690,56 @@ pub unsafe fn LoadRandomSequence(count: u32, min: i32, max: i32) -> *mut i32
 }
 
 // Unload random values sequence
-pub unsafe fn UnloadRandomSequence(sequence: *mut i32)
+pub unsafe fn UnloadRandomSequence(mut sequence: *mut i32)
 {
 #[cfg(feature = "SUPPORT_RPRAND_GENERATOR")]
+{
     rprand_unload_sequence(sequence);
-#[cfg(not(feature = "SUPPORT_RPRAND_GENERATOR"))]
+}
+#[cfg(not(any(feature = "SUPPORT_RPRAND_GENERATOR")))]
+{
     libc::free(sequence.cast());
+}
 }
 
 // Takes a screenshot of current screen
-pub unsafe fn TakeScreenshot(fileName: &str)
+pub unsafe fn TakeScreenshot(mut fileName: &str)
 {
 #[cfg(feature = "SUPPORT_MODULE_RTEXTURES")]
 {
     // Security check to (partially) avoid malicious code
-    if fileName.contains('\'') { warn!("SYSTEM: Provided fileName could be potentially malicious, avoid ['] character"); return; }
+    if (fileName.contains('\'')) { warn!("SYSTEM: Provided fileName could be potentially malicious, avoid [\'] character"); return; }
 
     // Apply content scaling if required
-    let mut scale: Vector2 = Vector2::new(1.0, 1.0);
-    if (CORE.Window.flags & FLAG_WINDOW_HIGHDPI) != 0 { scale = GetWindowScaleDPI(); }
+    let mut scale: Vector2 = Vector2 { x: 1.0, y: 1.0 };
+    if (((CORE.Window.flags & ConfigFlags::FLAG_WINDOW_HIGHDPI as u32) == ConfigFlags::FLAG_WINDOW_HIGHDPI as u32)) { scale = GetWindowScaleDPI(); }
 
-    let imgData: *mut u8 = rlReadScreenPixels((CORE.Window.render.x*scale.x) as i32, (CORE.Window.render.y*scale.y) as i32);
-    let image: Image = Image { data: imgData.cast(), width: (CORE.Window.render.x*scale.x) as i32, height: (CORE.Window.render.y*scale.y) as i32, mipmaps: 1, format: PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+    let imgData = rlReadScreenPixels((((CORE.Window.render.x as f32)*scale.x) as i32), (((CORE.Window.render.y as f32)*scale.y) as i32));
+    let image = Image { data: imgData.cast(), width: (CORE.Window.render.x*scale.x) as i32, height: (CORE.Window.render.y*scale.y) as i32, mipmaps: 1, format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 };
 
     let mut path = String::new();
-    if !IsPathAbsolute(fileName) { path = format!("{}/{}", CStr::from_ptr(CORE.Storage.basePath).to_string_lossy(), fileName); }
+    if (!IsPathAbsolute(fileName)) { path = format!("{}/{}", CStr::from_ptr(CORE.Storage.basePath).to_string_lossy(), fileName); }
     else { path = fileName.to_owned(); }
-    let mut pathLength = path.len().min(MAX_FILEPATH_LENGTH - 1);
-    while !path.is_char_boundary(pathLength) { pathLength -= 1; }
-    path.truncate(pathLength);
 
     ExportImage(image, &path); // WARNING: Module required: rtextures
     libc::free(imgData.cast());
 
-    if FileExists(Some(&path)) { info!("SYSTEM: [{}] Screenshot taken successfully", path); }
+    if (FileExists(&path)) { info!("SYSTEM: [{}] Screenshot taken successfully", path); }
     else { warn!("SYSTEM: [{}] Screenshot could not be saved", path); }
 }
-#[cfg(not(feature = "SUPPORT_MODULE_RTEXTURES"))]
+#[cfg(not(any(feature = "SUPPORT_MODULE_RTEXTURES")))]
+{
     warn!("IMAGE: ExportImage() requires module: rtextures");
+}
 }
 
 // Set up window configuration flags (view FLAGS)
 // NOTE: This function is expected to be called before window creation,
 // because it sets up some flags for the window creation process
 // To configure window states after creation, use SetWindowState()
-pub unsafe fn SetConfigFlags(flags: u32)
+pub unsafe fn SetConfigFlags(mut flags: u32)
 {
-    if CORE.Window.ready { warn!("WINDOW: SetConfigFlags called after window initialization, Use \"SetWindowState\" to set flags instead"); }
+    if (CORE.Window.ready) { warn!("WINDOW: SetConfigFlags called after window initialization, Use \"SetWindowState\" to set flags instead"); }
 
     // Selected flags are set but not evaluated at this point,
     // flag evaluation happens at InitWindow() or SetWindowState()
@@ -1720,34 +1755,60 @@ pub unsafe fn SetTraceLogLevel(logType: i32) { logTypeLevel = logType; }
 // Show trace log messages (LOG_INFO, LOG_WARNING, LOG_ERROR, LOG_DEBUG)
 pub unsafe fn TraceLog(logType: i32, text: std::fmt::Arguments<'_>)
 {
-#[cfg(feature = "SUPPORT_TRACELOG")]
-{
-    // Message has level below current threshold, don't emit
-    if logType < logTypeLevel { return; }
-
-    if let Some(traceLog) = traceLog
+    #[cfg(feature = "SUPPORT_TRACELOG")]
     {
-        traceLog(logType, text);
-        return;
-    }
+        // Message has level below current threshold, don't emit
+        if (logType < logTypeLevel) { return; }
 
-    match logType
-    {
-        LOG_TRACE => trace!("{}", text),
-        LOG_DEBUG => debug!("{}", text),
-        LOG_INFO => info!("{}", text),
-        LOG_WARNING => warn!("{}", text),
-        LOG_ERROR => error!("{}", text),
-        LOG_FATAL => error!("{}", text),
-        _ => {}
-    }
+        let args = text;
 
-    if logType == LOG_FATAL { std::process::exit(1); }  // If fatal logging, exit program
-}
+        if let Some(callback) = traceLog
+        {
+            callback(logType, args);
+            return;
+        }
+
+        #[cfg(feature = "PLATFORM_ANDROID")]
+        match logType
+        {
+            1 => trace!("{}", args),
+            2 => debug!("{}", args),
+            3 => info!("{}", args),
+            4 => warn!("{}", args),
+            5 | 6 => error!("{}", args),
+            _ => {}
+        }
+        #[cfg(not(feature = "PLATFORM_ANDROID"))]
+        {
+            let mut buffer = String::with_capacity(MAX_TRACELOG_MSG_LENGTH);
+
+            match logType
+            {
+                1 => buffer.push_str("TRACE: "),
+                2 => buffer.push_str("DEBUG: "),
+                3 => buffer.push_str("INFO: "),
+                4 => buffer.push_str("WARNING: "),
+                5 => buffer.push_str("ERROR: "),
+                6 => buffer.push_str("FATAL: "),
+                _ => {}
+            }
+
+            let text = args.to_string();
+            let textLength = text.len();
+            let mut textLength = if textLength < MAX_TRACELOG_MSG_LENGTH - 12 { textLength } else { MAX_TRACELOG_MSG_LENGTH - 12 };
+            while !text.is_char_boundary(textLength) { textLength -= 1; }
+            buffer.push_str(&text[..textLength]);
+            buffer.push('\n');
+            print!("{}", buffer);
+            let _ = std::io::Write::flush(&mut std::io::stdout());
+        }
+
+        if (logType == TraceLogLevel::LOG_FATAL as i32) { std::process::exit(1); }  // If fatal logging, exit program
+    }
 }
 
 // Set custom trace log
-pub unsafe fn SetTraceLogCallback(callback: TraceLogCallback)
+pub unsafe fn SetTraceLogCallback(callback: Option<TraceLogCallback>)
 {
     traceLog = callback;
 }
@@ -1757,16 +1818,16 @@ pub unsafe fn SetTraceLogCallback(callback: TraceLogCallback)
 //----------------------------------------------------------------------------------
 // Internal memory allocator
 // NOTE: Initializes to zero by default
-pub unsafe fn MemAlloc(size: u32) -> *mut c_void
+pub fn MemAlloc(size: u32) -> *mut c_void
 {
-    let ptr: *mut c_void = libc::calloc(size as usize, 1);
+    let ptr = unsafe { libc::calloc(size as usize, 1) };
     return ptr;
 }
 
 // Internal memory reallocator
 pub unsafe fn MemRealloc(ptr: *mut c_void, size: u32) -> *mut c_void
 {
-    let ret: *mut c_void = libc::realloc(ptr, size as usize);
+    let ret = libc::realloc(ptr, size as usize);
     return ret;
 }
 
@@ -1780,38 +1841,37 @@ pub unsafe fn MemFree(ptr: *mut c_void)
 // Module Functions Definition: File System management
 //----------------------------------------------------------------------------------
 // Load data from file into a buffer
-pub unsafe fn LoadFileData(fileName: Option<&str>, dataSize: &mut i32) -> *mut u8
+pub unsafe fn LoadFileData(fileName: &str, dataSize: &mut i32) -> *mut u8
 {
     let mut data: *mut u8 = std::ptr::null_mut();
     *dataSize = 0;
 
-    if let Some(fileName) = fileName
+    if let Ok(fileNameC) = CString::new(fileName)
     {
-        if let Some(loadFileData) = loadFileData { return loadFileData(fileName, dataSize); }
+        if let Some(callback) = loadFileData { return callback(fileName, dataSize); }
 
-        let fileNameC = CString::new(fileName).unwrap();
         let file = libc::fopen(fileNameC.as_ptr(), c"rb".as_ptr());
 
-        if !file.is_null()
+        if (!file.is_null())
         {
             // WARNING: On binary streams SEEK_END could not be found,
             // using fseek() and ftell() could not work in some (rare) cases
             libc::fseek(file, 0, libc::SEEK_END);
-            let size: i32 = libc::ftell(file) as i32;     // WARNING: ftell() returns 'long int', maximum size returned is INT_MAX (2147483647 bytes)
+            let size = libc::ftell(file) as i32;     // WARNING: ftell() returns 'long int', maximum size returned is INT_MAX (2147483647 bytes)
             libc::fseek(file, 0, libc::SEEK_SET);
 
-            if size > 0
+            if (size > 0)
             {
                 data = libc::calloc(size as usize, std::mem::size_of::<u8>()).cast();
 
-                if !data.is_null()
+                if (!data.is_null())
                 {
                     // NOTE: fread() returns number of read elements instead of bytes, so reading [1 byte, size elements]
-                    let count: usize = libc::fread(data.cast(), std::mem::size_of::<u8>(), size as usize, file);
+                    let count = libc::fread(data.cast(), std::mem::size_of::<u8>(), size as usize, file);
 
                     // WARNING: fread() returns a size_t value, usually 'unsigned int' (32bit compilation) and 'unsigned long long' (64bit compilation)
                     // dataSize is unified along raylib as a 'int' type, so, for file-sizes >INT_MAX (2147483647 bytes) there is a limitation
-                    if count > 2147483647
+                    if (count > 2147483647)
                     {
                         warn!("FILEIO: [{}] File is bigger than 2147483647 bytes, avoid using LoadFileData()", fileName);
 
@@ -1822,7 +1882,7 @@ pub unsafe fn LoadFileData(fileName: Option<&str>, dataSize: &mut i32) -> *mut u
                     {
                         *dataSize = count as i32;
 
-                        if *dataSize != size { warn!("FILEIO: [{}] File partially loaded ({} bytes out of {})", fileName, *dataSize, size); }
+                        if (*dataSize != size) { warn!("FILEIO: [{}] File partially loaded ({} bytes out of {})", fileName, *dataSize, size); }
                         else { info!("FILEIO: [{}] File loaded successfully", fileName); }
                     }
                 }
@@ -1846,29 +1906,28 @@ pub unsafe fn UnloadFileData(data: *mut u8)
 }
 
 // Save data to file from buffer
-pub unsafe fn SaveFileData(fileName: Option<&str>, data: &[u8], dataSize: i32) -> bool
+pub unsafe fn SaveFileData(fileName: &str, data: *const c_void, dataSize: i32) -> bool
 {
-    let mut result: bool = false;
+    let mut result = false;
 
-    if let Some(fileName) = fileName
+    if let Ok(fileNameC) = CString::new(fileName)
     {
-        if let Some(saveFileData) = saveFileData { return saveFileData(fileName, data, dataSize); }
+        if let Some(callback) = saveFileData { return callback(fileName, data, dataSize); }
 
-        let fileNameC = CString::new(fileName).unwrap();
         let file = libc::fopen(fileNameC.as_ptr(), c"wb".as_ptr());
 
-        if !file.is_null()
+        if (!file.is_null())
         {
             // WARNING: fwrite() returns a size_t value, usually 'unsigned int' (32bit compilation) and 'unsigned long long' (64bit compilation)
             // and expects a size_t input value but as dataSize is limited to INT_MAX (2147483647 bytes), there shouldn't be a problem
-            let count: i32 = libc::fwrite(data[..dataSize as usize].as_ptr().cast(), std::mem::size_of::<u8>(), dataSize as usize, file) as i32;
+            let count = libc::fwrite(data, std::mem::size_of::<u8>(), dataSize as usize, file) as i32;
 
-            if count == 0 { warn!("FILEIO: [{}] Failed to write file", fileName); }
-            else if count != dataSize { warn!("FILEIO: [{}] File partially written", fileName); }
+            if (count == 0) { warn!("FILEIO: [{}] Failed to write file", fileName); }
+            else if (count != dataSize) { warn!("FILEIO: [{}] File partially written", fileName); }
             else { info!("FILEIO: [{}] File saved successfully", fileName); }
 
-            let closed: i32 = libc::fclose(file);
-            if closed == 0 { result = true; }
+            let closed = libc::fclose(file);
+            if (closed == 0) { result = true; }
         }
         else { warn!("FILEIO: [{}] Failed to open file", fileName); }
     }
@@ -1880,7 +1939,7 @@ pub unsafe fn SaveFileData(fileName: Option<&str>, data: &[u8], dataSize: i32) -
 // Export data to code (.h), returns true on success
 pub unsafe fn ExportDataAsCode(data: &[u8], dataSize: i32, fileName: &str) -> bool
 {
-    let mut result: bool = false;
+    let mut result = false;
 
     const TEXT_BYTES_PER_LINE: i32 = 20;
 
@@ -1888,7 +1947,7 @@ pub unsafe fn ExportDataAsCode(data: &[u8], dataSize: i32, fileName: &str) -> bo
     // and requiring 6 char bytes for every byte: "0x00, "
     let mut txtData = String::with_capacity(dataSize as usize*6 + 2000);
 
-    let mut byteCount: usize = 0;
+    let mut byteCount = 0;
     txtData.push_str("////////////////////////////////////////////////////////////////////////////////////////\n");
     txtData.push_str("//                                                                                    //\n");
     txtData.push_str("// DataAsCode exporter v1.0 - Raw data exported as an array of bytes                  //\n");
@@ -1899,40 +1958,31 @@ pub unsafe fn ExportDataAsCode(data: &[u8], dataSize: i32, fileName: &str) -> bo
     txtData.push_str("// Copyright (c) 2022-2026 Ramon Santamaria (@raysan5)                                //\n");
     txtData.push_str("//                                                                                    //\n");
     txtData.push_str("////////////////////////////////////////////////////////////////////////////////////////\n\n");
-    byteCount = txtData.len();
 
     // Get file name from path
-    let mut varFileName = GetFileNameWithoutExt(Some(fileName)).into_bytes();
-    varFileName.truncate(255);
+    let mut varFileName = GetFileNameWithoutExt(fileName).into_bytes();
     for i in 0..varFileName.len()
     {
         // Convert variable name to uppercase
-        if (varFileName[i] >= b'a') && (varFileName[i] <= b'z') { varFileName[i] = varFileName[i] - 32; }
+        if ((varFileName[i] >= b'a') && (varFileName[i] <= b'z')) { varFileName[i] = varFileName[i] - 32; }
         // Replace non valid character for C identifier with '_'
-        else if varFileName[i] == b'.' || varFileName[i] == b'-' || varFileName[i] == b'?' || varFileName[i] == b'!' || varFileName[i] == b'+' { varFileName[i] = b'_'; }
+        else if (varFileName[i] == b'.' || varFileName[i] == b'-' || varFileName[i] == b'?' || varFileName[i] == b'!' || varFileName[i] == b'+') { varFileName[i] = b'_'; }
     }
-    let varFileName = String::from_utf8_lossy(&varFileName);
+    let varFileName = String::from_utf8(varFileName).unwrap();
 
     write!(txtData, "#define {}_DATA_SIZE     {}\n\n", varFileName, dataSize).unwrap();
-    byteCount = txtData.len();
 
     write!(txtData, "static unsigned char {}_DATA[{}_DATA_SIZE] = {{ ", varFileName, varFileName).unwrap();
-    byteCount = txtData.len();
-    for i in 0..(dataSize - 1)
-    {
-        if i%TEXT_BYTES_PER_LINE == 0 { write!(txtData, "0x{:x},\n", data[i as usize]).unwrap(); }
-        else { write!(txtData, "0x{:x}, ", data[i as usize]).unwrap(); }
-        byteCount = txtData.len();
-    }
+    for i in 0..(dataSize - 1) { write!(txtData, "0x{:x},{}", data[i as usize], if i%TEXT_BYTES_PER_LINE == 0 { "\n" } else { " " }).unwrap(); }
     write!(txtData, "0x{:x} }};\n", data[(dataSize - 1) as usize]).unwrap();
     byteCount = txtData.len();
 
     // NOTE: Text data size exported is determined by '\0' (NULL) character
-    result = SaveFileText(Some(fileName), &txtData);
+    result = SaveFileText(fileName, &txtData);
 
     drop(txtData);
 
-    if result { info!("FILEIO: [{}] Data as code exported successfully", fileName); }
+    if (result) { info!("FILEIO: [{}] Data as code exported successfully", fileName); }
     else { warn!("FILEIO: [{}] Failed to export data as code", fileName); }
 
     return result;
@@ -1940,42 +1990,41 @@ pub unsafe fn ExportDataAsCode(data: &[u8], dataSize: i32, fileName: &str) -> bo
 
 // Load text data from file, returns a '\0' terminated string
 // NOTE: text chars array should be freed manually
-pub unsafe fn LoadFileText(fileName: Option<&str>) -> Option<String>
+pub unsafe fn LoadFileText(fileName: &str) -> Option<String>
 {
-    let mut text: Option<String> = None;
+    let mut text = None;
 
-    if let Some(fileName) = fileName
+    if let Ok(fileNameC) = CString::new(fileName)
     {
-        if let Some(loadFileText) = loadFileText { return loadFileText(fileName); }
+        if let Some(callback) = loadFileText { return callback(fileName); }
 
-        let fileNameC = CString::new(fileName).unwrap();
         let file = libc::fopen(fileNameC.as_ptr(), c"rt".as_ptr());
 
-        if !file.is_null()
+        if (!file.is_null())
         {
             // WARNING: When reading a file as 'text' file,
             // text mode causes carriage return-linefeed translation...
             // ...but using fseek() should return correct byte-offset
             libc::fseek(file, 0, libc::SEEK_END);
-            let size: u32 = libc::ftell(file) as u32;
+            let size = libc::ftell(file) as u32;
             libc::fseek(file, 0, libc::SEEK_SET);
 
-            if size > 0
+            if (size > 0)
             {
-                let mut textData: *mut c_char = libc::calloc(size as usize + 1, std::mem::size_of::<c_char>()).cast();
+                let mut buffer = Vec::<u8>::new();
 
-                if !textData.is_null()
+                if (buffer.try_reserve_exact(size as usize + 1).is_ok())
                 {
-                    let count: u32 = libc::fread(textData.cast(), std::mem::size_of::<c_char>(), size as usize, file) as u32;
+                    buffer.resize(size as usize + 1, 0);
+                    let count = libc::fread(buffer.as_mut_ptr().cast(), std::mem::size_of::<c_char>(), size as usize, file) as u32;
 
                     // WARNING: \r\n is converted to \n on reading, so,
                     // read bytes count gets reduced by the number of lines
-                    if count < size { textData = libc::realloc(textData.cast(), count as usize + 1).cast(); }
+                    if (count < size) { buffer.truncate(count as usize + 1); }
 
                     // Zero-terminate the string
-                    *textData.add(count as usize) = 0;
-                    text = Some(CStr::from_ptr(textData).to_string_lossy().into_owned());
-                    libc::free(textData.cast());
+                    buffer[count as usize] = 0;
+                    text = Some(String::from_utf8_lossy(&buffer[..count as usize]).into_owned());
 
                     info!("FILEIO: [{}] Text file loaded successfully", fileName);
                 }
@@ -1999,27 +2048,26 @@ pub fn UnloadFileText(text: Option<String>)
 }
 
 // Save text data to file (write), string must be '\0' terminated
-pub unsafe fn SaveFileText(fileName: Option<&str>, text: &str) -> bool
+pub unsafe fn SaveFileText(fileName: &str, text: &str) -> bool
 {
-    let mut result: bool = false;
+    let mut result = false;
 
-    if let Some(fileName) = fileName
+    if let Ok(fileNameC) = CString::new(fileName)
     {
-        if let Some(saveFileText) = saveFileText { return saveFileText(fileName, text); }
+        if let Some(callback) = saveFileText { return callback(fileName, text); }
 
-        let fileNameC = CString::new(fileName).unwrap();
         let file = libc::fopen(fileNameC.as_ptr(), c"wt".as_ptr());
 
-        if !file.is_null()
+        if (!file.is_null())
         {
             let text = CString::new(text).unwrap();
-            let count: i32 = libc::fprintf(file, c"%s".as_ptr(), text.as_ptr());
+            let count = libc::fprintf(file, c"%s".as_ptr(), text.as_ptr());
 
-            if count < 0 { warn!("FILEIO: [{}] Failed to write text file", fileName); }
+            if (count < 0) { warn!("FILEIO: [{}] Failed to write text file", fileName); }
             else { info!("FILEIO: [{}] Text file saved successfully", fileName); }
 
-            let closed: i32 = libc::fclose(file);
-            if closed == 0 { result = true; }
+            let closed = libc::fclose(file);
+            if (closed == 0) { result = true; }
         }
         else { warn!("FILEIO: [{}] Failed to open text file", fileName); }
     }
@@ -2029,15 +2077,11 @@ pub unsafe fn SaveFileText(fileName: Option<&str>, text: &str) -> bool
 }
 
 // Check if the file exists
-pub fn FileExists(fileName: Option<&str>) -> bool
+pub fn FileExists(fileName: &str) -> bool
 {
-    let mut result: bool = false;
+    let mut result = false;
 
-    if let Some(fileName) = fileName
-    {
-        let fileName = CString::new(fileName).unwrap();
-        if unsafe { libc::access(fileName.as_ptr(), 0) } != -1 { result = true; }
-    }
+    if (std::fs::metadata(fileName).is_ok()) { result = true; }
 
     // NOTE: Alternatively, stat() can be used instead of access()
     //#include <sys/stat.h>
@@ -2052,7 +2096,7 @@ pub fn IsFileExtension(fileName: &str, ext: &str) -> bool
 {
     const MAX_FILE_EXTENSIONS: usize = 32;
 
-    let mut result: bool = false;
+    let mut result = false;
     let fileExt = GetFileExtension(fileName);
 
     // WARNING: fileExt points to last '.' on fileName string but it could happen
@@ -2060,35 +2104,33 @@ pub fn IsFileExtension(fileName: &str, ext: &str) -> bool
 
     if let Some(fileExt) = fileExt
     {
-        let fileExtLength: usize = fileExt.len();
-        let mut fileExtLower: [u8; 16] = [0; 16];
-        let mut i = 0;
-        while (i < fileExtLength) && (i < 15)
+        let fileExtLength = fileExt.len();
+        let mut fileExtLower = [0u8; 16];
+        for i in 0..fileExtLength.min(15)
         {
             // Copy and convert to lower-case
-            if (fileExt.as_bytes()[i] >= b'A') && (fileExt.as_bytes()[i] <= b'Z') { fileExtLower[i] = fileExt.as_bytes()[i] + 32; }
+            if ((fileExt.as_bytes()[i] >= b'A') && (fileExt.as_bytes()[i] <= b'Z')) { fileExtLower[i] = fileExt.as_bytes()[i] + 32; }
             else { fileExtLower[i] = fileExt.as_bytes()[i]; }
-            i += 1;
         }
 
-        let mut extCount: usize = 1;
-        let extLength: usize = ext.len();
+        let mut extCount = 1;
+        let extLength = ext.len();
         let mut extList = vec![0u8; extLength + 1];
-        let mut extListPtrs: [usize; MAX_FILE_EXTENSIONS] = [0; MAX_FILE_EXTENSIONS];
+        let mut extListPtrs = [0usize; MAX_FILE_EXTENSIONS];
         extList[..extLength].copy_from_slice(ext.as_bytes());
         extListPtrs[0] = 0;
 
         for i in 0..extLength
         {
             // Convert to lower-case if extension is upper-case
-            if (extList[i] >= b'A') && (extList[i] <= b'Z') { extList[i] += 32; }
+            if ((extList[i] >= b'A') && (extList[i] <= b'Z')) { extList[i] += 32; }
 
             // Get pointer to next extension and add null-terminator
-            if extList[i] == b';'
+            if (extList[i] == b';')
             {
                 extList[i] = 0;
 
-                if extCount < MAX_FILE_EXTENSIONS
+                if (extCount < MAX_FILE_EXTENSIONS)
                 {
                     extListPtrs[extCount] = i + 1;
                     extCount += 1;
@@ -2100,12 +2142,12 @@ pub fn IsFileExtension(fileName: &str, ext: &str) -> bool
         {
             // Consider the case where extension provided
             // does not start with the '.'
-            let mut fileExtLowerPtr = &fileExtLower[..];
-            if extList[extListPtrs[i]] != b'.' { fileExtLowerPtr = &fileExtLowerPtr[1..]; }
+            let mut fileExtLowerPtr = 0;
+            if (extList[extListPtrs[i]] != b'.') { fileExtLowerPtr += 1; }
 
-            let fileExtLowerPtr = fileExtLowerPtr.split(|&c| c == 0).next().unwrap();
-            let extPtr = extList[extListPtrs[i]..].split(|&c| c == 0).next().unwrap();
-            if fileExtLowerPtr == extPtr
+            let fileExtLowerEnd = fileExtLower.iter().position(|&ch| ch == 0).unwrap();
+            let extEnd = extList[extListPtrs[i]..].iter().position(|&ch| ch == 0).unwrap() + extListPtrs[i];
+            if (fileExtLower[fileExtLowerPtr..fileExtLowerEnd] == extList[extListPtrs[i]..extEnd])
             {
                 result = true;
                 break;
@@ -2121,7 +2163,7 @@ pub fn IsFileExtension(fileName: &str, ext: &str) -> bool
 // Check if directory path exists
 pub fn DirectoryExists(dirPath: &str) -> bool
 {
-    let mut result: bool = false;
+    let mut result = false;
     let dir = std::fs::read_dir(dirPath);
 
     if let Ok(dir) = dir
@@ -2139,60 +2181,55 @@ pub fn GetFileExtension(fileName: &str) -> Option<&str>
 {
     let dot = fileName.rfind('.');
 
-    if dot.is_none() || dot == Some(0) { return None; }
+    if (dot.is_none() || dot == Some(0)) { return None; }
 
     return Some(&fileName[dot.unwrap()..]);
 }
 
 // String pointer reverse break: returns right-most occurrence of charset in s
-fn strprbrk<'a>(mut text: Option<&'a str>, charset: &str) -> Option<&'a str>
+fn strprbrk<'a>(text: &'a str, charset: &str) -> Option<&'a str>
 {
     let mut latestMatch = None;
+    let mut text = text;
 
-    while let Some(current) = text
+    while let Some(index) = text.find(|ch| charset.contains(ch))
     {
-        if let Some(index) = current.find(|c| charset.contains(c))
-        {
-            latestMatch = Some(&current[index..]);
-            text = Some(&current[index + current[index..].chars().next().unwrap().len_utf8()..]);
-        }
-        else { break; }
+        latestMatch = Some(&text[index..]);
+        text = &text[index + text[index..].chars().next().unwrap().len_utf8()..];
     }
 
     return latestMatch;
 }
 
 // Get pointer to filename for a path string
-pub fn GetFileName(filePath: Option<&str>) -> Option<&str>
+pub fn GetFileName(filePath: &str) -> &str
 {
     let mut fileName = None;
 
-    if filePath.is_some() { fileName = strprbrk(filePath, "\\/"); }
+    fileName = strprbrk(filePath, "\\/");
 
-    if fileName.is_none() { return filePath; }
+    if (fileName.is_none()) { return filePath; }
 
-    return Some(&fileName.unwrap()[1..]);
+    return &fileName.unwrap()[1..];
 }
 
 // Get filename string without extension (uses static string)
-pub fn GetFileNameWithoutExt(filePath: Option<&str>) -> String
+pub fn GetFileNameWithoutExt(filePath: &str) -> String
 {
     const MAX_FILENAME_LENGTH: usize = 256;
 
     let mut fileName = String::new();
     fileName.clear();
 
-    if let Some(filePath) = filePath
     {
-        fileName = GetFileName(Some(filePath)).unwrap().to_owned(); // Get filename.ext without path
-        let mut limit = fileName.len().min(MAX_FILENAME_LENGTH - 1);
-        while !fileName.is_char_boundary(limit) { limit -= 1; }
-        fileName.truncate(limit);
-        let fileNameLength: usize = fileName.len(); // Get size in bytes
+        fileName = GetFileName(filePath).to_owned(); // Get filename.ext without path
+        let mut fileNameLength = fileName.len().min(MAX_FILENAME_LENGTH - 1); // Get size in bytes
+        while !fileName.is_char_boundary(fileNameLength) { fileNameLength -= 1; }
+        fileName.truncate(fileNameLength);
 
-        for i in (1..=fileNameLength).rev() // Reverse search '.'
+        for i in (1..fileNameLength).rev() // Reverse search '.'
         {
-            if fileName.as_bytes().get(i) == Some(&b'.')
+            if (fileName.as_bytes()[i] == b'.')
             {
                 // NOTE: Break on first '.' found
                 fileName.truncate(i);
@@ -2222,7 +2259,7 @@ pub fn GetDirectoryPath(filePath: &str) -> String
 
     // In case provided path does not contain a root drive letter (C:\, D:\)
     // nor leading path separator (\, /), add the current directory path to dirPath
-    if (filePath.as_bytes().get(1) != Some(&b':')) && !filePath.starts_with('\\') && !filePath.starts_with('/')
+    if (filePath.as_bytes().get(1) != Some(&b':') && !filePath.starts_with('\\') && !filePath.starts_with('/'))
     {
         // For security, set starting path to current directory,
         // obtained path will be concatenated to this
@@ -2230,10 +2267,10 @@ pub fn GetDirectoryPath(filePath: &str) -> String
         dirPath.push('/');
     }
 
-    lastSlash = strprbrk(Some(filePath), "\\/");
+    lastSlash = strprbrk(filePath, "\\/");
     if let Some(lastSlash) = lastSlash
     {
-        if lastSlash.len() == filePath.len()
+        if (lastSlash.len() == filePath.len())
         {
             // The last and only slash is the leading one: path is in a root directory
             dirPath.clear();
@@ -2241,9 +2278,9 @@ pub fn GetDirectoryPath(filePath: &str) -> String
         }
         else
         {
-            let dirPathPtr = &filePath[..filePath.len() - lastSlash.len()];
-            // Skip drive letter, "C:"
-            dirPath.push_str(dirPathPtr); // Add '\0' manually
+            let dirPathPtr = dirPath.len(); // Skip drive letter, "C:"
+            dirPath.push_str(&filePath[..filePath.len() - lastSlash.len() + 1]);
+            dirPath.truncate(filePath.len() - lastSlash.len() + dirPathPtr);  // Add '\0' manually
         }
     }
 
@@ -2261,71 +2298,14 @@ pub fn GetWorkingDirectory() -> String
     return path;
 }
 
-// Load directory filepaths
-// NOTE: Base path is prepended to the scanned filepaths
-// WARNING: Directory is scanned twice, first time to get paths count
-// Scanneed files and directories, no recursive/subdirs scanning
-pub unsafe fn LoadDirectoryFiles(dirPath: &str) -> FilePathList
-{
-    return LoadDirectoryFilesEx(dirPath, Some(FILE_FILTER_TAG_ALL), false);
-}
-
-// Load directory filepaths with extension filtering and recursive directory scan
-// Use "*.*" to include all files and directories on scan
-// Use "FILES*" to include only files on scan
-// Use "DIRS*" to include only directories on scan
-// WARNING: Directory is scanned twice, first time to get paths count
-pub unsafe fn LoadDirectoryFilesEx(basePath: &str, mut filter: Option<&str>, scanSubdirs: bool) -> FilePathList
-{
-    let mut files: FilePathList = std::mem::zeroed();
-
-    if DirectoryExists(basePath) // It's a directory
-    {
-        if filter == Some("") { filter = None; }
-
-        // SCAN 1: Count files
-        let fileCounter: u32 = GetDirectoryFileCountEx(basePath, filter, scanSubdirs);
-
-        // Memory allocation for dirFileCount
-        files.paths = libc::calloc(fileCounter as usize, std::mem::size_of::<*mut c_char>()).cast();
-        for i in 0..fileCounter { *files.paths.add(i as usize) = libc::calloc(MAX_FILEPATH_LENGTH, std::mem::size_of::<c_char>()).cast(); }
-
-        // SCAN 2: Read filepaths
-        // WARNING: basePath is always prepended to scanned paths
-        ScanDirectoryFiles(basePath, &mut files, filter, fileCounter, scanSubdirs);
-
-        // Security check: read files.count should match fileCounter
-        if files.count != fileCounter
-        {
-            warn!("FILEIO: Read files count ({}) does not match capacity allocated ({})", files.count, fileCounter);
-            files.count = fileCounter; // Avoid memory leak when unloading this FilePathList
-        }
-    }
-    else { warn!("FILEIO: Directory cannot be opened ({})", basePath); }  // Maybe it's a file...
-
-    return files;
-}
-
-// Unload directory filepaths
-// WARNING: files.count is not reseted to 0 after unloading
-pub unsafe fn UnloadDirectoryFiles(files: FilePathList)
-{
-    if !files.paths.is_null()
-    {
-        for i in 0..files.count { libc::free((*files.paths.add(i as usize)).cast()); }
-
-        libc::free(files.paths.cast());
-    }
-}
-
 // Check if provided path point to a file
 pub fn IsPathFile(path: &str) -> bool
 {
-    let mut result: bool = false;
+    let mut result = false;
 
     let info = std::fs::metadata(path);
 
-    if info.map(|info| info.is_file()).unwrap_or(false) { result = true; }
+    if (info.map(|info| info.is_file()).unwrap_or(false)) { result = true; }
 
     return result;
 }
@@ -2333,9 +2313,9 @@ pub fn IsPathFile(path: &str) -> bool
 // Check if provided path point to a directory
 pub fn IsPathDirectory(path: &str) -> bool
 {
-    let mut result: bool = false;
+    let mut result = false;
 
-    if !IsPathFile(path) { result = true; }
+    if (!IsPathFile(path)) { result = true; }
 
     return result;
 }
@@ -2343,22 +2323,22 @@ pub fn IsPathDirectory(path: &str) -> bool
 // Check if provided path is an absolute path
 pub fn IsPathAbsolute(path: &str) -> bool
 {
-    let mut result: bool = false;
+    let mut result = false;
 
-    if !path.is_empty()
+    if (!path.is_empty())
     {
-#[cfg(target_os = "windows")]
-    {
-        // Check UNC path (\\server\share)
-        if path.starts_with("\\\\") { result = true; }
-        // Check path starts with a drive letter (e.g. C:\ or D:/)
-        else if path.as_bytes()[0].is_ascii_alphabetic() && path.as_bytes().get(1) == Some(&b':') && matches!(path.as_bytes().get(2), Some(b'\\' | b'/')) { result = true; }
-    }
-#[cfg(not(target_os = "windows"))]
-    {
-        // Check POSIX path, must start with /
-        if path.starts_with('/') { result = true; }
-    }
+        #[cfg(target_os = "windows")]
+        {
+            // Check UNC path (\\server\share)
+            if (path.starts_with("\\\\")) { result = true; }
+            // Check path starts with a drive letter (e.g. C:\ or D:/)
+            else if (path.as_bytes()[0].is_ascii_alphabetic() && path.as_bytes().get(1) == Some(&b':') && matches!(path.as_bytes().get(2), Some(b'\\' | b'/'))) { result = true; }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            // Check POSIX path, must start with /
+            if (path.starts_with('/')) { result = true; }
+        }
     }
 
     return result;
@@ -2367,38 +2347,11 @@ pub fn IsPathAbsolute(path: &str) -> bool
 // Check if file has been dropped into window
 pub unsafe fn IsFileDropped() -> bool
 {
-    let mut result: bool = false;
+    let mut result = false;
 
-    if CORE.Window.dropFileCount > 0 { result = true; }
+    if (CORE.Window.dropFileCount > 0) { result = true; }
 
     return result;
-}
-
-// Load dropped filepaths
-pub unsafe fn LoadDroppedFiles() -> FilePathList
-{
-    let mut files: FilePathList = std::mem::zeroed();
-
-    files.count = CORE.Window.dropFileCount;
-    files.paths = CORE.Window.dropFilepaths;
-
-    return files;
-}
-
-// Unload dropped filepaths
-pub unsafe fn UnloadDroppedFiles(files: FilePathList)
-{
-    // WARNING: files pointers are the same as internal ones
-
-    if files.count > 0
-    {
-        for i in 0..files.count { libc::free((*files.paths.add(i as usize)).cast()); }
-
-        libc::free(files.paths.cast());
-
-        CORE.Window.dropFileCount = 0;
-        CORE.Window.dropFilepaths = std::ptr::null_mut();
-    }
 }
 
 //----------------------------------------------------------------------------------
@@ -2406,51 +2359,51 @@ pub unsafe fn UnloadDroppedFiles(files: FilePathList)
 //----------------------------------------------------------------------------------
 
 // Compress data (DEFLATE algorithm)
-pub unsafe fn CompressData(data: &[u8], dataSize: i32, compDataSize: &mut i32) -> *mut u8
+pub unsafe fn CompressData(data: *const u8, dataSize: i32, compDataSize: &mut i32) -> *mut u8
 {
     const COMPRESSION_QUALITY_DEFLATE: i32 = 8;
 
-    let mut compData: *mut u8 = std::ptr::null_mut();
+    let mut compData = std::ptr::null_mut();
 
-#[cfg(feature = "SUPPORT_COMPRESSION_API")]
-{
-    // Compress data and generate a valid DEFLATE stream
-    let sdefl: *mut sdefl = libc::calloc(1, std::mem::size_of::<sdefl>()).cast();   // WARNING: Possible stack overflow, struct sdefl is almost 1MB
-    let bounds: i32 = sdefl_bound(dataSize);
-    compData = libc::calloc(bounds as usize, 1).cast();
+    #[cfg(feature = "SUPPORT_COMPRESSION_API")]
+    {
+        // Compress data and generate a valid DEFLATE stream
+        let sdefl = libc::calloc(1, std::mem::size_of::<sdefl>()) as *mut sdefl;   // WARNING: Possible stack overflow, struct sdefl is almost 1MB
+        let bounds = sdefl_bound(dataSize);
+        compData = libc::calloc(bounds as usize, 1).cast();
 
-    *compDataSize = sdeflate(sdefl, compData, data[..dataSize as usize].as_ptr(), dataSize, COMPRESSION_QUALITY_DEFLATE);   // Compression level 8, same as stbiw
-    libc::free(sdefl.cast());
+        *compDataSize = sdeflate(sdefl, compData, data, dataSize, COMPRESSION_QUALITY_DEFLATE);   // Compression level 8, same as stbiw
+        libc::free(sdefl.cast());
 
-    info!("SYSTEM: Compress data: Original size: {} -> Comp. size: {}", dataSize, *compDataSize);
-}
+        info!("SYSTEM: Compress data: Original size: {} -> Comp. size: {}", dataSize, *compDataSize);
+    }
 
     return compData;
 }
 
 // Decompress data (DEFLATE algorithm)
-pub unsafe fn DecompressData(compData: &[u8], compDataSize: i32, dataSize: &mut i32) -> *mut u8
+pub unsafe fn DecompressData(compData: *const u8, compDataSize: i32, dataSize: &mut i32) -> *mut u8
 {
     let mut data: *mut u8 = std::ptr::null_mut();
 
-#[cfg(feature = "SUPPORT_COMPRESSION_API")]
-{
-    // Decompress data from a valid DEFLATE stream
-    let data0: *mut u8 = libc::calloc(MAX_DECOMPRESSION_SIZE*1024*1024, 1).cast();
-    let size: i32 = sinflate(data0, (MAX_DECOMPRESSION_SIZE*1024*1024) as i32, compData[..compDataSize as usize].as_ptr(), compDataSize);
+    #[cfg(feature = "SUPPORT_COMPRESSION_API")]
+    {
+        // Decompress data from a valid DEFLATE stream
+        let data0 = libc::calloc(MAX_DECOMPRESSION_SIZE*1024*1024, 1) as *mut u8;
+        let size = sinflate(data0, (MAX_DECOMPRESSION_SIZE*1024*1024) as i32, compData, compDataSize);
 
-    // WARNING: RL_REALLOC can make (and leave) data copies in memory,
-    // that can be a security concern in case of compression of sensitive data
-    // So, using a second buffer to copy data manually, wiping original buffer memory
-    data = libc::calloc(size as usize, 1).cast();
-    std::ptr::copy_nonoverlapping(data0, data, size as usize);
-    std::ptr::write_bytes(data0, 0, MAX_DECOMPRESSION_SIZE*1024*1024); // Wipe memory, is memset() safe?
-    libc::free(data0.cast());
+        // WARNING: RL_REALLOC can make (and leave) data copies in memory,
+        // that can be a security concern in case of compression of sensitive data
+        // So, using a second buffer to copy data manually, wiping original buffer memory
+        data = libc::calloc(size as usize, 1).cast();
+        std::ptr::copy_nonoverlapping(data0, data, size as usize);
+        std::ptr::write_bytes(data0, 0, MAX_DECOMPRESSION_SIZE*1024*1024); // Wipe memory, is memset() safe?
+        libc::free(data0.cast());
 
-    info!("SYSTEM: Decompress data: Comp. size: {} -> Original size: {}", compDataSize, size);
+        info!("SYSTEM: Decompress data: Comp. size: {} -> Original size: {}", compDataSize, size);
 
-    *dataSize = size;
-}
+        *dataSize = size;
+    }
 
     return data;
 }
@@ -2463,172 +2416,169 @@ pub unsafe fn LoadAutomationEventList(fileName: Option<&str>) -> AutomationEvent
 {
     let mut list: AutomationEventList = std::mem::zeroed();
 
-#[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
-{
-    // Allocate and empty automation event list, ready to record new events
-    list.events = libc::calloc(MAX_AUTOMATION_EVENTS, std::mem::size_of::<AutomationEvent>()).cast();
-    list.capacity = MAX_AUTOMATION_EVENTS as u32;
-
-    if fileName.is_none() { info!("AUTOMATION: New empty events list loaded successfully"); }
-    else
+    #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
     {
-        // Load automation events file (binary)
-        /*
-        //int dataSize = 0;
-        //unsigned char *data = LoadFileData(fileName, &dataSize);
+        // Allocate and empty automation event list, ready to record new events
+        list.events = libc::calloc(MAX_AUTOMATION_EVENTS, std::mem::size_of::<AutomationEvent>()).cast();
+        list.capacity = MAX_AUTOMATION_EVENTS as u32;
 
-        FILE *raeFile = fopen(fileName, "rb");
-        unsigned char fileId[4] = { 0 };
-
-        fread(fileId, 1, 4, raeFile);
-
-        if ((fileId[0] == 'r') && (fileId[1] == 'A') && (fileId[2] == 'E') && (fileId[1] == ' '))
+        if (fileName.is_none()) { info!("AUTOMATION: New empty events list loaded successfully"); }
+        else
         {
-            fread(&eventCount, sizeof(int), 1, raeFile);
-            TRACELOG(LOG_WARNING, "Events loaded: %i\n", eventCount);
-            fread(events, sizeof(AutomationEvent), eventCount, raeFile);
-        }
+            let fileName = fileName.unwrap();
+            // Load automation events file (binary)
+            /*
+            //int dataSize = 0;
+            //unsigned char *data = LoadFileData(fileName, &dataSize);
 
-        fclose(raeFile);
-        */
+            FILE *raeFile = fopen(fileName, "rb");
+            unsigned char fileId[4] = { 0 };
 
-        // Load events file (text)
-        //unsigned char *buffer = LoadFileText(fileName);
-        let fileName = fileName.unwrap();
-        let fileNameC = CString::new(fileName).unwrap();
-        let raeFile = libc::fopen(fileNameC.as_ptr(), c"rt".as_ptr());
+            fread(fileId, 1, 4, raeFile);
 
-        if !raeFile.is_null()
-        {
-            let mut counter: u32 = 0;
-            let mut buffer: [c_char; 256] = [0; 256];
-            let mut eventDesc: [c_char; 64] = [0; 64];
-
-            let mut result = libc::fgets(buffer.as_mut_ptr(), 256, raeFile);
-            if result != buffer.as_mut_ptr() { warn!("AUTOMATION: [{}] Issue reading line to buffer", fileName); }
-
-            while libc::feof(raeFile) == 0
+            if ((fileId[0] == 'r') && (fileId[1] == 'A') && (fileId[2] == 'E') && (fileId[1] == ' '))
             {
-                match buffer[0] as u8
-                {
-                    b'c' => { libc::sscanf(buffer.as_ptr(), c"c %i".as_ptr(), &mut list.count); }
-                    b'e' =>
-                    {
-                        if counter < list.capacity
-                        {
-                            libc::sscanf(buffer.as_ptr(), c"e %d %d %d %d %d %d %63[^\n]s".as_ptr(), &mut (*list.events.add(counter as usize)).frame, &mut (*list.events.add(counter as usize)).r#type,
-                                   &mut (*list.events.add(counter as usize)).params[0], &mut (*list.events.add(counter as usize)).params[1], &mut (*list.events.add(counter as usize)).params[2], &mut (*list.events.add(counter as usize)).params[3], eventDesc.as_mut_ptr());
+                fread(&eventCount, sizeof(int), 1, raeFile);
+                TRACELOG(LOG_WARNING, "Events loaded: %i\n", eventCount);
+                fread(events, sizeof(AutomationEvent), eventCount, raeFile);
+            }
 
-                            counter += 1;
+            fclose(raeFile);
+            */
+
+            // Load events file (text)
+            //unsigned char *buffer = LoadFileText(fileName);
+            let fileNameC = CString::new(fileName).unwrap();
+            let raeFile = libc::fopen(fileNameC.as_ptr(), c"rt".as_ptr());
+
+            if (!raeFile.is_null())
+            {
+                let mut counter: u32 = 0;
+                let mut buffer = [0 as c_char; 256];
+                let mut eventDesc = [0 as c_char; 64];
+
+                let mut result = libc::fgets(buffer.as_mut_ptr(), 256, raeFile);
+                if (result != buffer.as_mut_ptr()) { warn!("AUTOMATION: [{}] Issue reading line to buffer", fileName); }
+
+                while (libc::feof(raeFile) == 0)
+                {
+                    match buffer[0] as u8
+                    {
+                        b'c' => { libc::sscanf(buffer.as_ptr(), c"c %u".as_ptr(), &mut list.count); }
+                        b'e' =>
+                        {
+                            if (counter < list.capacity)
+                            {
+                                let event = list.events.add(counter as usize);
+                                libc::sscanf(buffer.as_ptr(), c"e %u %u %d %d %d %d %63[^\n]s".as_ptr(), &mut (*event).frame, &mut (*event).type_,
+                                    &mut (*event).params[0], &mut (*event).params[1], &mut (*event).params[2], &mut (*event).params[3], eventDesc.as_mut_ptr());
+
+                                counter += 1;
+                            }
+                            else { warn!("AUTOMATION: Event goes beyond automated list capacity (MAX: {}): {}", list.capacity, CStr::from_ptr(buffer.as_ptr()).to_string_lossy()); }
                         }
-                        else { warn!("AUTOMATION: Event goes beyond automated list capacity (MAX: {}): {}", list.capacity, CStr::from_ptr(buffer.as_ptr()).to_string_lossy()); }
+                        _ => {}
                     }
-                    _ => {}
+
+                    result = libc::fgets(buffer.as_mut_ptr(), 256, raeFile);
+                    if (result != buffer.as_mut_ptr()) { warn!("AUTOMATION: [{}] Issue reading line to buffer", fileName); }
                 }
 
-                result = libc::fgets(buffer.as_mut_ptr(), 256, raeFile);
-                if result != buffer.as_mut_ptr() { warn!("AUTOMATION: [{}] Issue reading line to buffer", fileName); }
+                if (counter != list.count)
+                {
+                    warn!("AUTOMATION: Events read from file [{}] do not mach event count specified [{}]", counter, list.count);
+                    list.count = counter;
+                }
+
+                libc::fclose(raeFile);
+
+                info!("AUTOMATION: Events file loaded successfully");
             }
 
-            if counter != list.count
-            {
-                warn!("AUTOMATION: Events read from file [{}] do not mach event count specified [{}]", counter, list.count);
-                list.count = counter;
-            }
-
-            libc::fclose(raeFile);
-
-            info!("AUTOMATION: Events file loaded successfully");
+            info!("AUTOMATION: Events loaded from file: {}", list.count);
         }
-
-        info!("AUTOMATION: Events loaded from file: {}", list.count);
     }
-}
     return list;
 }
 
 // Unload automation events list from file
 pub unsafe fn UnloadAutomationEventList(list: AutomationEventList)
 {
-#[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
+    #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
     libc::free(list.events.cast());
 }
 
 // Export automation events list as text file
 pub unsafe fn ExportAutomationEventList(list: AutomationEventList, fileName: &str) -> bool
 {
-    let mut result: bool = false;
+    let mut result = false;
 
-#[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
-{
-    // Export events as binary file
-    // NOTE: Code not used, only for reference if required in the future
-    /*
-    if (list.count > 0)
+    #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
     {
-        int binarySize = 4 + sizeof(int) + sizeof(AutomationEvent)*list.count;
-        unsigned char *binBuffer = (unsigned char *)RL_CALLOC(binarySize, 1);
-        int offset = 0;
-        memcpy(binBuffer + offset, "rAE ", 4);
-        offset += 4;
-        memcpy(binBuffer + offset, &list.count, sizeof(int));
-        offset += sizeof(int);
-        memcpy(binBuffer + offset, list.events, sizeof(AutomationEvent)*list.count);
-        offset += sizeof(AutomationEvent)*list.count;
+        // Export events as binary file
+        // NOTE: Code not used, only for reference if required in the future
+        /*
+        if (list.count > 0)
+        {
+            int binarySize = 4 + sizeof(int) + sizeof(AutomationEvent)*list.count;
+            unsigned char *binBuffer = (unsigned char *)RL_CALLOC(binarySize, 1);
+            int offset = 0;
+            memcpy(binBuffer + offset, "rAE ", 4);
+            offset += 4;
+            memcpy(binBuffer + offset, &list.count, sizeof(int));
+            offset += sizeof(int);
+            memcpy(binBuffer + offset, list.events, sizeof(AutomationEvent)*list.count);
+            offset += sizeof(AutomationEvent)*list.count;
 
-        result = SaveFileData(TextFormat("%s.rae",fileName), binBuffer, binarySize);
-        RL_FREE(binBuffer);
-    }
-    */
+            result = SaveFileData(TextFormat("%s.rae",fileName), binBuffer, binarySize);
+            RL_FREE(binBuffer);
+        }
+        */
 
-    // Export events as text
-    // NOTE: Save to memory buffer and SaveFileText()
-    let mut txtData = String::with_capacity(256*list.count as usize + 2048); // 256 characters per line plus some header
+        // Export events as text
+        // NOTE: Save to memory buffer and SaveFileText()
+        let mut txtData = String::with_capacity(256*list.count as usize + 2048); // 256 characters per line plus some header
 
-    let mut byteCount: usize = 0;
-    txtData.push_str("#\n");
-    txtData.push_str("# Automation events exporter v1.0 - raylib automation events list\n");
-    txtData.push_str("#\n");
-    txtData.push_str("#    c <events_count>\n");
-    txtData.push_str("#    e <frame> <event_type> <param0> <param1> <param2> <param3> // <event_type_name>\n");
-    txtData.push_str("#\n");
-    txtData.push_str("# more info and bugs-report:  github.com/raysan5/raylib\n");
-    txtData.push_str("# feedback and support:       ray[at]raylib.com\n");
-    txtData.push_str("#\n");
-    txtData.push_str("# Copyright (c) 2023-2026 Ramon Santamaria (@raysan5)\n");
-    txtData.push_str("#\n\n");
-    byteCount = txtData.len();
+        let mut byteCount = 0;
+        txtData.push_str("#\n");
+        txtData.push_str("# Automation events exporter v1.0 - raylib automation events list\n");
+        txtData.push_str("#\n");
+        txtData.push_str("#    c <events_count>\n");
+        txtData.push_str("#    e <frame> <event_type> <param0> <param1> <param2> <param3> // <event_type_name>\n");
+        txtData.push_str("#\n");
+        txtData.push_str("# more info and bugs-report:  github.com/raysan5/raylib\n");
+        txtData.push_str("# feedback and support:       ray[at]raylib.com\n");
+        txtData.push_str("#\n");
+        txtData.push_str("# Copyright (c) 2023-2026 Ramon Santamaria (@raysan5)\n");
+        txtData.push_str("#\n\n");
 
-    // Add events data
-    write!(txtData, "c {}\n", list.count).unwrap();
-    byteCount = txtData.len();
-    for i in 0..list.count
-    {
-        write!(txtData, "e {} {} {} {} {} {} // Event: {}\n", (*list.events.add(i as usize)).frame, (*list.events.add(i as usize)).r#type,
-            (*list.events.add(i as usize)).params[0], (*list.events.add(i as usize)).params[1], (*list.events.add(i as usize)).params[2], (*list.events.add(i as usize)).params[3], autoEventTypeName[(*list.events.add(i as usize)).r#type as usize]).unwrap();
+        // Add events data
+        write!(txtData, "c {}\n", list.count).unwrap();
+        for i in 0..list.count
+        {
+            write!(txtData, "e {} {} {} {} {} {} // Event: {}\n", (*list.events.add(i as usize)).frame, (*list.events.add(i as usize)).type_,
+                (*list.events.add(i as usize)).params[0], (*list.events.add(i as usize)).params[1], (*list.events.add(i as usize)).params[2], (*list.events.add(i as usize)).params[3], autoEventTypeName[(*list.events.add(i as usize)).type_ as usize]).unwrap();
+        }
         byteCount = txtData.len();
+
+        // NOTE: Text data size exported is determined by '\0' (NULL) character
+        result = SaveFileText(fileName, &txtData);
+
+        drop(txtData);
     }
-
-    // NOTE: Text data size exported is determined by '\0' (NULL) character
-    result = SaveFileText(Some(fileName), &txtData);
-
-    drop(txtData);
-}
 
     return result;
 }
 
 // Setup automation event list to record to
-pub unsafe fn SetAutomationEventList(mut list: *mut AutomationEventList)
+pub unsafe fn SetAutomationEventList(list: *mut AutomationEventList)
 {
-#[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
-{
-    currentEventList = list;
-}
+    #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
+    { currentEventList = list; }
 }
 
 // Set automation event internal base frame to start recording
-pub unsafe fn SetAutomationEventBaseFrame(mut frame: i32)
+pub unsafe fn SetAutomationEventBaseFrame(frame: i32)
 {
     CORE.Time.frameCounter = frame as u32;
 }
@@ -2636,21 +2586,16 @@ pub unsafe fn SetAutomationEventBaseFrame(mut frame: i32)
 // Start recording automation events (AutomationEventList must be set)
 pub unsafe fn StartAutomationEventRecording()
 {
-#[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
-{
-    automationEventRecording = true;
-}
+    #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
+    { automationEventRecording = true; }
 }
 
 // Stop recording automation events
 pub unsafe fn StopAutomationEventRecording()
 {
-#[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
-{
-    automationEventRecording = false;
+    #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
+    { automationEventRecording = false; }
 }
-}
-
 // Play a recorded automation event
 pub unsafe fn PlayAutomationEvent(mut event: AutomationEvent)
 {
@@ -2658,71 +2603,71 @@ pub unsafe fn PlayAutomationEvent(mut event: AutomationEvent)
 {
     // WARNING: When should event be played? After/before/replace PollInputEvents()? -> Up to the user!
 
-    if !automationEventRecording
+    if (!automationEventRecording)
     {
-        match event.r#type
+        match event.type_
         {
             // Input event
-            INPUT_KEY_UP => { CORE.Input.Keyboard.currentKeyState[event.params[0] as usize] = 0; }             // param[0]: key
-            INPUT_KEY_DOWN => {                                                                              // param[0]: key
+            x if x == AutomationEventType::INPUT_KEY_UP as u32 => { CORE.Input.Keyboard.currentKeyState[event.params[0] as usize] = 0; }             // param[0]: key
+            x if x == AutomationEventType::INPUT_KEY_DOWN as u32 => {                                                                              // param[0]: key
                 CORE.Input.Keyboard.currentKeyState[event.params[0] as usize] = 1;
 
-                if CORE.Input.Keyboard.previousKeyState[event.params[0] as usize] == 0
+                if (CORE.Input.Keyboard.previousKeyState[event.params[0] as usize] == 0)
                 {
-                    if CORE.Input.Keyboard.keyPressedQueueCount < MAX_KEY_PRESSED_QUEUE as i32
+                    if (CORE.Input.Keyboard.keyPressedQueueCount < MAX_KEY_PRESSED_QUEUE as i32)
                     {
                         // Add character to the queue
-                        CORE.Input.Keyboard.keyPressedQueue[CORE.Input.Keyboard.keyPressedQueueCount as usize] = event.params[0];
+                        CORE.Input.Keyboard.keyPressedQueue[(CORE.Input.Keyboard.keyPressedQueueCount) as usize] = event.params[0];
                         CORE.Input.Keyboard.keyPressedQueueCount += 1;
                     }
                 }
             }
-            INPUT_MOUSE_BUTTON_UP => { CORE.Input.Mouse.currentButtonState[event.params[0] as usize] = 0; }    // param[0]: key
-            INPUT_MOUSE_BUTTON_DOWN => { CORE.Input.Mouse.currentButtonState[event.params[0] as usize] = 1; }   // param[0]: key
-            INPUT_MOUSE_POSITION =>      // param[0]: x, param[1]: y
+            x if x == AutomationEventType::INPUT_MOUSE_BUTTON_UP as u32 => { CORE.Input.Mouse.currentButtonState[event.params[0] as usize] = 0; }    // param[0]: key
+            x if x == AutomationEventType::INPUT_MOUSE_BUTTON_DOWN as u32 => { CORE.Input.Mouse.currentButtonState[event.params[0] as usize] = 1; }   // param[0]: key
+            x if x == AutomationEventType::INPUT_MOUSE_POSITION as u32 =>      // param[0]: x, param[1]: y
             {
                 CORE.Input.Mouse.currentPosition.x = (event.params[0] as f32);
                 CORE.Input.Mouse.currentPosition.y = (event.params[1] as f32);
             }
-            INPUT_MOUSE_WHEEL_MOTION =>  // param[0]: x delta, param[1]: y delta
+            x if x == AutomationEventType::INPUT_MOUSE_WHEEL_MOTION as u32 =>  // param[0]: x delta, param[1]: y delta
             {
                 CORE.Input.Mouse.currentWheelMove.x = (event.params[0] as f32);
                 CORE.Input.Mouse.currentWheelMove.y = (event.params[1] as f32);
             }
-            INPUT_TOUCH_UP => { CORE.Input.Touch.currentTouchState[event.params[0] as usize] = 0; }            // param[0]: id
-            INPUT_TOUCH_DOWN => { CORE.Input.Touch.currentTouchState[event.params[0] as usize] = 1; }           // param[0]: id
-            INPUT_TOUCH_POSITION =>      // param[0]: id, param[1]: x, param[2]: y
+            x if x == AutomationEventType::INPUT_TOUCH_UP as u32 => { CORE.Input.Touch.currentTouchState[event.params[0] as usize] = 0; }            // param[0]: id
+            x if x == AutomationEventType::INPUT_TOUCH_DOWN as u32 => { CORE.Input.Touch.currentTouchState[event.params[0] as usize] = 1; }           // param[0]: id
+            x if x == AutomationEventType::INPUT_TOUCH_POSITION as u32 =>      // param[0]: id, param[1]: x, param[2]: y
             {
                 CORE.Input.Touch.position[event.params[0] as usize].x = (event.params[1] as f32);
                 CORE.Input.Touch.position[event.params[0] as usize].y = (event.params[2] as f32);
             }
-            INPUT_GAMEPAD_CONNECT => { CORE.Input.Gamepad.ready[event.params[0] as usize] = true; }                // param[0]: gamepad
-            INPUT_GAMEPAD_DISCONNECT => { CORE.Input.Gamepad.ready[event.params[0] as usize] = false; }            // param[0]: gamepad
-            INPUT_GAMEPAD_BUTTON_UP => { CORE.Input.Gamepad.currentButtonState[event.params[0] as usize][event.params[1] as usize] = 0; }    // param[0]: gamepad, param[1]: button
-            INPUT_GAMEPAD_BUTTON_DOWN => { CORE.Input.Gamepad.currentButtonState[event.params[0] as usize][event.params[1] as usize] = 1; }   // param[0]: gamepad, param[1]: button
-            INPUT_GAMEPAD_AXIS_MOTION => // param[0]: gamepad, param[1]: axis, param[2]: delta
+            x if x == AutomationEventType::INPUT_GAMEPAD_CONNECT as u32 => { CORE.Input.Gamepad.ready[event.params[0] as usize] = true; }                // param[0]: gamepad
+            x if x == AutomationEventType::INPUT_GAMEPAD_DISCONNECT as u32 => { CORE.Input.Gamepad.ready[event.params[0] as usize] = false; }            // param[0]: gamepad
+            x if x == AutomationEventType::INPUT_GAMEPAD_BUTTON_UP as u32 => { CORE.Input.Gamepad.currentButtonState[event.params[0] as usize][event.params[1] as usize] = 0; }    // param[0]: gamepad, param[1]: button
+            x if x == AutomationEventType::INPUT_GAMEPAD_BUTTON_DOWN as u32 => { CORE.Input.Gamepad.currentButtonState[event.params[0] as usize][event.params[1] as usize] = 1; }   // param[0]: gamepad, param[1]: button
+            x if x == AutomationEventType::INPUT_GAMEPAD_AXIS_MOTION as u32 => // param[0]: gamepad, param[1]: axis, param[2]: delta
             {
                 CORE.Input.Gamepad.axisState[event.params[0] as usize][event.params[1] as usize] = ((event.params[2] as f32)/32768.0);
             }
     #[cfg(feature = "SUPPORT_GESTURES_SYSTEM")]
-            INPUT_GESTURE => { GESTURES.current = event.params[0]; }     // param[0]: gesture (enum Gesture) -> rgestures.h: GESTURES.current
+            x if x == AutomationEventType::INPUT_GESTURE as u32 => { GESTURES.current = event.params[0]; }     // param[0]: gesture (enum Gesture) -> rgestures.h: GESTURES.current
             // Window event
-            WINDOW_CLOSE => { CORE.Window.shouldClose = true; }
-            WINDOW_MAXIMIZE => { MaximizeWindow(); }
-            WINDOW_MINIMIZE => { MinimizeWindow(); }
-            WINDOW_RESIZE => { SetWindowSize(event.params[0], event.params[1]); }
+            x if x == AutomationEventType::WINDOW_CLOSE as u32 => { CORE.Window.shouldClose = true; }
+            x if x == AutomationEventType::WINDOW_MAXIMIZE as u32 => { MaximizeWindow(); }
+            x if x == AutomationEventType::WINDOW_MINIMIZE as u32 => { MinimizeWindow(); }
+            x if x == AutomationEventType::WINDOW_RESIZE as u32 => { SetWindowSize(event.params[0], event.params[1]); }
             // Custom event
     #[cfg(feature = "SUPPORT_SCREEN_CAPTURE")]
-            ACTION_TAKE_SCREENSHOT =>
+            x if x == AutomationEventType::ACTION_TAKE_SCREENSHOT as u32 =>
             {
                 TakeScreenshot(&format!("screenshot{:03}.png", screenshotCounter));
                 screenshotCounter += 1;
             }
-            ACTION_SETTARGETFPS => { SetTargetFPS(event.params[0]); }
+            x if x == AutomationEventType::ACTION_SETTARGETFPS as u32 => { SetTargetFPS(event.params[0]); }
             _ => {}
         }
 
-        info!("AUTOMATION PLAY: Frame: {} | Event type: {} | Event parameters: {}, {}, {}", event.frame, event.r#type, event.params[0], event.params[1], event.params[2]);
+        info!("AUTOMATION PLAY: Frame: {} | Event type: {} | Event parameters: {}, {}, {}", event.frame, event.type_, event.params[0], event.params[1], event.params[2]);
     }
 }
 }
@@ -2736,9 +2681,9 @@ pub unsafe fn IsKeyPressed(mut key: i32) -> bool
 {
     let mut pressed: bool = false;
 
-    if (key > 0) && (key < MAX_KEYBOARD_KEYS as i32)
+    if ((key > 0) && (key < MAX_KEYBOARD_KEYS as i32))
     {
-        if (CORE.Input.Keyboard.previousKeyState[key as usize] == 0) && (CORE.Input.Keyboard.currentKeyState[key as usize] == 1) { pressed = true; }
+        if ((CORE.Input.Keyboard.previousKeyState[(key) as usize] == 0) && (CORE.Input.Keyboard.currentKeyState[(key) as usize] == 1)) { pressed = true; }
     }
 
     return pressed;
@@ -2749,9 +2694,9 @@ pub unsafe fn IsKeyPressedRepeat(mut key: i32) -> bool
 {
     let mut repeat: bool = false;
 
-    if (key > 0) && (key < MAX_KEYBOARD_KEYS as i32)
+    if ((key > 0) && (key < MAX_KEYBOARD_KEYS as i32))
     {
-        if CORE.Input.Keyboard.keyRepeatInFrame[key as usize] == 1 { repeat = true; }
+        if (CORE.Input.Keyboard.keyRepeatInFrame[(key) as usize] == 1) { repeat = true; }
     }
 
     return repeat;
@@ -2762,9 +2707,9 @@ pub unsafe fn IsKeyDown(mut key: i32) -> bool
 {
     let mut down: bool = false;
 
-    if (key > 0) && (key < MAX_KEYBOARD_KEYS as i32)
+    if ((key > 0) && (key < MAX_KEYBOARD_KEYS as i32))
     {
-        if CORE.Input.Keyboard.currentKeyState[key as usize] == 1 { down = true; }
+        if (CORE.Input.Keyboard.currentKeyState[(key) as usize] == 1) { down = true; }
     }
 
     return down;
@@ -2775,9 +2720,9 @@ pub unsafe fn IsKeyReleased(mut key: i32) -> bool
 {
     let mut released: bool = false;
 
-    if (key > 0) && (key < MAX_KEYBOARD_KEYS as i32)
+    if ((key > 0) && (key < MAX_KEYBOARD_KEYS as i32))
     {
-        if (CORE.Input.Keyboard.previousKeyState[key as usize] == 1) && (CORE.Input.Keyboard.currentKeyState[key as usize] == 0) { released = true; }
+        if ((CORE.Input.Keyboard.previousKeyState[(key) as usize] == 1) && (CORE.Input.Keyboard.currentKeyState[(key) as usize] == 0)) { released = true; }
     }
 
     return released;
@@ -2788,9 +2733,9 @@ pub unsafe fn IsKeyUp(mut key: i32) -> bool
 {
     let mut up: bool = false;
 
-    if (key > 0) && (key < MAX_KEYBOARD_KEYS as i32)
+    if ((key > 0) && (key < MAX_KEYBOARD_KEYS as i32))
     {
-        if CORE.Input.Keyboard.currentKeyState[key as usize] == 0 { up = true; }
+        if (CORE.Input.Keyboard.currentKeyState[(key) as usize] == 0) { up = true; }
     }
 
     return up;
@@ -2801,14 +2746,14 @@ pub unsafe fn GetKeyPressed() -> i32
 {
     let mut value: i32 = 0;
 
-    if CORE.Input.Keyboard.keyPressedQueueCount > 0
+    if (CORE.Input.Keyboard.keyPressedQueueCount > 0)
     {
         // Get character from the queue head
         value = CORE.Input.Keyboard.keyPressedQueue[0];
 
         // Shift elements 1 step toward the head
         for i in 0..(CORE.Input.Keyboard.keyPressedQueueCount - 1)
-            { CORE.Input.Keyboard.keyPressedQueue[i as usize] = CORE.Input.Keyboard.keyPressedQueue[(i + 1) as usize]; }
+            { CORE.Input.Keyboard.keyPressedQueue[(i) as usize] = CORE.Input.Keyboard.keyPressedQueue[(i + 1) as usize]; }
 
         // Reset last character in the queue
         CORE.Input.Keyboard.keyPressedQueue[(CORE.Input.Keyboard.keyPressedQueueCount - 1) as usize] = 0;
@@ -2823,14 +2768,14 @@ pub unsafe fn GetCharPressed() -> i32
 {
     let mut value: i32 = 0;
 
-    if CORE.Input.Keyboard.charPressedQueueCount > 0
+    if (CORE.Input.Keyboard.charPressedQueueCount > 0)
     {
         // Get character from the queue head
         value = CORE.Input.Keyboard.charPressedQueue[0];
 
         // Shift elements 1 step toward the head
         for i in 0..(CORE.Input.Keyboard.charPressedQueueCount - 1)
-            { CORE.Input.Keyboard.charPressedQueue[i as usize] = CORE.Input.Keyboard.charPressedQueue[(i + 1) as usize]; }
+            { CORE.Input.Keyboard.charPressedQueue[(i) as usize] = CORE.Input.Keyboard.charPressedQueue[(i + 1) as usize]; }
 
         // Reset last character in the queue
         CORE.Input.Keyboard.charPressedQueue[(CORE.Input.Keyboard.charPressedQueueCount - 1) as usize] = 0;
@@ -2859,7 +2804,7 @@ pub unsafe fn IsGamepadAvailable(mut gamepad: i32) -> bool
 {
     let mut result: bool = false;
 
-    if (gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[gamepad as usize] { result = true; }
+    if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[(gamepad) as usize]) { result = true; }
 
     return result;
 }
@@ -2869,7 +2814,7 @@ pub unsafe fn GetGamepadName(gamepad: i32) -> Option<String>
 {
     let mut name: Option<String> = None;
 
-    if (gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) { name = Some(CStr::from_ptr(CORE.Input.Gamepad.name[gamepad as usize].as_ptr().cast()).to_string_lossy().into_owned()); }
+    if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32)) { name = Some(CStr::from_ptr(CORE.Input.Gamepad.name[gamepad as usize].as_ptr().cast()).to_string_lossy().into_owned()); }
 
     return name;
 }
@@ -2879,9 +2824,9 @@ pub unsafe fn IsGamepadButtonPressed(mut gamepad: i32, mut button: i32) -> bool
 {
     let mut pressed: bool = false;
 
-    if (gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[gamepad as usize] && (button < MAX_GAMEPAD_BUTTONS as i32)
+    if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[(gamepad) as usize] && (button < MAX_GAMEPAD_BUTTONS as i32))
     {
-        if (CORE.Input.Gamepad.previousButtonState[gamepad as usize][button as usize] == 0) && (CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] == 1) { pressed = true; }
+        if ((CORE.Input.Gamepad.previousButtonState[(gamepad) as usize][(button) as usize] == 0) && (CORE.Input.Gamepad.currentButtonState[(gamepad) as usize][(button) as usize] == 1)) { pressed = true; }
     }
 
     return pressed;
@@ -2892,9 +2837,9 @@ pub unsafe fn IsGamepadButtonDown(mut gamepad: i32, mut button: i32) -> bool
 {
     let mut down: bool = false;
 
-    if (gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[gamepad as usize] && (button < MAX_GAMEPAD_BUTTONS as i32)
+    if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[(gamepad) as usize] && (button < MAX_GAMEPAD_BUTTONS as i32))
     {
-        if CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] == 1 { down = true; }
+        if (CORE.Input.Gamepad.currentButtonState[(gamepad) as usize][(button) as usize] == 1) { down = true; }
     }
 
     return down;
@@ -2905,9 +2850,9 @@ pub unsafe fn IsGamepadButtonReleased(mut gamepad: i32, mut button: i32) -> bool
 {
     let mut released: bool = false;
 
-    if (gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[gamepad as usize] && (button < MAX_GAMEPAD_BUTTONS as i32)
+    if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[(gamepad) as usize] && (button < MAX_GAMEPAD_BUTTONS as i32))
     {
-        if (CORE.Input.Gamepad.previousButtonState[gamepad as usize][button as usize] == 1) && (CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] == 0) { released = true; }
+        if ((CORE.Input.Gamepad.previousButtonState[(gamepad) as usize][(button) as usize] == 1) && (CORE.Input.Gamepad.currentButtonState[(gamepad) as usize][(button) as usize] == 0)) { released = true; }
     }
 
     return released;
@@ -2918,9 +2863,9 @@ pub unsafe fn IsGamepadButtonUp(mut gamepad: i32, mut button: i32) -> bool
 {
     let mut up: bool = false;
 
-    if (gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[gamepad as usize] && (button < MAX_GAMEPAD_BUTTONS as i32)
+    if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[(gamepad) as usize] && (button < MAX_GAMEPAD_BUTTONS as i32))
     {
-        if CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] == 0 { up = true; }
+        if (CORE.Input.Gamepad.currentButtonState[(gamepad) as usize][(button) as usize] == 0) { up = true; }
     }
 
     return up;
@@ -2938,7 +2883,7 @@ pub unsafe fn GetGamepadAxisCount(mut gamepad: i32) -> i32
 {
     let mut result: i32 = 0;
 
-    if (gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) { result = CORE.Input.Gamepad.axisCount[gamepad as usize]; }
+    if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32)) { result = CORE.Input.Gamepad.axisCount[(gamepad) as usize]; }
 
     return result;
 }
@@ -2946,13 +2891,13 @@ pub unsafe fn GetGamepadAxisCount(mut gamepad: i32) -> i32
 // Get axis movement vector for a gamepad
 pub unsafe fn GetGamepadAxisMovement(mut gamepad: i32, mut axis: i32) -> f32
 {
-    let mut value: f32 = if (axis == GAMEPAD_AXIS_LEFT_TRIGGER) || (axis == GAMEPAD_AXIS_RIGHT_TRIGGER) { -1.0 } else { 0.0 };
+    let mut value: f32 = if ((axis == GamepadAxis::GAMEPAD_AXIS_LEFT_TRIGGER as i32) || (axis == GamepadAxis::GAMEPAD_AXIS_RIGHT_TRIGGER as i32)) { -1.0 } else { 0.0 };
 
-    if (gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[gamepad as usize] && (axis < MAX_GAMEPAD_AXES as i32)
+    if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[(gamepad) as usize] && (axis < MAX_GAMEPAD_AXES as i32))
     {
-        let mut movement: f32 = if value < 0.0 { CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize] } else { (CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize]).abs() };
+        let mut movement: f32 = if (value < 0.0) { CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize] } else { CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize].abs() };
 
-        if movement > value { value = CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize]; }
+        if (movement > value) { value = CORE.Input.Gamepad.axisState[(gamepad) as usize][(axis) as usize]; }
     }
 
     return value;
@@ -2971,12 +2916,12 @@ pub unsafe fn IsMouseButtonPressed(mut button: i32) -> bool
 {
     let mut pressed: bool = false;
 
-    if (button >= 0) && (button <= MOUSE_BUTTON_BACK)
+    if ((button >= 0) && (button <= MouseButton::MOUSE_BUTTON_BACK as i32))
     {
-        if (CORE.Input.Mouse.currentButtonState[button as usize] == 1) && (CORE.Input.Mouse.previousButtonState[button as usize] == 0) { pressed = true; }
+        if ((CORE.Input.Mouse.currentButtonState[(button) as usize] == 1) && (CORE.Input.Mouse.previousButtonState[(button) as usize] == 0)) { pressed = true; }
 
         // Map touches to mouse buttons checking
-        if (CORE.Input.Touch.currentTouchState[button as usize] == 1) && (CORE.Input.Touch.previousTouchState[button as usize] == 0) { pressed = true; }
+        if ((CORE.Input.Touch.currentTouchState[(button) as usize] == 1) && (CORE.Input.Touch.previousTouchState[(button) as usize] == 0)) { pressed = true; }
     }
 
     return pressed;
@@ -2987,12 +2932,12 @@ pub unsafe fn IsMouseButtonDown(mut button: i32) -> bool
 {
     let mut down: bool = false;
 
-    if (button >= 0) && (button <= MOUSE_BUTTON_BACK)
+    if ((button >= 0) && (button <= MouseButton::MOUSE_BUTTON_BACK as i32))
     {
-        if CORE.Input.Mouse.currentButtonState[button as usize] == 1 { down = true; }
+        if (CORE.Input.Mouse.currentButtonState[(button) as usize] == 1) { down = true; }
 
         // NOTE: Touches are considered like mouse buttons
-        if CORE.Input.Touch.currentTouchState[button as usize] == 1 { down = true; }
+        if (CORE.Input.Touch.currentTouchState[(button) as usize] == 1) { down = true; }
     }
 
     return down;
@@ -3003,12 +2948,12 @@ pub unsafe fn IsMouseButtonReleased(mut button: i32) -> bool
 {
     let mut released: bool = false;
 
-    if (button >= 0) && (button <= MOUSE_BUTTON_BACK)
+    if ((button >= 0) && (button <= MouseButton::MOUSE_BUTTON_BACK as i32))
     {
-        if (CORE.Input.Mouse.currentButtonState[button as usize] == 0) && (CORE.Input.Mouse.previousButtonState[button as usize] == 1) { released = true; }
+        if ((CORE.Input.Mouse.currentButtonState[(button) as usize] == 0) && (CORE.Input.Mouse.previousButtonState[(button) as usize] == 1)) { released = true; }
 
         // Map touches to mouse buttons checking
-        if (CORE.Input.Touch.currentTouchState[button as usize] == 0) && (CORE.Input.Touch.previousTouchState[button as usize] == 1) { released = true; }
+        if ((CORE.Input.Touch.currentTouchState[(button) as usize] == 0) && (CORE.Input.Touch.previousTouchState[(button) as usize] == 1)) { released = true; }
     }
 
     return released;
@@ -3019,12 +2964,12 @@ pub unsafe fn IsMouseButtonUp(mut button: i32) -> bool
 {
     let mut up: bool = false;
 
-    if (button >= 0) && (button <= MOUSE_BUTTON_BACK)
+    if ((button >= 0) && (button <= MouseButton::MOUSE_BUTTON_BACK as i32))
     {
-        if CORE.Input.Mouse.currentButtonState[button as usize] == 0 { up = true; }
+        if (CORE.Input.Mouse.currentButtonState[(button) as usize] == 0) { up = true; }
 
         // NOTE: Touches are considered like mouse buttons
-        if CORE.Input.Touch.currentTouchState[button as usize] == 0 { up = true; }
+        if (CORE.Input.Touch.currentTouchState[(button) as usize] == 0) { up = true; }
     }
 
     return up;
@@ -3072,14 +3017,14 @@ pub unsafe fn GetMouseDelta() -> Vector2
 // NOTE: Useful when rendering to different size targets
 pub unsafe fn SetMouseOffset(mut offsetX: i32, mut offsetY: i32)
 {
-    CORE.Input.Mouse.offset = Vector2::new((offsetX as f32), (offsetY as f32));
+    CORE.Input.Mouse.offset = Vector2 { x: (offsetX as f32), y: (offsetY as f32) };
 }
 
 // Set mouse scaling
 // NOTE: Useful when rendering to different size targets
 pub unsafe fn SetMouseScale(mut scaleX: f32, mut scaleY: f32)
 {
-    CORE.Input.Mouse.scale = Vector2::new(scaleX, scaleY);
+    CORE.Input.Mouse.scale = Vector2 { x: scaleX, y: scaleY };
 }
 
 // Get mouse wheel movement Y
@@ -3087,7 +3032,7 @@ pub unsafe fn GetMouseWheelMove() -> f32
 {
     let mut result: f32 = 0.0;
 
-    if (CORE.Input.Mouse.currentWheelMove.x).abs() > (CORE.Input.Mouse.currentWheelMove.y).abs() { result = (CORE.Input.Mouse.currentWheelMove.x as f32); }
+    if (CORE.Input.Mouse.currentWheelMove.x.abs() > CORE.Input.Mouse.currentWheelMove.y.abs()) { result = (CORE.Input.Mouse.currentWheelMove.x as f32); }
     else { result = (CORE.Input.Mouse.currentWheelMove.y as f32); }
 
     return result;
@@ -3124,9 +3069,9 @@ pub unsafe fn GetTouchY() -> i32
 // Get touch position XY for a touch point index (relative to screen size)
 pub unsafe fn GetTouchPosition(mut index: i32) -> Vector2
 {
-    let mut position: Vector2 = Vector2::new(-1.0, -1.0);
+    let mut position: Vector2 = Vector2 { x: -1.0, y: -1.0 };
 
-    if index < MAX_TOUCH_POINTS as i32 { position = CORE.Input.Touch.position[index as usize]; }
+    if (index < MAX_TOUCH_POINTS as i32) { position = CORE.Input.Touch.position[(index) as usize]; }
     else { warn!("INPUT: Required touch point out of range (Max touch points: {})", MAX_TOUCH_POINTS); }
 
     return position;
@@ -3137,7 +3082,7 @@ pub unsafe fn GetTouchPointId(mut index: i32) -> i32
 {
     let mut id: i32 = -1;
 
-    if index < MAX_TOUCH_POINTS as i32 { id = CORE.Input.Touch.pointId[index as usize]; }
+    if (index < MAX_TOUCH_POINTS as i32) { id = CORE.Input.Touch.pointId[(index) as usize]; }
 
     return id;
 }
@@ -3172,9 +3117,9 @@ pub unsafe fn InitTimer()
 {
     let mut now: libc::timespec = std::mem::zeroed();
 
-    if libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut now) == 0 // Success
+    if (libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut now) == 0) { // Success
     {
-        CORE.Time.base = (now.tv_sec as u64)*1000000000 + (now.tv_nsec as u64);
+        CORE.Time.base = (now.tv_sec as u64)*1000000000 + (now.tv_nsec as u64); }
     }
     else { warn!("TIMER: Hi-resolution timer not available"); }
 }
@@ -3201,88 +3146,23 @@ pub unsafe fn SetupViewport(mut width: i32, mut height: i32)
     rlMatrixMode(RL_MODELVIEW);         // Switch back to modelview matrix
     rlLoadIdentity();                   // Reset current matrix (modelview)
 }
-
-// Scan all files and directories in a base path
-// WARNING: files.paths[] must be previously allocated and
-// contain enough space to store all required paths
-
-// Scan all files and directories in a base path
-// WARNING: files.paths[] must be previously allocated and
-// contain enough space to store all required paths
-unsafe fn ScanDirectoryFiles(basePath: &str, files: &mut FilePathList, filter: Option<&str>, expectedFileCount: u32, scanSubdirs: bool)
-{
-    // WARNING: Path can not be static or it will be reused between recursive function calls!
-    let mut path = String::new();
-    path.clear();
-
-    let mut dp;
-    let dir = std::fs::read_dir(basePath);
-
-    if let Ok(mut dir) = dir
-    {
-        while files.count < expectedFileCount
-        {
-            dp = dir.next();
-            let Some(Ok(dp)) = dp else { break; };
-            let d_name = dp.file_name();
-            let d_name = d_name.to_string_lossy();
-            if (d_name != ".") && (d_name != "..")
-            {
-                // Construct new path from our base path
-            #[cfg(target_os = "windows")]
-                { path = format!("{}\\{}", basePath, d_name); }
-            #[cfg(not(target_os = "windows"))]
-                { path = format!("{}/{}", basePath, d_name); }
-                let pathLength: i32 = path.len() as i32;
-
-                if (pathLength < 0) || (pathLength >= MAX_FILEPATH_LENGTH as i32)
-                {
-                    warn!("FILEIO: Path longer than {} characters ({}...)", MAX_FILEPATH_LENGTH, basePath);
-                }
-                else if IsPathFile(&path)
-                {
-                    if filter.is_none() || filter.unwrap().contains(FILE_FILTER_TAG_ALL) ||
-                        filter.unwrap().contains(FILE_FILTER_TAG_FILE_ONLY) || IsFileExtension(&path, filter.unwrap())
-                    {
-                        std::ptr::copy_nonoverlapping(path.as_ptr(), (*files.paths.add(files.count as usize)).cast(), pathLength as usize);
-                        files.count += 1;
-                    }
-                }
-                else
-                {
-                    if filter.is_some() && (filter.unwrap().contains(FILE_FILTER_TAG_DIR_ONLY) || filter.unwrap().contains(FILE_FILTER_TAG_ALL))
-                    {
-                        std::ptr::copy_nonoverlapping(path.as_ptr(), (*files.paths.add(files.count as usize)).cast(), pathLength as usize);
-                        files.count += 1;
-                    }
-
-                    if scanSubdirs { ScanDirectoryFiles(&path, files, filter, expectedFileCount, scanSubdirs); }
-                }
-            }
-        }
-
-        drop(dir);
-    }
-    else { warn!("FILEIO: Directory cannot be opened ({})", basePath); }  // Maybe it's a file...
-}
-
 #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
 // Automation event recording
 // Checking events in current frame and save them into currentEventList
 // NOTE: Recording is by default done at EndDrawing(), before PollInputEvents()
 pub unsafe fn RecordAutomationEvent()
 {
-    if (*currentEventList).count == (*currentEventList).capacity { return; }
+    if ((*currentEventList).count == (*currentEventList).capacity) { return; }
 
     // Keyboard input events recording
     //-------------------------------------------------------------------------------------
     for key in 0..MAX_KEYBOARD_KEYS as i32
     {
         // Event type: INPUT_KEY_UP (only saved once)
-        if (CORE.Input.Keyboard.previousKeyState[key as usize] != 0) && (CORE.Input.Keyboard.currentKeyState[key as usize] == 0)
+        if ((CORE.Input.Keyboard.previousKeyState[(key) as usize] != 0) && (CORE.Input.Keyboard.currentKeyState[(key) as usize] == 0))
         {
             (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_KEY_UP;
+            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_KEY_UP as u32;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = key;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
@@ -3291,13 +3171,13 @@ pub unsafe fn RecordAutomationEvent()
             (*currentEventList).count += 1;
         }
 
-        if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
 
         // Event type: INPUT_KEY_DOWN
-        if (CORE.Input.Keyboard.currentKeyState[key as usize] != 0)
+        if ((CORE.Input.Keyboard.currentKeyState[(key) as usize] != 0))
         {
             (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_KEY_DOWN;
+            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_KEY_DOWN as u32;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = key;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
@@ -3306,7 +3186,7 @@ pub unsafe fn RecordAutomationEvent()
             (*currentEventList).count += 1;
         }
 
-        if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
     }
     //-------------------------------------------------------------------------------------
 
@@ -3315,10 +3195,10 @@ pub unsafe fn RecordAutomationEvent()
     for button in 0..MAX_MOUSE_BUTTONS as i32
     {
         // Event type: INPUT_MOUSE_BUTTON_UP
-        if (CORE.Input.Mouse.previousButtonState[button as usize] != 0) && (CORE.Input.Mouse.currentButtonState[button as usize] == 0)
+        if ((CORE.Input.Mouse.previousButtonState[(button) as usize] != 0) && (CORE.Input.Mouse.currentButtonState[(button) as usize] == 0))
         {
             (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_MOUSE_BUTTON_UP;
+            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_MOUSE_BUTTON_UP as u32;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = button;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
@@ -3327,13 +3207,13 @@ pub unsafe fn RecordAutomationEvent()
             (*currentEventList).count += 1;
         }
 
-        if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
 
         // Event type: INPUT_MOUSE_BUTTON_DOWN
-        if (CORE.Input.Mouse.currentButtonState[button as usize] != 0)
+        if ((CORE.Input.Mouse.currentButtonState[(button) as usize] != 0))
         {
             (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_MOUSE_BUTTON_DOWN;
+            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_MOUSE_BUTTON_DOWN as u32;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = button;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
@@ -3342,15 +3222,15 @@ pub unsafe fn RecordAutomationEvent()
             (*currentEventList).count += 1;
         }
 
-        if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
     }
 
     // Event type: INPUT_MOUSE_POSITION (only saved if changed)
-    if ((CORE.Input.Mouse.currentPosition.x as i32) != (CORE.Input.Mouse.previousPosition.x as i32)) ||
-        ((CORE.Input.Mouse.currentPosition.y as i32) != (CORE.Input.Mouse.previousPosition.y as i32))
+    if (((CORE.Input.Mouse.currentPosition.x as i32) != (CORE.Input.Mouse.previousPosition.x as i32)) ||
+        ((CORE.Input.Mouse.currentPosition.y as i32) != (CORE.Input.Mouse.previousPosition.y as i32)))
     {
         (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_MOUSE_POSITION;
+        (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_MOUSE_POSITION as u32;
         (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = (CORE.Input.Mouse.currentPosition.x as i32);
         (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = (CORE.Input.Mouse.currentPosition.y as i32);
         (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
@@ -3358,15 +3238,15 @@ pub unsafe fn RecordAutomationEvent()
         info!("AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_POSITION | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
         (*currentEventList).count += 1;
 
-        if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
     }
 
     // Event type: INPUT_MOUSE_WHEEL_MOTION
-    if ((CORE.Input.Mouse.currentWheelMove.x as i32) != (CORE.Input.Mouse.previousWheelMove.x as i32)) ||
-        ((CORE.Input.Mouse.currentWheelMove.y as i32) != (CORE.Input.Mouse.previousWheelMove.y as i32))
+    if (((CORE.Input.Mouse.currentWheelMove.x as i32) != (CORE.Input.Mouse.previousWheelMove.x as i32)) ||
+        ((CORE.Input.Mouse.currentWheelMove.y as i32) != (CORE.Input.Mouse.previousWheelMove.y as i32)))
     {
         (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_MOUSE_WHEEL_MOTION;
+        (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_MOUSE_WHEEL_MOTION as u32;
         (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = (CORE.Input.Mouse.currentWheelMove.x as i32);
         (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = (CORE.Input.Mouse.currentWheelMove.y as i32);
         (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
@@ -3374,7 +3254,7 @@ pub unsafe fn RecordAutomationEvent()
         info!("AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_WHEEL_MOTION | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
         (*currentEventList).count += 1;
 
-        if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
     }
     //-------------------------------------------------------------------------------------
 
@@ -3383,10 +3263,10 @@ pub unsafe fn RecordAutomationEvent()
     for id in 0..MAX_TOUCH_POINTS as i32
     {
         // Event type: INPUT_TOUCH_UP
-        if (CORE.Input.Touch.previousTouchState[id as usize] != 0) && (CORE.Input.Touch.currentTouchState[id as usize] == 0)
+        if ((CORE.Input.Touch.previousTouchState[(id) as usize] != 0) && (CORE.Input.Touch.currentTouchState[(id) as usize] == 0))
         {
             (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_TOUCH_UP;
+            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_TOUCH_UP as u32;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = id;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
@@ -3395,13 +3275,13 @@ pub unsafe fn RecordAutomationEvent()
             (*currentEventList).count += 1;
         }
 
-        if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
 
         // Event type: INPUT_TOUCH_DOWN
-        if (CORE.Input.Touch.currentTouchState[id as usize] != 0)
+        if ((CORE.Input.Touch.currentTouchState[(id) as usize] != 0))
         {
             (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_TOUCH_DOWN;
+            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_TOUCH_DOWN as u32;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = id;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
@@ -3410,24 +3290,24 @@ pub unsafe fn RecordAutomationEvent()
             (*currentEventList).count += 1;
         }
 
-        if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
 
         // Event type: INPUT_TOUCH_POSITION
-        if ((CORE.Input.Touch.position[id as usize].x as i32) != (CORE.Input.Touch.previousPosition[id as usize].x as i32)) ||
-            ((CORE.Input.Touch.position[id as usize].y as i32) != (CORE.Input.Touch.previousPosition[id as usize].y as i32))
+        if (((CORE.Input.Touch.position[(id) as usize].x as i32) != (CORE.Input.Touch.previousPosition[(id) as usize].x as i32)) ||
+            ((CORE.Input.Touch.position[(id) as usize].y as i32) != (CORE.Input.Touch.previousPosition[(id) as usize].y as i32)))
         {
             (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_TOUCH_POSITION;
+            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_TOUCH_POSITION as u32;
             (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = id;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = (CORE.Input.Touch.position[id as usize].x as i32);
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = (CORE.Input.Touch.position[id as usize].y as i32);
+            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = (CORE.Input.Touch.position[(id) as usize].x as i32);
+            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = (CORE.Input.Touch.position[(id) as usize].y as i32);
 
             info!("AUTOMATION: Frame: {} | Event type: INPUT_TOUCH_POSITION | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
             (*currentEventList).count += 1;
         }
 
 
-        if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
     }
     //-------------------------------------------------------------------------------------
 
@@ -3456,10 +3336,10 @@ pub unsafe fn RecordAutomationEvent()
         for button in 0..MAX_GAMEPAD_BUTTONS as i32
         {
             // Event type: INPUT_GAMEPAD_BUTTON_UP
-            if (CORE.Input.Gamepad.previousButtonState[gamepad as usize][button as usize] != 0) && (CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] == 0)
+            if ((CORE.Input.Gamepad.previousButtonState[gamepad as usize][button as usize] != 0) && (CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] == 0))
             {
                 (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_GAMEPAD_BUTTON_UP;
+                (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_GAMEPAD_BUTTON_UP as u32;
                 (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = gamepad;
                 (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = button;
                 (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
@@ -3468,13 +3348,13 @@ pub unsafe fn RecordAutomationEvent()
                 (*currentEventList).count += 1;
             }
 
-            if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+            if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
 
             // Event type: INPUT_GAMEPAD_BUTTON_DOWN
             if (CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] != 0)
             {
                 (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_GAMEPAD_BUTTON_DOWN;
+                (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_GAMEPAD_BUTTON_DOWN as u32;
                 (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = gamepad;
                 (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = button;
                 (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
@@ -3483,26 +3363,26 @@ pub unsafe fn RecordAutomationEvent()
                 (*currentEventList).count += 1;
             }
 
-            if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+            if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
         }
 
         for axis in 0..MAX_GAMEPAD_AXES as i32
         {
             // Event type: INPUT_GAMEPAD_AXIS_MOTION
-            let mut defaultMovement: f32 = if (axis == GAMEPAD_AXIS_LEFT_TRIGGER) || (axis == GAMEPAD_AXIS_RIGHT_TRIGGER) { -1.0 } else { 0.0 };
-            if GetGamepadAxisMovement(gamepad, axis) != defaultMovement
+            let mut defaultMovement: f32 = if ((axis == GamepadAxis::GAMEPAD_AXIS_LEFT_TRIGGER as i32) || (axis == GamepadAxis::GAMEPAD_AXIS_RIGHT_TRIGGER as i32)) { -1.0 } else { 0.0 };
+            if (GetGamepadAxisMovement(gamepad, axis) != defaultMovement)
             {
                 (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_GAMEPAD_AXIS_MOTION;
+                (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_GAMEPAD_AXIS_MOTION as u32;
                 (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = gamepad;
                 (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = axis;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = ((CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize]*32768.0) as i32);
+                (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = ((CORE.Input.Gamepad.axisState[(gamepad) as usize][(axis) as usize]*32768.0) as i32);
 
                 info!("AUTOMATION: Frame: {} | Event type: INPUT_GAMEPAD_AXIS_MOTION | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
                 (*currentEventList).count += 1;
             }
 
-            if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+            if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
         }
     }
     //-------------------------------------------------------------------------------------
@@ -3511,11 +3391,11 @@ pub unsafe fn RecordAutomationEvent()
 {
     // Gestures input currentEventList->events recording
     //-------------------------------------------------------------------------------------
-    if GESTURES.current != GESTURE_NONE
+    if (GESTURES.current != Gesture::GESTURE_NONE as i32)
     {
         // Event type: INPUT_GESTURE
         (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).r#type = INPUT_GESTURE;
+        (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_GESTURE as u32;
         (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = GESTURES.current;
         (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
         (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
@@ -3523,11 +3403,12 @@ pub unsafe fn RecordAutomationEvent()
         info!("AUTOMATION: Frame: {} | Event type: INPUT_GESTURE | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
         (*currentEventList).count += 1;
 
-        if (*currentEventList).count == (*currentEventList).capacity { return; }    // Security check
+        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
     }
     //-------------------------------------------------------------------------------------
 }
 }
+
 
 #[cfg(not(feature = "SUPPORT_MODULE_RTEXT"))]
 // Formatting of text with variables to 'embed'
@@ -3535,24 +3416,30 @@ pub unsafe fn RecordAutomationEvent()
 pub fn TextFormat(text: std::fmt::Arguments<'_>) -> String
 {
     const MAX_TEXTFORMAT_BUFFERS: usize = 4;        // Maximum number of static buffers for text formatting
-    const MAX_TEXT_BUFFER_LENGTH: usize = 1024;    // Maximum size of static text buffer
+    const MAX_TEXT_BUFFER_LENGTH: usize = 1024;     // Maximum size of static text buffer
 
     // Define an array of buffers, so strings don't expire until MAX_TEXTFORMAT_BUFFERS invocations
-    // Rust returns an owned string; no rotating static buffer is needed.
+    // Rust returns an owned string, so a rotating static buffer is unnecessary.
     let mut currentBuffer = String::new();
     currentBuffer.clear();   // Clear buffer before using
 
-    write!(currentBuffer, "{}", text).unwrap();
-    let requiredByteCount = currentBuffer.len();
-
-    // If requiredByteCount is larger than the MAX_TEXT_BUFFER_LENGTH, then overflow occurred
-    if requiredByteCount >= MAX_TEXT_BUFFER_LENGTH
     {
-        // Inserting "..." at the end of the string to mark as truncated
-        let mut truncBuffer = MAX_TEXT_BUFFER_LENGTH - 4; // Adding 4 bytes = "...\0"
-        while !currentBuffer.is_char_boundary(truncBuffer) { truncBuffer -= 1; }
-        currentBuffer.truncate(truncBuffer);
-        currentBuffer.push_str("...");
+        let args = text;
+        write!(currentBuffer, "{}", args).unwrap();
+        let requiredByteCount = currentBuffer.len();
+
+        // If requiredByteCount is larger than the MAX_TEXT_BUFFER_LENGTH, then overflow occurred
+        if (requiredByteCount >= MAX_TEXT_BUFFER_LENGTH)
+        {
+            // Inserting "..." at the end of the string to mark as truncated
+            let mut truncBuffer = MAX_TEXT_BUFFER_LENGTH - 4; // Adding 4 bytes = "...\0"
+            while !currentBuffer.is_char_boundary(truncBuffer) { truncBuffer -= 1; }
+            currentBuffer.truncate(truncBuffer);
+            currentBuffer.push_str("...");
+        }
+
+        // Move to next buffer for next function call
+        // Owned strings need no buffer index.
     }
 
     return currentBuffer;
