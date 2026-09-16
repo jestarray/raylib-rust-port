@@ -23,14 +23,12 @@ Since there's no need to support old rendering platforms, it frees us to make th
 # step 2.5:
 - stripping other things to reduce code confusion from the AI:
 ```
-unifdef -DUSING_VERSION_SDL3 rcore_desktop_sdl.c > rcore_desktop_sdl3.c
 
 // the default, do not prefer triangles
 unifdef -DSUPPORT_MODULE_RSHAPES -DSUPPORT_QUADS_DRAW_MODE rshapes.c > rshapes.c
 
 // dont care about generating (gradient, spot, perlin-noise, cellular)
 unifdef -USUPPORT_IMAGE_GENERATION rtextures.c > rtextures.c
-
 
 // use only sdl3
 unifdef -DUSING_VERSION_SDL3 -DUSING_SDL3_PACKAGE -UGRAPHICS_API_OPENGL_SOFTWARE -DUSING_SDL3_PROJECT -UUSING_SDL2_PROJECT rcore_desktop_sdl.c > rcore_desktop_sdl3.c

@@ -15,8 +15,8 @@ use std::ffi::{c_char, CString};
 use crate::{
     math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{self, rlGetTextureIdDefault, rlGetVersion, rlGlVersion}, rshapes::SetShapesTexture, types::{Color, Matrix, RAYLIB_VERSION, Rectangle, Texture2D, Vector2},
 };
+use crate::rcore_desktop_sdl::*;
 use gl;
-use sdl3::{self, event::EventType, sys::video, video::WindowFlags};
 
 pub const MAX_TRACELOG_MSG_LENGTH: usize = 256;
 pub const MAX_FILEPATH_CAPACITY: usize = 8192;
@@ -196,7 +196,7 @@ pub struct CoreData {
     pub Time: TimeData,
 }
 
-static mut CORE: CoreData = CoreData {
+pub static mut CORE: CoreData = CoreData {
     Window: WindowData {
         title: std::ptr::null_mut(),
         flags: 0,

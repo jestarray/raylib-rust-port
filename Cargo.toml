@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 glam = "0.33"
-sdl3 = { version = "0.18.3", features = ["use-pkg-config"] }
+sdl3-sys = { version = "0.7.1", features = ["use-pkg-config"]}
 libc = "0.2"
 gl = "0.14.0"
 log = { version = "0.4" }
@@ -50,8 +50,10 @@ SUPPORT_RPRAND_GENERATOR = []
 SUPPORT_SCREEN_CAPTURE = []
 SUPPORT_TRACELOG = []
 SUPPORT_WINMM_HIGHRES_TIMER = []
-
-
+SUPPORT_CLIPBOARD_IMAGE = []
+SUPPORT_FILEFORMAT_BMP = []
+SUPPORT_FILEFORMAT_PNG = []
+SUPPORT_FILEFORMAT_JPG = []
 
 [build-dependencies]
 cc = "1.4"

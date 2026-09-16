@@ -9,6 +9,7 @@ pub mod external {
 pub mod math;
 pub mod rcamera;
 pub mod rcore;
+pub mod rcore_desktop_sdl;
 pub mod rlgl;
 pub mod rmodels;
 pub mod rshapes;
