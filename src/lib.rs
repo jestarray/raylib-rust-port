@@ -7,11 +7,11 @@ pub mod external {
 }
 
 pub mod math;
-pub mod types;
-pub mod core;
+pub mod rcamera;
+pub mod rcore;
 pub mod rlgl;
-pub mod rtextures;
+pub mod rmodels;
 pub mod rshapes;
 pub mod rtext;
-pub mod rcamera;
-pub mod rmodels;
+pub mod rtextures;
+pub mod types;
