@@ -1,4 +1,4 @@
-use crate::types::{Matrix, Quaternion, Vector2, Vector3, Vector4};
+use crate::types::{Matrix, Quaternion, Vector3};
 
 pub const PI: f32 = std::f32::consts::PI;
 pub const DEG2RAD: f32 = PI / 180.0;

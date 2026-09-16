@@ -11,7 +11,7 @@
     clippy::upper_case_acronyms,
     clippy::let_and_return
 )]
-use std::{default, ffi::{c_char, c_void, CStr, CString}, mem::size_of, ptr::{null, null_mut}};
+use std::{ffi::{c_char, c_void, CStr, CString}, mem::size_of, ptr::{null, null_mut}};
 
 use crate::{
     external::{
@@ -20,10 +20,9 @@ use crate::{
         GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
         GL_COMPRESSED_RGB_S3TC_DXT1_EXT, GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,
     },
-    types::{Color, Matrix, Rectangle, Vector2},
+    types::Matrix,
 };
 use gl;
-use glam::{Mat4, Vec3};
 use log::{debug, error, info, warn};
 use strum_macros::FromRepr;
 
@@ -2563,7 +2562,7 @@ pub unsafe fn rlLoadTextureDepth(width: i32, height: i32, mut useRenderBuffer: b
 
     // NOTE: Letting the implementation to choose the best bit-depth
     // Possible formats: GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT24, GL_DEPTH_COMPONENT32 and GL_DEPTH_COMPONENT32F
-    let mut glInternalFormat = gl::DEPTH_COMPONENT;
+    let glInternalFormat = gl::DEPTH_COMPONENT;
 
     #[cfg(feature = "GRAPHICS_API_OPENGL_ES2")]
     {
@@ -3457,7 +3456,7 @@ pub unsafe fn rlLoadShaderProgramEx(vsId: u32, fsId: u32) -> u32
 // Load compute shader program
 pub unsafe fn rlLoadShaderProgramCompute(csId: u32) -> u32
 {
-    let mut programId = 0;
+    let programId = 0;
 
     #[cfg(feature = "GRAPHICS_API_OPENGL_43")]
     {
@@ -3638,7 +3637,7 @@ pub unsafe fn rlComputeShaderDispatch(groupX: u32, groupY: u32, groupZ: u32)
 // Load shader storage buffer object (SSBO)
 pub unsafe fn rlLoadShaderBuffer(size: u32, data: *const c_void, usageHint: i32) -> u32
 {
-    let mut ssbo = 0;
+    let ssbo = 0;
 
     #[cfg(feature = "GRAPHICS_API_OPENGL_43")]
     {
@@ -3676,7 +3675,7 @@ pub unsafe fn rlUpdateShaderBuffer(id: u32, data: *const c_void, dataSize: u32, 
 // Get SSBO buffer size
 pub unsafe fn rlGetShaderBufferSize(id: u32) -> u32
 {
-    let mut result = 0;
+    let result = 0;
     #[cfg(feature = "GRAPHICS_API_OPENGL_43")]
     {
         let mut size = 0i64;

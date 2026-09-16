@@ -1,4 +1,4 @@
-use glam::{Mat4, Vec2, Vec3, Vec4};
+use glam::{Vec2, Vec3, Vec4};
 use std::ffi::c_void;
 
 pub type Vector2 = Vec2;

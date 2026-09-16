@@ -1,6 +1,5 @@
-use crate::math::*;
 use crate::types::{Camera, CameraProjection, Matrix, Vector3};
-use glam::{Mat4, Quat, Vec3};
+use glam::Quat;
 
 // Returns the cameras forward vector (normalized)
 pub fn get_camera_forward(camera: &Camera) -> Vector3 {

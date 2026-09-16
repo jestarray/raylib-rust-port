@@ -36,7 +36,6 @@ use crate::rcore::*;
 use crate::types::*;
 use crate::types::{ConfigFlags::*, KeyboardKey::*, GamepadButton::*, GamepadAxis::*, PixelFormat::*};
 use crate::rlgl::{rlGetVersion, rlLoadExtensions, rlGlVersion::*};
-use crate::rtextures::*;
 use log::{info, warn, error};
 use std::ffi::{CStr, CString};
 use sdl3_sys::{clipboard::*, events::*, gamepad::*, hints::*, init::*, joystick::*, keyboard::*, keycode::*, mouse::*, pixels::*, properties::*, error::*, filesystem::*, misc::*, rect::*, scancode::*, stdinc::*, surface::*, timer::*, touch::*, video::*};
@@ -223,18 +222,18 @@ const SDL_WINDOW_SHOWN: SDL_WindowFlags = SDL_WindowFlags(0); // It's a flag, so
 // IMPORTANT: Might need to call SDL_CleanupEvent somewhere see :https://github.com/libsdl-org/SDL/issues/3540#issuecomment-1793449852
 
 // SDL2 implementation for SDL3 function
-pub unsafe fn SDL_GameControllerNameForIndex(mut joystickIndex: i32) -> *const std::ffi::c_char
+pub unsafe fn SDL_GameControllerNameForIndex(joystickIndex: i32) -> *const std::ffi::c_char
 {
     // NOTE: SDL3 uses the IDs itself (SDL_JoystickID) instead of SDL2 joystick_index
     let mut name: *const std::ffi::c_char = std::ptr::null_mut();
     let mut numJoysticks: i32 = 0;
-    let mut joysticks: *mut SDL_JoystickID = SDL_GetJoysticks(&mut numJoysticks);
+    let joysticks: *mut SDL_JoystickID = SDL_GetJoysticks(&mut numJoysticks);
 
     if (!joysticks.is_null())
     {
         if (joystickIndex < numJoysticks)
         {
-            let mut instance_id: SDL_JoystickID = *joysticks.add(joystickIndex as usize);
+            let instance_id: SDL_JoystickID = *joysticks.add(joystickIndex as usize);
             name = SDL_GetGamepadNameForID(instance_id);
         }
 
@@ -247,7 +246,7 @@ pub unsafe fn SDL_GameControllerNameForIndex(mut joystickIndex: i32) -> *const s
 pub unsafe fn SDL_GetNumVideoDisplays() -> i32
 {
     let mut monitorCount: i32 = 0;
-    let mut displays: *mut SDL_DisplayID = SDL_GetDisplays(&mut monitorCount);
+    let displays: *mut SDL_DisplayID = SDL_GetDisplays(&mut monitorCount);
 
     // Safe because If 'mem' is NULL, SDL_free does nothing
     SDL_free(displays.cast());
@@ -257,9 +256,9 @@ pub unsafe fn SDL_GetNumVideoDisplays() -> i32
 
 // SLD3 Migration: To emulate SDL2 this function should return 'SDL_DISABLE' or 'SDL_ENABLE'
 // representing the *processing state* of the event before this function makes any changes to it
-pub unsafe fn SDL_EventState(mut r#type: SDL_EventType, mut state: i32) -> u8
+pub unsafe fn SDL_EventState(r#type: SDL_EventType, state: i32) -> u8
 {
-    let mut stateBefore: u8 = SDL_EventEnabled(r#type.0) as u8;
+    let stateBefore: u8 = SDL_EventEnabled(r#type.0) as u8;
 
     match state
     {
@@ -271,9 +270,9 @@ pub unsafe fn SDL_EventState(mut r#type: SDL_EventType, mut state: i32) -> u8
     return stateBefore;
 }
 
-pub unsafe fn SDL_GetCurrentDisplayMode_Adapter(mut displayID: SDL_DisplayID, mut mode: *mut SDL_DisplayMode)
+pub unsafe fn SDL_GetCurrentDisplayMode_Adapter(displayID: SDL_DisplayID, mode: *mut SDL_DisplayMode)
 {
-    let mut currentMode: *const SDL_DisplayMode = sdl3_sys::video::SDL_GetCurrentDisplayMode(displayID);
+    let currentMode: *const SDL_DisplayMode = sdl3_sys::video::SDL_GetCurrentDisplayMode(displayID);
 
     if (currentMode == std::ptr::null_mut()) { warn!("SDL: No possible to get current display mode"); }
     else { *mode = std::ptr::read(currentMode); }
@@ -282,7 +281,7 @@ pub unsafe fn SDL_GetCurrentDisplayMode_Adapter(mut displayID: SDL_DisplayID, mu
 // SDL3 Migration: Renamed
 use self::SDL_GetCurrentDisplayMode_Adapter as SDL_GetCurrentDisplayMode;
 
-pub unsafe fn SDL_CreateRGBSurface(mut flags: u32, mut width: i32, mut height: i32, mut depth: i32, mut Rmask: u32, mut Gmask: u32, mut Bmask: u32, mut Amask: u32) -> *mut SDL_Surface
+pub unsafe fn SDL_CreateRGBSurface(flags: u32, width: i32, height: i32, depth: i32, Rmask: u32, Gmask: u32, Bmask: u32, Amask: u32) -> *mut SDL_Surface
 {
     return SDL_CreateSurface(width, height, SDL_GetPixelFormatForMasks(depth, Rmask, Gmask, Bmask, Amask));
 }
@@ -291,9 +290,9 @@ pub unsafe fn SDL_CreateRGBSurface(mut flags: u32, mut width: i32, mut height: i
 // SDL_GetDisplayDPI() not reliable across platforms, approximately replaced by multiplying
 // SDL_GetWindowDisplayScale() times 160 on iPhone and Android, and 96 on other platforms
 // returns 0 on success or a negative error code on failure
-pub unsafe fn SDL_GetDisplayDPI(mut displayIndex: i32, mut ddpi: *mut f32, mut hdpi: *mut f32, mut vdpi: *mut f32) -> i32
+pub unsafe fn SDL_GetDisplayDPI(displayIndex: i32, ddpi: *mut f32, hdpi: *mut f32, vdpi: *mut f32) -> i32
 {
-    let mut dpi: f32 = SDL_GetWindowDisplayScale(platform.window)*96.0;
+    let dpi: f32 = SDL_GetWindowDisplayScale(platform.window)*96.0;
 
     if (ddpi != std::ptr::null_mut()) { *ddpi = dpi; }
     if (hdpi != std::ptr::null_mut()) { *hdpi = dpi; }
@@ -302,17 +301,17 @@ pub unsafe fn SDL_GetDisplayDPI(mut displayIndex: i32, mut ddpi: *mut f32, mut h
     return 0;
 }
 
-pub unsafe fn SDL_CreateRGBSurfaceWithFormat(mut flags: u32, mut width: i32, mut height: i32, mut depth: i32, mut format: u32) -> *mut SDL_Surface
+pub unsafe fn SDL_CreateRGBSurfaceWithFormat(flags: u32, width: i32, height: i32, depth: i32, format: u32) -> *mut SDL_Surface
 {
     return SDL_CreateSurface(width, height, SDL_PixelFormat(format as i32));
 }
 
-pub unsafe fn SDL_CreateRGBSurfaceFrom(mut pixels: *mut std::ffi::c_void, mut width: i32, mut height: i32, mut depth: i32, mut pitch: i32, mut Rmask: u32, mut Gmask: u32, mut Bmask: u32, mut Amask: u32) -> *mut SDL_Surface
+pub unsafe fn SDL_CreateRGBSurfaceFrom(pixels: *mut std::ffi::c_void, width: i32, height: i32, depth: i32, pitch: i32, Rmask: u32, Gmask: u32, Bmask: u32, Amask: u32) -> *mut SDL_Surface
 {
     return SDL_CreateSurfaceFrom(width, height, SDL_GetPixelFormatForMasks(depth, Rmask, Gmask, Bmask, Amask), pixels, pitch);
 }
 
-pub unsafe fn SDL_CreateRGBSurfaceWithFormatFrom(mut pixels: *mut std::ffi::c_void, mut width: i32, mut height: i32, mut depth: i32, mut pitch: i32, mut format: u32) -> *mut SDL_Surface
+pub unsafe fn SDL_CreateRGBSurfaceWithFormatFrom(pixels: *mut std::ffi::c_void, width: i32, height: i32, depth: i32, pitch: i32, format: u32) -> *mut SDL_Surface
 {
     return SDL_CreateSurfaceFrom(width, height, SDL_PixelFormat(format as i32), pixels, pitch);
 }
@@ -320,7 +319,7 @@ pub unsafe fn SDL_CreateRGBSurfaceWithFormatFrom(mut pixels: *mut std::ffi::c_vo
 pub unsafe fn SDL_NumJoysticks() -> i32
 {
     let mut numJoysticks: i32 = 0;
-    let mut joysticks: *mut SDL_JoystickID = SDL_GetJoysticks(&mut numJoysticks);
+    let joysticks: *mut SDL_JoystickID = SDL_GetJoysticks(&mut numJoysticks);
     SDL_free(joysticks.cast());
     return numJoysticks;
 }
@@ -328,7 +327,7 @@ pub unsafe fn SDL_NumJoysticks() -> i32
 // SDL_SetRelativeMouseMode
 // returns 0 on success or a negative error code on failure
 // If relative mode is not supported, this returns -1
-pub unsafe fn SDL_SetRelativeMouseMode_Adapter(mut enabled: bool) -> i32
+pub unsafe fn SDL_SetRelativeMouseMode_Adapter(enabled: bool) -> i32
 {
     // SDL_SetWindowRelativeMouseMode(SDL_Window *window, bool enabled)
     // \returns true on success or false on failure; call SDL_GetError() for more
@@ -349,13 +348,12 @@ pub unsafe fn SDL_GetRelativeMouseMode_Adapter() -> bool
     return SDL_GetWindowRelativeMouseMode(platform.window);
 }
 
-use self::SDL_GetRelativeMouseMode_Adapter as SDL_GetRelativeMouseMode;
 
-pub unsafe fn SDL_GetNumTouchFingers(mut touchID: SDL_TouchID) -> i32
+pub unsafe fn SDL_GetNumTouchFingers(touchID: SDL_TouchID) -> i32
 {
     // SDL_Finger **SDL_GetTouchFingers(SDL_TouchID touchID, int *count)
     let mut count: i32 = 0;
-    let mut fingers: *mut *mut SDL_Finger = SDL_GetTouchFingers(touchID, &mut count);
+    let fingers: *mut *mut SDL_Finger = SDL_GetTouchFingers(touchID, &mut count);
     SDL_free(fingers.cast());
     return count;
 }
@@ -390,7 +388,7 @@ pub unsafe fn WindowShouldClose() -> bool
 // Toggle fullscreen mode
 pub unsafe fn ToggleFullscreen()
 {
-    let mut monitor= SDL_GetDisplayForWindow(platform.window);
+    let monitor= SDL_GetDisplayForWindow(platform.window);
 
     if (SDL_GetDisplayProperties(monitor) != 0) // Returns 0 on failure, so a value other than zero indicates that the monitor id is valid
     {
@@ -411,7 +409,7 @@ pub unsafe fn ToggleFullscreen()
 // Toggle borderless windowed mode
 pub unsafe fn ToggleBorderlessWindowed()
 {
-    let mut monitor= SDL_GetDisplayForWindow(platform.window);
+    let monitor= SDL_GetDisplayForWindow(platform.window);
 
     if (SDL_GetDisplayProperties(monitor) != 0) // Returns 0 on failure, so a value other than zero indicates that the monitor id is valid
     {
@@ -451,7 +449,7 @@ pub unsafe fn RestoreWindow()
 }
 
 // Set window configuration state using flags
-pub unsafe fn SetWindowState(mut flags: u32)
+pub unsafe fn SetWindowState(flags: u32)
 {
     if (!CORE.Window.ready) { warn!("WINDOW: SetWindowState does nothing before window initialization, Use \"SetConfigFlags\" instead"); }
 
@@ -463,7 +461,7 @@ pub unsafe fn SetWindowState(mut flags: u32)
     }
     if (((flags & FLAG_FULLSCREEN_MODE as u32) != 0))
     {
-        let mut monitor= SDL_GetDisplayForWindow(platform.window);
+        let monitor= SDL_GetDisplayForWindow(platform.window);
 
         if (SDL_GetDisplayProperties(monitor) != 0) // Returns 0 on failure, so a value other than zero indicates that the monitor id is valid
         {
@@ -520,7 +518,7 @@ pub unsafe fn SetWindowState(mut flags: u32)
     }
     if (((flags & FLAG_BORDERLESS_WINDOWED_MODE as u32) != 0))
     {
-        let mut monitor= SDL_GetDisplayForWindow(platform.window);
+        let monitor= SDL_GetDisplayForWindow(platform.window);
 
         if (SDL_GetDisplayProperties(monitor) != 0) // Returns 0 on failure, so a value other than zero indicates that the monitor id is valid
         {
@@ -540,7 +538,7 @@ pub unsafe fn SetWindowState(mut flags: u32)
 }
 
 // Clear window configuration state flags
-pub unsafe fn ClearWindowState(mut flags: u32)
+pub unsafe fn ClearWindowState(flags: u32)
 {
     CORE.Window.flags &= !flags;
 
@@ -611,7 +609,7 @@ pub unsafe fn ClearWindowState(mut flags: u32)
 }
 
 // Set icon for window
-pub unsafe fn SetWindowIcon(mut image: Image)
+pub unsafe fn SetWindowIcon(image: Image)
 {
     let mut iconSurface: *mut SDL_Surface = std::ptr::null_mut();
 
@@ -700,13 +698,13 @@ pub unsafe fn SetWindowIcon(mut image: Image)
 }
 
 // Set icon for window
-pub unsafe fn SetWindowIcons(mut images: &[Image], mut count: i32)
+pub unsafe fn SetWindowIcons(images: &[Image], count: i32)
 {
     warn!("SetWindowIcons() not available on target platform");
 }
 
 // Set title for window
-pub unsafe fn SetWindowTitle(mut title: &str)
+pub unsafe fn SetWindowTitle(title: &str)
 {
     let title = CString::new(title).expect("window title contains a NUL byte").into_raw();
     SDL_SetWindowTitle(platform.window, title);
@@ -715,7 +713,7 @@ pub unsafe fn SetWindowTitle(mut title: &str)
 }
 
 // Set window position on screen (windowed mode)
-pub unsafe fn SetWindowPosition(mut x: i32, mut y: i32)
+pub unsafe fn SetWindowPosition(x: i32, y: i32)
 {
     SDL_SetWindowPosition(platform.window, x, y);
 
@@ -724,17 +722,17 @@ pub unsafe fn SetWindowPosition(mut x: i32, mut y: i32)
 }
 
 // Set monitor for the current window
-pub unsafe fn SetWindowMonitor(mut monitor: i32)
+pub unsafe fn SetWindowMonitor(monitor: i32)
 {
     if (SDL_GetDisplayProperties(SDL_DisplayID(monitor as u32)) != 0) // Returns 0 on failure, so a value other than zero indicates that the monitor id is valid
     {
         // NOTE 1: SDL started supporting moving exclusive fullscreen windows between displays on SDL3,
         // see commit https://github.com/libsdl-org/SDL/commit/3f5ef7dd422057edbcf3e736107e34be4b75d9ba
         // NOTE 2: A workaround for SDL2 is leaving fullscreen, moving the window, then entering full screen again
-        let mut wasFullscreen: bool = if (((CORE.Window.flags & FLAG_FULLSCREEN_MODE as u32) != 0)) { true } else { false };
+        let wasFullscreen: bool = if (((CORE.Window.flags & FLAG_FULLSCREEN_MODE as u32) != 0)) { true } else { false };
 
-        let mut screenWidth: i32 = CORE.Window.screen.x as i32;
-        let mut screenHeight: i32 = CORE.Window.screen.y as i32;
+        let screenWidth: i32 = CORE.Window.screen.x as i32;
+        let screenHeight: i32 = CORE.Window.screen.y as i32;
         let mut usableBounds: SDL_Rect = std::mem::zeroed();
 
         if (SDL_GetDisplayUsableBounds(SDL_DisplayID(monitor as u32), &mut usableBounds))
@@ -757,8 +755,8 @@ pub unsafe fn SetWindowMonitor(mut monitor: i32)
             }
             else
             {
-                let mut x: i32 = usableBounds.x + (usableBounds.w/2) - (screenWidth/2);
-                let mut y: i32 = usableBounds.y + (usableBounds.h/2) - (screenHeight/2);
+                let x: i32 = usableBounds.x + (usableBounds.w/2) - (screenWidth/2);
+                let y: i32 = usableBounds.y + (usableBounds.h/2) - (screenHeight/2);
                 SDL_SetWindowPosition(platform.window, x, y);
                 CORE.Window.position.x = (x) as f32;
                 CORE.Window.position.y = (y) as f32;
@@ -772,7 +770,7 @@ pub unsafe fn SetWindowMonitor(mut monitor: i32)
 }
 
 // Set window minimum dimensions (FLAG_WINDOW_RESIZABLE)
-pub unsafe fn SetWindowMinSize(mut width: i32, mut height: i32)
+pub unsafe fn SetWindowMinSize(width: i32, height: i32)
 {
     SDL_SetWindowMinimumSize(platform.window, width, height);
 
@@ -781,7 +779,7 @@ pub unsafe fn SetWindowMinSize(mut width: i32, mut height: i32)
 }
 
 // Set window maximum dimensions (FLAG_WINDOW_RESIZABLE)
-pub unsafe fn SetWindowMaxSize(mut width: i32, mut height: i32)
+pub unsafe fn SetWindowMaxSize(width: i32, height: i32)
 {
     SDL_SetWindowMaximumSize(platform.window, width, height);
 
@@ -790,7 +788,7 @@ pub unsafe fn SetWindowMaxSize(mut width: i32, mut height: i32)
 }
 
 // Set window dimensions
-pub unsafe fn SetWindowSize(mut width: i32, mut height: i32)
+pub unsafe fn SetWindowSize(width: i32, height: i32)
 {
     SDL_SetWindowSize(platform.window, width, height);
 
@@ -820,14 +818,14 @@ pub unsafe fn GetWindowHandle() -> *mut std::ffi::c_void
     let mut handle: *mut std::ffi::c_void = std::ptr::null_mut();
 
     // REF: https://github.com/libsdl-org/SDL/blob/main/include/SDL3/SDL_video.h#L1590
-    let mut props: SDL_PropertiesID = SDL_GetWindowProperties(platform.window);
+    let props: SDL_PropertiesID = SDL_GetWindowProperties(platform.window);
     #[cfg(target_os = "windows")]
     {
     handle = (SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, std::ptr::null_mut()) as *mut std::ffi::c_void); // Type: HWND
     }
     #[cfg(target_os = "linux")]
     {
-    let mut windowId: std::os::raw::c_ulong = (SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0) as std::os::raw::c_ulong); // Type: unsigned long (XID, Window)
+    let windowId: std::os::raw::c_ulong = (SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0) as std::os::raw::c_ulong); // Type: unsigned long (XID, Window)
     if (windowId != 0)
     {
         // X11 window ID
@@ -864,7 +862,7 @@ pub unsafe fn GetCurrentMonitor() -> i32
 }
 
 // Get selected monitor position
-pub unsafe fn GetMonitorPosition(mut monitor: i32) -> Vector2
+pub unsafe fn GetMonitorPosition(monitor: i32) -> Vector2
 {
     if (SDL_GetDisplayProperties(SDL_DisplayID(monitor as u32)) != 0) // Returns 0 on failure, so a value other than zero indicates that the monitor id is valid
     {
@@ -881,7 +879,7 @@ pub unsafe fn GetMonitorPosition(mut monitor: i32) -> Vector2
 }
 
 // Get selected monitor width (currently used by monitor)
-pub unsafe fn GetMonitorWidth(mut monitor: i32) -> i32
+pub unsafe fn GetMonitorWidth(monitor: i32) -> i32
 {
     let mut width: i32 = 0;
 
@@ -897,7 +895,7 @@ pub unsafe fn GetMonitorWidth(mut monitor: i32) -> i32
 }
 
 // Get selected monitor height (currently used by monitor)
-pub unsafe fn GetMonitorHeight(mut monitor: i32) -> i32
+pub unsafe fn GetMonitorHeight(monitor: i32) -> i32
 {
     let mut height: i32 = 0;
 
@@ -913,7 +911,7 @@ pub unsafe fn GetMonitorHeight(mut monitor: i32) -> i32
 }
 
 // Get selected monitor physical width in millimetres
-pub unsafe fn GetMonitorPhysicalWidth(mut monitor: i32) -> i32
+pub unsafe fn GetMonitorPhysicalWidth(monitor: i32) -> i32
 {
     let mut width: i32 = 0;
 
@@ -932,7 +930,7 @@ pub unsafe fn GetMonitorPhysicalWidth(mut monitor: i32) -> i32
 }
 
 // Get selected monitor physical height in millimetres
-pub unsafe fn GetMonitorPhysicalHeight(mut monitor: i32) -> i32
+pub unsafe fn GetMonitorPhysicalHeight(monitor: i32) -> i32
 {
     let mut height: i32 = 0;
 
@@ -951,7 +949,7 @@ pub unsafe fn GetMonitorPhysicalHeight(mut monitor: i32) -> i32
 }
 
 // Get selected monitor refresh rate
-pub unsafe fn GetMonitorRefreshRate(mut monitor: i32) -> i32
+pub unsafe fn GetMonitorRefreshRate(monitor: i32) -> i32
 {
     let mut refresh: i32 = 0;
 
@@ -967,7 +965,7 @@ pub unsafe fn GetMonitorRefreshRate(mut monitor: i32) -> i32
 }
 
 // Get the human-readable, UTF-8 encoded name of the selected monitor
-pub unsafe fn GetMonitorName(mut monitor: i32) -> String
+pub unsafe fn GetMonitorName(monitor: i32) -> String
 {
     if (SDL_GetDisplayProperties(SDL_DisplayID(monitor as u32)) != 0) // Returns 0 on failure, so a value other than zero indicates that the monitor id is valid
     {
@@ -1003,7 +1001,7 @@ pub unsafe fn GetWindowScaleDPI() -> Vector2
 }
 
 // Set clipboard text content
-pub unsafe fn SetClipboardText(mut text: &str)
+pub unsafe fn SetClipboardText(text: &str)
 {
     let text = CString::new(text).expect("clipboard text contains a NUL byte");
     SDL_SetClipboardText(text.as_ptr());
@@ -1014,12 +1012,12 @@ pub unsafe fn GetClipboardText() -> String
 {
     let mut buffer = [0 as std::ffi::c_char; MAX_CLIPBOARD_BUFFER_LENGTH];
 
-    let mut clipboard = SDL_GetClipboardText();
+    let clipboard = SDL_GetClipboardText();
 
-    let mut clipboardSize = libc::snprintf(buffer.as_mut_ptr(), MAX_CLIPBOARD_BUFFER_LENGTH, c"%s".as_ptr(), clipboard);
+    let clipboardSize = libc::snprintf(buffer.as_mut_ptr(), MAX_CLIPBOARD_BUFFER_LENGTH, c"%s".as_ptr(), clipboard);
     if (clipboardSize >= MAX_CLIPBOARD_BUFFER_LENGTH as i32)
     {
-        let mut truncate = buffer.as_mut_ptr().add(MAX_CLIPBOARD_BUFFER_LENGTH - 4);
+        let truncate = buffer.as_mut_ptr().add(MAX_CLIPBOARD_BUFFER_LENGTH - 4);
         libc::sprintf(truncate, c"...".as_ptr());
     }
 
@@ -1031,7 +1029,7 @@ pub unsafe fn GetClipboardText() -> String
 // Get clipboard image
 pub unsafe fn GetClipboardImage() -> Image
 {
-    let mut image: Image = std::mem::zeroed();
+    let image: Image = std::mem::zeroed();
 
 #[cfg(feature = "SUPPORT_CLIPBOARD_IMAGE")]
 {
@@ -1139,7 +1137,7 @@ pub unsafe fn SwapScreenBuffer()
 // Get elapsed time measure in seconds
 pub unsafe fn GetTime() -> f64
 {
-    let mut time: f64 = ((SDL_GetPerformanceCounter() as f64)/(SDL_GetPerformanceFrequency() as f64)) - (CORE.Time.base as f64)/(SDL_GetPerformanceFrequency() as f64);
+    let time: f64 = ((SDL_GetPerformanceCounter() as f64)/(SDL_GetPerformanceFrequency() as f64)) - (CORE.Time.base as f64)/(SDL_GetPerformanceFrequency() as f64);
 
     return time;
 }
@@ -1148,7 +1146,7 @@ pub unsafe fn GetTime() -> f64
 // WARNING: This function is only safe to use if you control the URL given,
 // a user could craft a malicious string to perform and undesired action
 // NOTE: Some safety checks have been added to mitigate security issues
-pub unsafe fn OpenURL(mut url: &str)
+pub unsafe fn OpenURL(url: &str)
 {
     // Security check to (partially) avoid malicious code
     if (url.contains('\'') || url.contains('"'))
@@ -1197,7 +1195,7 @@ pub fn SetGamepadMappings(mappings: &str) -> i32
 }
 
 // Set gamepad vibration
-pub unsafe fn SetGamepadVibration(mut gamepad: i32, mut leftMotor: f32, mut rightMotor: f32, mut duration: f32)
+pub unsafe fn SetGamepadVibration(gamepad: i32, mut leftMotor: f32, mut rightMotor: f32, mut duration: f32)
 {
     if ((gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[gamepad as usize] && (duration > 0.0))
     {
@@ -1212,7 +1210,7 @@ pub unsafe fn SetGamepadVibration(mut gamepad: i32, mut leftMotor: f32, mut righ
 }
 
 // Set mouse position XY
-pub unsafe fn SetMousePosition(mut x: i32, mut y: i32)
+pub unsafe fn SetMousePosition(x: i32, y: i32)
 {
     SDL_WarpMouseInWindow(platform.window, x as f32, y as f32);
 
@@ -1220,7 +1218,7 @@ pub unsafe fn SetMousePosition(mut x: i32, mut y: i32)
 }
 
 // Set mouse cursor
-pub unsafe fn SetMouseCursor(mut cursor: i32)
+pub unsafe fn SetMouseCursor(cursor: i32)
 {
     platform.cursor = SDL_CreateSystemCursor(CursorsLUT[cursor as usize]);
     SDL_SetCursor(platform.cursor);
@@ -1229,7 +1227,7 @@ pub unsafe fn SetMouseCursor(mut cursor: i32)
 }
 
 // Get physical key name
-pub unsafe fn GetKeyName(mut key: i32) -> String
+pub unsafe fn GetKeyName(key: i32) -> String
 {
     return CStr::from_ptr(SDL_GetKeyName(SDL_Keycode(key as u32))).to_string_lossy().into_owned();
 }
@@ -1346,8 +1344,8 @@ pub unsafe fn PollInputEvents()
 
             // Window events are also polled (minimized, maximized, close...)
                     value if value == SDL_EventType::WINDOW_RESIZED || value == SDL_EventType::WINDOW_PIXEL_SIZE_CHANGED => {
-                        let mut width: i32 = event.window.data1;
-                        let mut height: i32 = event.window.data2;
+                        let width: i32 = event.window.data1;
+                        let height: i32 = event.window.data2;
                         SetupViewport(width, height);
 
                         // Consider content scaling if required
@@ -1403,7 +1401,7 @@ pub unsafe fn PollInputEvents()
             // Check keyboard events
             value if value == SDL_EventType::KEY_DOWN => {
                 // SDL3 Migration: The following structures have been removed: SDL_Keysym
-                let mut key: i32 = ConvertScancodeToKey(event.key.scancode);
+                let key: i32 = ConvertScancodeToKey(event.key.scancode);
 
                 if (key != KEY_NULL as i32)
                 {
@@ -1424,7 +1422,7 @@ pub unsafe fn PollInputEvents()
 
             },
             value if value == SDL_EventType::KEY_UP => {
-                let mut key: i32 = ConvertScancodeToKey(event.key.scancode);
+                let key: i32 = ConvertScancodeToKey(event.key.scancode);
                 if (key != KEY_NULL as i32) { CORE.Input.Keyboard.currentKeyState[key as usize] = 0; }
             },
             value if value == SDL_EventType::TEXT_INPUT => {
@@ -1435,7 +1433,7 @@ pub unsafe fn PollInputEvents()
                 {
                     // Add character (codepoint) to the queue
                     let mut textLen: usize = libc::strlen(event.text.text);
-                    let mut codepoint: u32 = (SDL_StepUTF8(&mut event.text.text, &mut textLen) as u32);
+                    let codepoint: u32 = (SDL_StepUTF8(&mut event.text.text, &mut textLen) as u32);
 
                     CORE.Input.Keyboard.charPressedQueue[CORE.Input.Keyboard.charPressedQueueCount as usize] = codepoint as i32;
                     CORE.Input.Keyboard.charPressedQueueCount += 1;
@@ -1507,7 +1505,7 @@ pub unsafe fn PollInputEvents()
 
             // Check Gamepad events
             value if value == SDL_EventType::JOYSTICK_ADDED => {
-                let mut jid: SDL_JoystickID = event.jdevice.which; // Joystick device index
+                let jid: SDL_JoystickID = event.jdevice.which; // Joystick device index
 
                 // Check if already added at InitPlatform
                 for i in (0) as usize..(MAX_GAMEPADS) as usize
@@ -1533,7 +1531,7 @@ pub unsafe fn PollInputEvents()
                         CORE.Input.Gamepad.axisState[nextAvailableSlot as usize][GAMEPAD_AXIS_LEFT_TRIGGER as i32 as usize] = -1.0;
                         CORE.Input.Gamepad.axisState[nextAvailableSlot as usize][GAMEPAD_AXIS_RIGHT_TRIGGER as i32 as usize] = -1.0;
                         CORE.Input.Gamepad.name[nextAvailableSlot as usize].fill(0);
-                        let mut controllerName: *const std::ffi::c_char = SDL_GameControllerNameForIndex(nextAvailableSlot as i32);
+                        let controllerName: *const std::ffi::c_char = SDL_GameControllerNameForIndex(nextAvailableSlot as i32);
                         if (controllerName != std::ptr::null_mut()) { libc::snprintf(CORE.Input.Gamepad.name[nextAvailableSlot as usize].as_mut_ptr(), MAX_GAMEPAD_NAME_LENGTH, c"%s".as_ptr(), controllerName); }
                         else { libc::memcpy(CORE.Input.Gamepad.name[nextAvailableSlot as usize].as_mut_ptr().cast(), c"noname".as_ptr().cast(), 6); }
                     }
@@ -1541,7 +1539,7 @@ pub unsafe fn PollInputEvents()
                 }
             },
             value if value == SDL_EventType::JOYSTICK_REMOVED => {
-                let mut jid: SDL_JoystickID = event.jdevice.which; // Joystick instance id
+                let jid: SDL_JoystickID = event.jdevice.which; // Joystick instance id
 
                 for i in (0) as usize..(MAX_GAMEPADS) as usize
                 {
@@ -1648,14 +1646,14 @@ pub unsafe fn PollInputEvents()
                         if (platform.gamepadId[i] == event.jaxis.which)
                         {
                             // SDL axis value range is -32768 to 32767, normalizing it to raylib's -1.0 to 1.0f range
-                            let mut value: f32 = event.jaxis.value as f32/(32767 as f32);
+                            let value: f32 = event.jaxis.value as f32/(32767 as f32);
                             CORE.Input.Gamepad.axisState[i][axis as usize] = value;
 
                             // Register button state for triggers in addition to their axes
                             if ((axis == GAMEPAD_AXIS_LEFT_TRIGGER as i32) || (axis == GAMEPAD_AXIS_RIGHT_TRIGGER as i32))
                             {
-                                let mut button: i32 = if (axis == GAMEPAD_AXIS_LEFT_TRIGGER as i32) { GAMEPAD_BUTTON_LEFT_TRIGGER_2 as i32 } else { GAMEPAD_BUTTON_RIGHT_TRIGGER_2 as i32 };
-                                let mut pressed: i32 = (value > 0.1) as i32;
+                                let button: i32 = if (axis == GAMEPAD_AXIS_LEFT_TRIGGER as i32) { GAMEPAD_BUTTON_LEFT_TRIGGER_2 as i32 } else { GAMEPAD_BUTTON_RIGHT_TRIGGER_2 as i32 };
+                                let pressed: i32 = (value > 0.1) as i32;
                                 CORE.Input.Gamepad.currentButtonState[i][button as usize] = pressed as i8;
                                 if (pressed != 0) { CORE.Input.Gamepad.lastButtonPressed = button; }
                                 else if (CORE.Input.Gamepad.lastButtonPressed == button) { CORE.Input.Gamepad.lastButtonPressed = 0; }
@@ -1711,7 +1709,7 @@ pub unsafe fn InitPlatform() -> i32
 {
     // Initialize SDL internal global state, only required systems
     // NOTE: Not all systems need to be initialized, SDL_INIT_AUDIO is not required, managed by miniaudio
-    let mut result: i32 = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD) as i32;
+    let result: i32 = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD) as i32;
     if (result < 0) { warn!("SDL: Failed to initialize SDL"); return -1; }
 
     // Initialize graphic device: display/window and graphic context
@@ -1798,7 +1796,7 @@ pub unsafe fn InitPlatform() -> i32
     // NOTE: SDL3 no longer enables text input by default,
     // it is needed to be enabled manually to keep GetCharPressed() working
     // REF: https://github.com/libsdl-org/SDL/commit/72fc6f86e5d605a3787222bc7dc18c5379047f4a
-    let mut enableOSK: *const std::ffi::c_char = SDL_GetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD);
+    let enableOSK: *const std::ffi::c_char = SDL_GetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD);
     if (enableOSK == std::ptr::null_mut()) { SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, c"0".as_ptr()); }
     if (!SDL_StartTextInput(platform.window)) { warn!("SDL: Failed to start text input: {}", CStr::from_ptr(SDL_GetError()).to_string_lossy()); }
     if (enableOSK == std::ptr::null_mut()) { SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, std::ptr::null_mut()); }
@@ -1856,7 +1854,7 @@ pub unsafe fn InitPlatform() -> i32
     }
 
     let mut numJoysticks: i32 = 0;
-    let mut joysticks: *mut SDL_JoystickID = SDL_GetJoysticks(&mut numJoysticks);
+    let joysticks: *mut SDL_JoystickID = SDL_GetJoysticks(&mut numJoysticks);
 
     let mut i: usize = 0;
     while ((i as i32) < numJoysticks) && (i < MAX_GAMEPADS)
@@ -1870,7 +1868,7 @@ pub unsafe fn InitPlatform() -> i32
             CORE.Input.Gamepad.axisCount[i] = SDL_GetNumJoystickAxes(SDL_GetGamepadJoystick(platform.gamepad[i]));
             CORE.Input.Gamepad.axisState[i][GAMEPAD_AXIS_LEFT_TRIGGER as i32 as usize] = -1.0;
             CORE.Input.Gamepad.axisState[i][GAMEPAD_AXIS_RIGHT_TRIGGER as i32 as usize] = -1.0;
-            let mut joystickName: *const std::ffi::c_char = SDL_GetJoystickNameForID(*joysticks.add(i as usize));
+            let joystickName: *const std::ffi::c_char = SDL_GetJoystickNameForID(*joysticks.add(i as usize));
             libc::snprintf(CORE.Input.Gamepad.name[i].as_mut_ptr(), MAX_GAMEPAD_NAME_LENGTH, c"%s".as_ptr(), joystickName);
             CORE.Input.Gamepad.name[i][MAX_GAMEPAD_NAME_LENGTH - 1] = 0;
         }
@@ -1920,7 +1918,7 @@ pub unsafe fn ClosePlatform()
 }
 
 // Scancode to keycode mapping
-pub fn ConvertScancodeToKey(mut sdlScancode: SDL_Scancode) -> i32
+pub fn ConvertScancodeToKey(sdlScancode: SDL_Scancode) -> i32
 {
     if ((sdlScancode.0 >= 0) && ((sdlScancode.0 as usize) < SCANCODE_MAPPED_NUM))
     {
@@ -1931,9 +1929,9 @@ pub fn ConvertScancodeToKey(mut sdlScancode: SDL_Scancode) -> i32
 }
 
 // Get next codepoint in a byte sequence and bytes processed
-pub fn GetCodepointNextSDL(mut text: &str, mut codepointSize: &mut i32) -> i32
+pub fn GetCodepointNextSDL(text: &str, codepointSize: &mut i32) -> i32
 {
-    let mut ptr = text.as_bytes();
+    let ptr = text.as_bytes();
     let mut codepoint: i32 = 0x3f;       // Codepoint (defaults to '?')
     *codepointSize = 1;
 
@@ -1970,15 +1968,15 @@ pub fn GetCodepointNextSDL(mut text: &str, mut codepointSize: &mut i32) -> i32
 }
 
 // Update CORE input touch point info from SDL touch data
-pub unsafe fn UpdateTouchPointsSDL(mut event: SDL_TouchFingerEvent)
+pub unsafe fn UpdateTouchPointsSDL(event: SDL_TouchFingerEvent)
 {
     let mut count: i32 = 0;
-    let mut fingers: *mut *mut SDL_Finger = SDL_GetTouchFingers(event.touchID, &mut count);
+    let fingers: *mut *mut SDL_Finger = SDL_GetTouchFingers(event.touchID, &mut count);
     CORE.Input.Touch.pointCount = count;
 
     for i in (0) as usize..(CORE.Input.Touch.pointCount) as usize
     {
-        let mut finger: *mut SDL_Finger = *fingers.add(i as usize);
+        let finger: *mut SDL_Finger = *fingers.add(i as usize);
         CORE.Input.Touch.pointId[i] = (*finger).id.0 as i32;
         CORE.Input.Touch.position[i].x = (*finger).x*CORE.Window.screen.x;
         CORE.Input.Touch.position[i].y = (*finger).y*CORE.Window.screen.y;

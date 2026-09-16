@@ -1,5 +1,5 @@
 use crate::types::{Color, Vector3};
-use crate::rlgl::{self, RL_LINES, RL_QUADS, RL_TRIANGLES};
+use crate::rlgl::{self, RL_LINES, RL_QUADS};
 
 pub fn draw_cube(position: Vector3, width: f32, height: f32, length: f32, color: Color) {
     let x = position.x;

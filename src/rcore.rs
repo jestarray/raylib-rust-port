@@ -15,10 +15,9 @@
 use std::ffi::{c_char, CString};
 
 use crate::{
-    math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{self, rlGetTextureIdDefault, rlGetVersion, rlGlVersion}, rshapes::SetShapesTexture, types::{Color, Matrix, RAYLIB_VERSION, Rectangle, Texture2D, Vector2},
+    math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{rlGetVersion, rlGlVersion}, types::{Color, Matrix, RAYLIB_VERSION, Texture2D, Vector2},
 };
 use crate::rcore_desktop_sdl::*;
-use gl;
 
 pub const MAX_TRACELOG_MSG_LENGTH: usize = 256;
 pub const MAX_FILEPATH_CAPACITY: usize = 8192;
@@ -299,10 +298,10 @@ pub static mut CORE: CoreData = CoreData {
 
 use std::ffi::{c_void, CStr};
 use std::fmt::Write;
-use log::{debug, error, info, trace, warn};
+use log::{info, warn};
 use crate::math::DEG2RAD;
 use crate::rlgl::*;
-use crate::types::{AutomationEvent, AutomationEventList, BlendMode, Camera, Camera2D, CameraProjection, ConfigFlags, GamepadAxis, GamepadButton, Gesture, Image, KeyboardKey, MouseButton, MouseCursor, PixelFormat, Quaternion, Ray, RenderTexture2D, Shader, ShaderLocationIndex, TraceLogLevel, Vector3, VrDeviceInfo, VrStereoConfig};
+use crate::types::{AutomationEvent, AutomationEventList, BlendMode, Camera, Camera2D, CameraProjection, ConfigFlags, GamepadAxis, GamepadButton, KeyboardKey, MouseButton, MouseCursor, Quaternion, Ray, RenderTexture2D, Shader, ShaderLocationIndex, TraceLogLevel, Vector3, VrDeviceInfo, VrStereoConfig};
 #[cfg(feature = "SUPPORT_MODULE_RTEXT")]
 use crate::rtext::{load_font_default as LoadFontDefault, get_font_default as GetFontDefault};
 
@@ -402,7 +401,7 @@ static mut automationEventRecording: bool = false;               // Recording au
 //----------------------------------------------------------------------------------
 
 // Initialize window and OpenGL context
-pub unsafe fn InitWindow(mut width: i32, mut height: i32, mut title: &str)
+pub unsafe fn InitWindow(width: i32, height: i32, title: &str)
 {
     info!("Initializing raylib {}", RAYLIB_VERSION);
 
@@ -514,7 +513,7 @@ pub unsafe fn InitWindow(mut width: i32, mut height: i32, mut title: &str)
 
     // Initialize platform
     //--------------------------------------------------------------
-    let mut result: i32 = InitPlatform();
+    let result: i32 = InitPlatform();
 
     if (result != 0)
     {
@@ -653,7 +652,7 @@ pub unsafe fn IsWindowResized() -> bool
 }
 
 // Check if one specific window flag is enabled
-pub unsafe fn IsWindowState(mut flag: u32) -> bool
+pub unsafe fn IsWindowState(flag: u32) -> bool
 {
     return ((CORE.Window.flags & flag) == flag);
 }
@@ -721,7 +720,7 @@ pub unsafe fn IsCursorOnScreen() -> bool
 //----------------------------------------------------------------------------------
 
 // Clear background (framebuffer) to color
-pub unsafe fn ClearBackground(mut color: Color)
+pub unsafe fn ClearBackground(color: Color)
 {
     rlClearColor(color.r, color.g, color.b, color.a);   // Set clear color
     rlClearScreenBuffers();                             // Clear current framebuffers
@@ -771,7 +770,7 @@ pub unsafe fn EndDrawing()
         WaitTime(CORE.Time.target - CORE.Time.frame);
 
         CORE.Time.current = GetTime();
-        let mut waitTime: f64 = CORE.Time.current - CORE.Time.previous;
+        let waitTime: f64 = CORE.Time.current - CORE.Time.previous;
         CORE.Time.previous = CORE.Time.current;
 
         CORE.Time.frame += waitTime;    // Total frame time: update + draw + wait
@@ -793,7 +792,7 @@ pub unsafe fn EndDrawing()
 }
 
 // Initialize 2D mode with custom camera (2D)
-pub unsafe fn BeginMode2D(mut camera: Camera2D)
+pub unsafe fn BeginMode2D(camera: Camera2D)
 {
     rlDrawRenderBatchActive();      // Update and draw internal render batch
 
@@ -814,7 +813,7 @@ pub unsafe fn EndMode2D()
 }
 
 // Initializes 3D mode with custom camera (3D)
-pub unsafe fn BeginMode3D(mut camera: Camera)
+pub unsafe fn BeginMode3D(camera: Camera)
 {
     rlDrawRenderBatchActive();      // Update and draw internal render batch
 
@@ -822,22 +821,22 @@ pub unsafe fn BeginMode3D(mut camera: Camera)
     rlPushMatrix();                 // Save previous matrix, which contains the settings for the 2d ortho projection
     rlLoadIdentity();               // Reset current matrix (projection)
 
-    let mut aspect: f32 = (CORE.Window.currentFbo.x as f32)/(CORE.Window.currentFbo.y as f32);
+    let aspect: f32 = (CORE.Window.currentFbo.x as f32)/(CORE.Window.currentFbo.y as f32);
 
     // NOTE: zNear and zFar values are important when computing depth buffer values
     if (camera.projection == CameraProjection::Perspective as i32)
     {
         // Setup perspective projection
-        let mut top: f64 = rlGetCullDistanceNear()*(camera.fovy as f64*0.5*DEG2RAD as f64).tan();
-        let mut right: f64 = top*aspect as f64;
+        let top: f64 = rlGetCullDistanceNear()*(camera.fovy as f64*0.5*DEG2RAD as f64).tan();
+        let right: f64 = top*aspect as f64;
 
         rlFrustum(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
     }
     else if (camera.projection == CameraProjection::Orthographic as i32)
     {
         // Setup orthographic projection
-        let mut top: f64 = camera.fovy as f64/2.0;
-        let mut right: f64 = top*aspect as f64;
+        let top: f64 = camera.fovy as f64/2.0;
+        let right: f64 = top*aspect as f64;
 
         rlOrtho(-right, right, -top,top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
     }
@@ -846,7 +845,7 @@ pub unsafe fn BeginMode3D(mut camera: Camera)
     rlLoadIdentity();               // Reset current matrix (modelview)
 
     // Setup Camera view
-    let mut matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
+    let matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
     rlMultMatrixf(matView.to_array().as_ptr());      // Multiply modelview matrix by view matrix (camera)
 
     rlEnableDepthTest();            // Enable DEPTH_TEST for 3D
@@ -869,7 +868,7 @@ pub unsafe fn EndMode3D()
 }
 
 // Initializes render texture for drawing
-pub unsafe fn BeginTextureMode(mut target: RenderTexture2D)
+pub unsafe fn BeginTextureMode(target: RenderTexture2D)
 {
     rlDrawRenderBatchActive();      // Update and draw internal render batch
 
@@ -921,7 +920,7 @@ pub unsafe fn EndTextureMode()
 }
 
 // Begin custom shader mode
-pub unsafe fn BeginShaderMode(mut shader: Shader)
+pub unsafe fn BeginShaderMode(shader: Shader)
 {
     rlSetShader(shader.id, shader.locs);
 }
@@ -934,7 +933,7 @@ pub unsafe fn EndShaderMode()
 
 // Begin blending mode (alpha, additive, multiplied, subtract, custom)
 // NOTE: Blend modes supported are enumerated in BlendMode enum
-pub unsafe fn BeginBlendMode(mut mode: i32)
+pub unsafe fn BeginBlendMode(mode: i32)
 {
     rlSetBlendMode(mode);
 }
@@ -947,7 +946,7 @@ pub unsafe fn EndBlendMode()
 
 // Begin scissor mode (define screen area for following drawing)
 // NOTE: Scissor rec refers to bottom-left corner, changing it to upper-left
-pub unsafe fn BeginScissorMode(mut x: i32, mut y: i32, mut width: i32, mut height: i32)
+pub unsafe fn BeginScissorMode(x: i32, y: i32, width: i32, height: i32)
 {
     rlDrawRenderBatchActive();      // Update and draw internal render batch
 
@@ -987,7 +986,7 @@ pub unsafe fn EndScissorMode()
 //----------------------------------------------------------------------------------
 
 // Begin VR drawing configuration
-pub unsafe fn BeginVrStereoMode(mut config: VrStereoConfig)
+pub unsafe fn BeginVrStereoMode(config: VrStereoConfig)
 {
     rlEnableStereoRender();
 
@@ -1003,17 +1002,17 @@ pub unsafe fn EndVrStereoMode()
 }
 
 // Load VR stereo config for VR simulator device parameters
-pub unsafe fn LoadVrStereoConfig(mut device: VrDeviceInfo) -> VrStereoConfig
+pub unsafe fn LoadVrStereoConfig(device: VrDeviceInfo) -> VrStereoConfig
 {
     let mut config: VrStereoConfig = unsafe { std::mem::zeroed() };
 
     if (rlGetVersion() != rlGlVersion::RL_OPENGL_11)
     {
         // Compute aspect ratio
-        let mut aspect: f32 = ((device.hResolution as f32)*0.5)/(device.vResolution as f32);
+        let aspect: f32 = ((device.hResolution as f32)*0.5)/(device.vResolution as f32);
 
         // Compute lens parameters
-        let mut lensShift: f32 = (device.hScreenSize*0.25 - device.lensSeparationDistance*0.5)/device.hScreenSize;
+        let lensShift: f32 = (device.hScreenSize*0.25 - device.lensSeparationDistance*0.5)/device.hScreenSize;
         config.leftLensCenter[0] = 0.25 + lensShift;
         config.leftLensCenter[1] = 0.5;
         config.rightLensCenter[0] = 0.75 - lensShift;
@@ -1025,15 +1024,15 @@ pub unsafe fn LoadVrStereoConfig(mut device: VrDeviceInfo) -> VrStereoConfig
 
         // Compute distortion scale parameters
         // NOTE: To get lens max radius, lensShift must be normalized to [-1..1]
-        let mut lensRadius: f32 = (-1.0 - 4.0*lensShift).abs();
-        let mut lensRadiusSq: f32 = lensRadius*lensRadius;
-        let mut distortionScale: f32 = device.lensDistortionValues[0] +
+        let lensRadius: f32 = (-1.0 - 4.0*lensShift).abs();
+        let lensRadiusSq: f32 = lensRadius*lensRadius;
+        let distortionScale: f32 = device.lensDistortionValues[0] +
                                 device.lensDistortionValues[1]*lensRadiusSq +
                                 device.lensDistortionValues[2]*lensRadiusSq*lensRadiusSq +
                                 device.lensDistortionValues[3]*lensRadiusSq*lensRadiusSq*lensRadiusSq;
 
-        let mut normScreenWidth: f32 = 0.5;
-        let mut normScreenHeight: f32 = 1.0;
+        let normScreenWidth: f32 = 0.5;
+        let normScreenHeight: f32 = 1.0;
         config.scaleIn[0] = 2.0/normScreenWidth;
         config.scaleIn[1] = 2.0/normScreenHeight/aspect;
         config.scale[0] = normScreenWidth*0.5/distortionScale;
@@ -1041,12 +1040,12 @@ pub unsafe fn LoadVrStereoConfig(mut device: VrDeviceInfo) -> VrStereoConfig
 
         // Fovy is normally computed with: 2*atan2f(device.vScreenSize, 2*device.eyeToScreenDistance)
         // ...but with lens distortion it is increased (see Oculus SDK Documentation)
-        let mut fovy: f32 = 2.0*(device.vScreenSize*0.5*distortionScale).atan2(device.eyeToScreenDistance);     // Really need distortionScale?
+        let fovy: f32 = 2.0*(device.vScreenSize*0.5*distortionScale).atan2(device.eyeToScreenDistance);     // Really need distortionScale?
        // float fovy = 2.0f*(float)atan2f(device.vScreenSize*0.5f, device.eyeToScreenDistance);
 
         // Compute camera projection matrices
-        let mut projOffset: f32 = 4.0*lensShift;      // Scaled to projection space coordinates [-1..1]
-        let mut proj: Matrix = Matrix::perspective(fovy as f64, aspect as f64, rlGetCullDistanceNear(), rlGetCullDistanceFar());
+        let projOffset: f32 = 4.0*lensShift;      // Scaled to projection space coordinates [-1..1]
+        let proj: Matrix = Matrix::perspective(fovy as f64, aspect as f64, rlGetCullDistanceNear(), rlGetCullDistanceFar());
 
         config.projection[0] = Matrix::multiply(proj, Matrix::translate(projOffset, 0.0, 0.0));
         config.projection[1] = Matrix::multiply(proj, Matrix::translate(-projOffset, 0.0, 0.0));
@@ -1077,7 +1076,7 @@ pub unsafe fn LoadVrStereoConfig(mut device: VrDeviceInfo) -> VrStereoConfig
 }
 
 // Unload VR stereo config properties
-pub fn UnloadVrStereoConfig(mut config: VrStereoConfig)
+pub fn UnloadVrStereoConfig(config: VrStereoConfig)
 {
     info!("UnloadVrStereoConfig not implemented in rcore.c");
 }
@@ -1175,7 +1174,7 @@ pub unsafe fn LoadShaderFromMemory(vsCode: Option<&str>, fsCode: Option<&str>) -
 }
 
 // Check if shader is valid (loaded on GPU)
-pub fn IsShaderValid(mut shader: Shader) -> bool
+pub fn IsShaderValid(shader: Shader) -> bool
 {
     return ((shader.id > 0) &&          // Validate shader id (GPU loaded successfully)
             (!shader.locs.is_null()));     // Validate memory has been allocated for default shader locations
@@ -1207,7 +1206,7 @@ pub fn IsShaderValid(mut shader: Shader) -> bool
 }
 
 // Unload shader from GPU memory (VRAM)
-pub unsafe fn UnloadShader(mut shader: Shader)
+pub unsafe fn UnloadShader(shader: Shader)
 {
     if (shader.id != rlGetShaderIdDefault())
     {
@@ -1219,25 +1218,25 @@ pub unsafe fn UnloadShader(mut shader: Shader)
 }
 
 // Get shader uniform location
-pub unsafe fn GetShaderLocation(mut shader: Shader, mut uniformName: &str) -> i32
+pub unsafe fn GetShaderLocation(shader: Shader, uniformName: &str) -> i32
 {
     return rlGetLocationUniform(shader.id, CString::new(uniformName).unwrap().as_ptr());
 }
 
 // Get shader attribute location
-pub unsafe fn GetShaderLocationAttrib(mut shader: Shader, mut attribName: &str) -> i32
+pub unsafe fn GetShaderLocationAttrib(shader: Shader, attribName: &str) -> i32
 {
     return rlGetLocationAttrib(shader.id, CString::new(attribName).unwrap().as_ptr());
 }
 
 // Set shader uniform value
-pub unsafe fn SetShaderValue(mut shader: Shader, mut locIndex: i32, mut value: *const std::ffi::c_void, mut uniformType: i32)
+pub unsafe fn SetShaderValue(shader: Shader, locIndex: i32, value: *const std::ffi::c_void, uniformType: i32)
 {
     SetShaderValueV(shader, locIndex, value, uniformType, 1);
 }
 
 // Set shader uniform value vector
-pub unsafe fn SetShaderValueV(mut shader: Shader, mut locIndex: i32, mut value: *const std::ffi::c_void, mut uniformType: i32, mut count: i32)
+pub unsafe fn SetShaderValueV(shader: Shader, locIndex: i32, value: *const std::ffi::c_void, uniformType: i32, count: i32)
 {
     if (locIndex > -1)
     {
@@ -1248,7 +1247,7 @@ pub unsafe fn SetShaderValueV(mut shader: Shader, mut locIndex: i32, mut value: 
 }
 
 // Set shader uniform value (matrix 4x4)
-pub unsafe fn SetShaderValueMatrix(mut shader: Shader, mut locIndex: i32, mut mat: Matrix)
+pub unsafe fn SetShaderValueMatrix(shader: Shader, locIndex: i32, mat: Matrix)
 {
     if (locIndex > -1)
     {
@@ -1259,7 +1258,7 @@ pub unsafe fn SetShaderValueMatrix(mut shader: Shader, mut locIndex: i32, mut ma
 }
 
 // Set shader uniform value for texture
-pub unsafe fn SetShaderValueTexture(mut shader: Shader, mut locIndex: i32, mut texture: Texture2D)
+pub unsafe fn SetShaderValueTexture(shader: Shader, locIndex: i32, texture: Texture2D)
 {
     if (locIndex > -1)
     {
@@ -1274,29 +1273,29 @@ pub unsafe fn SetShaderValueTexture(mut shader: Shader, mut locIndex: i32, mut t
 //----------------------------------------------------------------------------------
 
 // Get a ray trace from screen position (i.e mouse)
-pub unsafe fn GetScreenToWorldRay(mut position: Vector2, mut camera: Camera) -> Ray
+pub unsafe fn GetScreenToWorldRay(position: Vector2, camera: Camera) -> Ray
 {
-    let mut ray: Ray = GetScreenToWorldRayEx(position, camera, GetScreenWidth(), GetScreenHeight());
+    let ray: Ray = GetScreenToWorldRayEx(position, camera, GetScreenWidth(), GetScreenHeight());
 
     return ray;
 }
 
 // Get a ray trace from the screen position (i.e mouse) within a specific section of the screen
-pub unsafe fn GetScreenToWorldRayEx(mut position: Vector2, mut camera: Camera, mut width: i32, mut height: i32) -> Ray
+pub unsafe fn GetScreenToWorldRayEx(position: Vector2, camera: Camera, width: i32, height: i32) -> Ray
 {
     let mut ray: Ray = unsafe { std::mem::zeroed() };
 
     // Calculate normalized device coordinates
     // NOTE: y value is negative
-    let mut x: f32 = (2.0*position.x)/(width as f32) - 1.0;
-    let mut y: f32 = 1.0 - (2.0*position.y)/(height as f32);
-    let mut z: f32 = 1.0;
+    let x: f32 = (2.0*position.x)/(width as f32) - 1.0;
+    let y: f32 = 1.0 - (2.0*position.y)/(height as f32);
+    let z: f32 = 1.0;
 
     // Store values in a vector
-    let mut deviceCoords: Vector3 = Vector3 { x: x, y: y, z: z };
+    let deviceCoords: Vector3 = Vector3 { x: x, y: y, z: z };
 
     // Calculate view matrix from camera look at
-    let mut matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
+    let matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
 
     let mut matProj: Matrix = Matrix::identity();
 
@@ -1307,26 +1306,26 @@ pub unsafe fn GetScreenToWorldRayEx(mut position: Vector2, mut camera: Camera, m
     }
     else if (camera.projection == CameraProjection::Orthographic as i32)
     {
-        let mut aspect: f64 = (width as f64)/(height as f64);
-        let mut top: f64 = camera.fovy as f64/2.0;
-        let mut right: f64 = top*aspect as f64;
+        let aspect: f64 = (width as f64)/(height as f64);
+        let top: f64 = camera.fovy as f64/2.0;
+        let right: f64 = top*aspect as f64;
 
         // Calculate projection matrix from orthographic
         matProj = Matrix::ortho(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
     }
 
     // Unproject far/near points
-    let mut nearPoint: Vector3 = Vector3Unproject(Vector3 { x: deviceCoords.x, y: deviceCoords.y, z: 0.0 }, matProj, matView);
-    let mut farPoint: Vector3 = Vector3Unproject(Vector3 { x: deviceCoords.x, y: deviceCoords.y, z: 1.0 }, matProj, matView);
+    let nearPoint: Vector3 = Vector3Unproject(Vector3 { x: deviceCoords.x, y: deviceCoords.y, z: 0.0 }, matProj, matView);
+    let farPoint: Vector3 = Vector3Unproject(Vector3 { x: deviceCoords.x, y: deviceCoords.y, z: 1.0 }, matProj, matView);
 
     // Unproject the mouse cursor in the near plane
     // It is needed as the source position because orthographic projects,
     // compared to perspective doesn't have a convergence point,
     // meaning that the "eye" of the camera is more like a plane than a point
-    let mut cameraPlanePointerPos: Vector3 = Vector3Unproject(Vector3 { x: deviceCoords.x, y: deviceCoords.y, z: -1.0 }, matProj, matView);
+    let cameraPlanePointerPos: Vector3 = Vector3Unproject(Vector3 { x: deviceCoords.x, y: deviceCoords.y, z: -1.0 }, matProj, matView);
 
     // Calculate normalized direction vector
-    let mut direction: Vector3 = (farPoint - nearPoint).normalize_or_zero();
+    let direction: Vector3 = (farPoint - nearPoint).normalize_or_zero();
 
     if (camera.projection == CameraProjection::Perspective as i32) { ray.position = camera.position; }
     else if (camera.projection == CameraProjection::Orthographic as i32) { ray.position = cameraPlanePointerPos; }
@@ -1338,15 +1337,15 @@ pub unsafe fn GetScreenToWorldRayEx(mut position: Vector2, mut camera: Camera, m
 }
 
 // Get transform matrix for camera
-pub fn GetCameraMatrix(mut camera: Camera) -> Matrix
+pub fn GetCameraMatrix(camera: Camera) -> Matrix
 {
-    let mut mat: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
+    let mat: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
 
     return mat;
 }
 
 // Get camera 2d transform matrix
-pub fn GetCameraMatrix2D(mut camera: Camera2D) -> Matrix
+pub fn GetCameraMatrix2D(camera: Camera2D) -> Matrix
 {
     let mut matTransform: Matrix = Matrix::ZERO;
     // The camera in world-space is set by
@@ -1363,10 +1362,10 @@ pub fn GetCameraMatrix2D(mut camera: Camera2D) -> Matrix
     //   1. Move to offset
     //   2. Rotate and Scale
     //   3. Move by -target
-    let mut matOrigin: Matrix = Matrix::translate(-camera.target.x, -camera.target.y, 0.0);
-    let mut matRotation: Matrix = Matrix::rotate(Vector3 { x: 0.0, y: 0.0, z: 1.0 }, camera.rotation*DEG2RAD);
-    let mut matScale: Matrix = Matrix::scale(camera.zoom, camera.zoom, 1.0);
-    let mut matTranslation: Matrix = Matrix::translate(camera.offset.x, camera.offset.y, 0.0);
+    let matOrigin: Matrix = Matrix::translate(-camera.target.x, -camera.target.y, 0.0);
+    let matRotation: Matrix = Matrix::rotate(Vector3 { x: 0.0, y: 0.0, z: 1.0 }, camera.rotation*DEG2RAD);
+    let matScale: Matrix = Matrix::scale(camera.zoom, camera.zoom, 1.0);
+    let matTranslation: Matrix = Matrix::translate(camera.offset.x, camera.offset.y, 0.0);
 
     matTransform = Matrix::multiply(Matrix::multiply(matOrigin, Matrix::multiply(matScale, matRotation)), matTranslation);
 
@@ -1374,15 +1373,15 @@ pub fn GetCameraMatrix2D(mut camera: Camera2D) -> Matrix
 }
 
 // Get screen space position from a 3d world space position
-pub unsafe fn GetWorldToScreen(mut position: Vector3, mut camera: Camera) -> Vector2
+pub unsafe fn GetWorldToScreen(position: Vector3, camera: Camera) -> Vector2
 {
-    let mut screenPosition: Vector2 = GetWorldToScreenEx(position, camera, GetScreenWidth(), GetScreenHeight());
+    let screenPosition: Vector2 = GetWorldToScreenEx(position, camera, GetScreenWidth(), GetScreenHeight());
 
     return screenPosition;
 }
 
 // Get sized screen space position for a 3d world space position (useful for texture drawing)
-pub unsafe fn GetWorldToScreenEx(mut position: Vector3, mut camera: Camera, mut width: i32, mut height: i32) -> Vector2
+pub unsafe fn GetWorldToScreenEx(position: Vector3, camera: Camera, width: i32, height: i32) -> Vector2
 {
     // Calculate projection matrix (from perspective instead of frustum
     let mut matProj: Matrix = Matrix::identity();
@@ -1394,16 +1393,16 @@ pub unsafe fn GetWorldToScreenEx(mut position: Vector3, mut camera: Camera, mut 
     }
     else if (camera.projection == CameraProjection::Orthographic as i32)
     {
-        let mut aspect: f64 = (width as f64)/(height as f64);
-        let mut top: f64 = camera.fovy as f64/2.0;
-        let mut right: f64 = top*aspect as f64;
+        let aspect: f64 = (width as f64)/(height as f64);
+        let top: f64 = camera.fovy as f64/2.0;
+        let right: f64 = top*aspect as f64;
 
         // Calculate projection matrix from orthographic
         matProj = Matrix::ortho(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
     }
 
     // Calculate view matrix from camera look at (and transpose it)
-    let mut matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
+    let matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
 
     // Convert world position vector to quaternion
     let mut worldPos: Quaternion = Quaternion::new(position.x, position.y, position.z, 1.0);
@@ -1415,28 +1414,28 @@ pub unsafe fn GetWorldToScreenEx(mut position: Vector3, mut camera: Camera, mut 
     worldPos = QuaternionTransform(worldPos, matProj);
 
     // Calculate normalized device coordinates (inverted y)
-    let mut ndcPos: Vector3 = Vector3 { x: worldPos.x/worldPos.w, y: -worldPos.y/worldPos.w, z: worldPos.z/worldPos.w };
+    let ndcPos: Vector3 = Vector3 { x: worldPos.x/worldPos.w, y: -worldPos.y/worldPos.w, z: worldPos.z/worldPos.w };
 
     // Calculate 2d screen position vector
-    let mut screenPosition: Vector2 = Vector2 { x: (ndcPos.x + 1.0)/2.0*(width as f32), y: (ndcPos.y + 1.0)/2.0*(height as f32) };
+    let screenPosition: Vector2 = Vector2 { x: (ndcPos.x + 1.0)/2.0*(width as f32), y: (ndcPos.y + 1.0)/2.0*(height as f32) };
 
     return screenPosition;
 }
 
 // Get screen space position for a 2d camera world space position
-pub unsafe fn GetWorldToScreen2D(mut position: Vector2, mut camera: Camera2D) -> Vector2
+pub unsafe fn GetWorldToScreen2D(position: Vector2, camera: Camera2D) -> Vector2
 {
-    let mut matCamera: Matrix = GetCameraMatrix2D(camera);
-    let mut transform: Vector3 = Vector3Transform(Vector3 { x: position.x, y: position.y, z: 0.0 }, matCamera);
+    let matCamera: Matrix = GetCameraMatrix2D(camera);
+    let transform: Vector3 = Vector3Transform(Vector3 { x: position.x, y: position.y, z: 0.0 }, matCamera);
 
     return Vector2 { x: transform.x, y: transform.y };
 }
 
 // Get world space position for a 2d camera screen space position
-pub unsafe fn GetScreenToWorld2D(mut position: Vector2, mut camera: Camera2D) -> Vector2
+pub unsafe fn GetScreenToWorld2D(position: Vector2, camera: Camera2D) -> Vector2
 {
-    let mut invMatCamera: Matrix = Matrix::invert(GetCameraMatrix2D(camera));
-    let mut transform: Vector3 = Vector3Transform(Vector3 { x: position.x, y: position.y, z: 0.0 }, invMatCamera);
+    let invMatCamera: Matrix = Matrix::invert(GetCameraMatrix2D(camera));
+    let transform: Vector3 = Vector3Transform(Vector3 { x: position.x, y: position.y, z: 0.0 }, invMatCamera);
 
     return Vector2 { x: transform.x, y: transform.y };
 }
@@ -1449,7 +1448,7 @@ pub unsafe fn GetScreenToWorld2D(mut position: Vector2, mut camera: Camera2D) ->
 //double GetTime(void)
 
 // Set target FPS (maximum)
-pub unsafe fn SetTargetFPS(mut fps: i32)
+pub unsafe fn SetTargetFPS(fps: i32)
 {
     if (fps < 1) { CORE.Time.target = 0.0; }
     else { CORE.Time.target = 1.0/(fps as f64); }
@@ -1473,7 +1472,7 @@ pub unsafe fn GetFPS() -> i32
     static mut history: [f32; FPS_CAPTURE_FRAMES_COUNT] = [0.0; FPS_CAPTURE_FRAMES_COUNT];
     static mut average: f32 = 0.0;
     static mut last: f32 = 0.0;
-    let mut fpsFrame: f32 = GetFrameTime();
+    let fpsFrame: f32 = GetFrameTime();
 
     // If reseting the window, reset the FPS info
     if (CORE.Time.frameCounter == 0)
@@ -1523,7 +1522,7 @@ pub unsafe fn GetFrameTime() -> f32
 // take longer than expected... for that reason a busy wait loop is used
 // REF: http://stackoverflow.com/questions/43057578/c-programming-win32-games-sleep-taking-longer-than-expected
 // REF: http://www.geisswerks.com/ryan/FAQS/timing.html --> All about timing on Win32!
-pub unsafe fn WaitTime(mut seconds: f64)
+pub unsafe fn WaitTime(seconds: f64)
 {
     if (seconds < 0.0) { return; }    // Security check
 
@@ -1539,7 +1538,7 @@ pub unsafe fn WaitTime(mut seconds: f64)
     #[cfg(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP")]
         let mut sleepSeconds: f64 = seconds - seconds*0.05;  // NOTE: Reserve a percentage of the time for busy waiting
     #[cfg(not(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP"))]
-        let mut sleepSeconds: f64 = seconds;
+        let sleepSeconds: f64 = seconds;
 
     // System halt functions
     #[cfg(target_os = "windows")]
@@ -1549,8 +1548,8 @@ pub unsafe fn WaitTime(mut seconds: f64)
     #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "emscripten"))]
     {
         let mut req: libc::timespec = std::mem::zeroed();
-        let mut sec: libc::time_t = sleepSeconds as libc::time_t;
-        let mut nsec: libc::c_long = ((sleepSeconds - sec as f64)*1000000000.0) as libc::c_long;
+        let sec: libc::time_t = sleepSeconds as libc::time_t;
+        let nsec: libc::c_long = ((sleepSeconds - sec as f64)*1000000000.0) as libc::c_long;
         req.tv_sec = sec;
         req.tv_nsec = nsec;
 
@@ -1577,7 +1576,7 @@ pub unsafe fn WaitTime(mut seconds: f64)
 //void OpenURL(const char *url)
 
 // Set the seed for the random number generator
-pub unsafe fn SetRandomSeed(mut seed: u32)
+pub unsafe fn SetRandomSeed(seed: u32)
 {
 #[cfg(feature = "SUPPORT_RPRAND_GENERATOR")]
 {
@@ -1596,7 +1595,7 @@ pub unsafe fn GetRandomValue(mut min: i32, mut max: i32) -> i32
 
     if (min > max)
     {
-        let mut tmp: i32 = max;
+        let tmp: i32 = max;
         max = min;
         min = tmp;
     }
@@ -1622,16 +1621,16 @@ pub unsafe fn GetRandomValue(mut min: i32, mut max: i32) -> i32
     //value = (rand()%(abs(max - min) + 1) + min);
 
     // More uniform range solution
-    let mut range: i32 = max.wrapping_sub(min).wrapping_add(1);
+    let range: i32 = max.wrapping_sub(min).wrapping_add(1);
 
     // Degenerate/overflow case: fall back to min (same behavior as "always min" instead of UB)
     if (range <= 0) { value = min; }
     else
     {
         // Rejection sampling to get a uniform integer in [min, max]
-        let mut c: libc::c_ulong = (libc::RAND_MAX as libc::c_ulong) + 1; // Number of possible results
-        let mut m: libc::c_ulong = (range as libc::c_ulong);          // Size of the target interval
-        let mut t: libc::c_ulong = c - (c%m);                     // Largest multiple of m <= c
+        let c: libc::c_ulong = (libc::RAND_MAX as libc::c_ulong) + 1; // Number of possible results
+        let m: libc::c_ulong = (range as libc::c_ulong);          // Size of the target interval
+        let t: libc::c_ulong = c - (c%m);                     // Largest multiple of m <= c
         let mut r: libc::c_ulong = 0;
 
         loop
@@ -1692,7 +1691,7 @@ pub unsafe fn LoadRandomSequence(count: u32, min: i32, max: i32) -> *mut i32
 }
 
 // Unload random values sequence
-pub unsafe fn UnloadRandomSequence(mut sequence: *mut i32)
+pub unsafe fn UnloadRandomSequence(sequence: *mut i32)
 {
 #[cfg(feature = "SUPPORT_RPRAND_GENERATOR")]
 {
@@ -1705,7 +1704,7 @@ pub unsafe fn UnloadRandomSequence(mut sequence: *mut i32)
 }
 
 // Takes a screenshot of current screen
-pub unsafe fn TakeScreenshot(mut fileName: &str)
+pub unsafe fn TakeScreenshot(fileName: &str)
 {
 #[cfg(feature = "SUPPORT_MODULE_RTEXTURES")]
 {
@@ -1739,7 +1738,7 @@ pub unsafe fn TakeScreenshot(mut fileName: &str)
 // NOTE: This function is expected to be called before window creation,
 // because it sets up some flags for the window creation process
 // To configure window states after creation, use SetWindowState()
-pub unsafe fn SetConfigFlags(mut flags: u32)
+pub unsafe fn SetConfigFlags(flags: u32)
 {
     if (CORE.Window.ready) { warn!("WINDOW: SetConfigFlags called after window initialization, Use \"SetWindowState\" to set flags instead"); }
 
@@ -2365,7 +2364,7 @@ pub unsafe fn CompressData(data: *const u8, dataSize: i32, compDataSize: &mut i3
 {
     const COMPRESSION_QUALITY_DEFLATE: i32 = 8;
 
-    let mut compData = std::ptr::null_mut();
+    let compData = std::ptr::null_mut();
 
     #[cfg(feature = "SUPPORT_COMPRESSION_API")]
     {
@@ -2386,7 +2385,7 @@ pub unsafe fn CompressData(data: *const u8, dataSize: i32, compDataSize: &mut i3
 // Decompress data (DEFLATE algorithm)
 pub unsafe fn DecompressData(compData: *const u8, compDataSize: i32, dataSize: &mut i32) -> *mut u8
 {
-    let mut data: *mut u8 = std::ptr::null_mut();
+    let data: *mut u8 = std::ptr::null_mut();
 
     #[cfg(feature = "SUPPORT_COMPRESSION_API")]
     {
@@ -2416,7 +2415,7 @@ pub unsafe fn DecompressData(compData: *const u8, compDataSize: i32, dataSize: &
 // Load automation events list from file, NULL for empty list, capacity = MAX_AUTOMATION_EVENTS
 pub unsafe fn LoadAutomationEventList(fileName: Option<&str>) -> AutomationEventList
 {
-    let mut list: AutomationEventList = std::mem::zeroed();
+    let list: AutomationEventList = std::mem::zeroed();
 
     #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
     {
@@ -2513,7 +2512,7 @@ pub unsafe fn UnloadAutomationEventList(list: AutomationEventList)
 // Export automation events list as text file
 pub unsafe fn ExportAutomationEventList(list: AutomationEventList, fileName: &str) -> bool
 {
-    let mut result = false;
+    let result = false;
 
     #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
     {
@@ -2599,7 +2598,7 @@ pub unsafe fn StopAutomationEventRecording()
     { automationEventRecording = false; }
 }
 // Play a recorded automation event
-pub unsafe fn PlayAutomationEvent(mut event: AutomationEvent)
+pub unsafe fn PlayAutomationEvent(event: AutomationEvent)
 {
 #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
 {
@@ -2679,7 +2678,7 @@ pub unsafe fn PlayAutomationEvent(mut event: AutomationEvent)
 //----------------------------------------------------------------------------------
 
 // Check if key has been pressed once
-pub unsafe fn IsKeyPressed(mut key: i32) -> bool
+pub unsafe fn IsKeyPressed(key: i32) -> bool
 {
     let mut pressed: bool = false;
 
@@ -2692,7 +2691,7 @@ pub unsafe fn IsKeyPressed(mut key: i32) -> bool
 }
 
 // Check if key has been pressed again
-pub unsafe fn IsKeyPressedRepeat(mut key: i32) -> bool
+pub unsafe fn IsKeyPressedRepeat(key: i32) -> bool
 {
     let mut repeat: bool = false;
 
@@ -2705,7 +2704,7 @@ pub unsafe fn IsKeyPressedRepeat(mut key: i32) -> bool
 }
 
 // Check if key is being pressed (key held down)
-pub unsafe fn IsKeyDown(mut key: i32) -> bool
+pub unsafe fn IsKeyDown(key: i32) -> bool
 {
     let mut down: bool = false;
 
@@ -2718,7 +2717,7 @@ pub unsafe fn IsKeyDown(mut key: i32) -> bool
 }
 
 // Check if key has been released once
-pub unsafe fn IsKeyReleased(mut key: i32) -> bool
+pub unsafe fn IsKeyReleased(key: i32) -> bool
 {
     let mut released: bool = false;
 
@@ -2731,7 +2730,7 @@ pub unsafe fn IsKeyReleased(mut key: i32) -> bool
 }
 
 // Check if key is NOT being pressed (key not held down)
-pub unsafe fn IsKeyUp(mut key: i32) -> bool
+pub unsafe fn IsKeyUp(key: i32) -> bool
 {
     let mut up: bool = false;
 
@@ -2789,7 +2788,7 @@ pub unsafe fn GetCharPressed() -> i32
 
 // Set a custom key to exit program
 // NOTE: default exitKey is set to ESCAPE
-pub unsafe fn SetExitKey(mut key: i32)
+pub unsafe fn SetExitKey(key: i32)
 {
     CORE.Input.Keyboard.exitKey = key;
 }
@@ -2802,7 +2801,7 @@ pub unsafe fn SetExitKey(mut key: i32)
 //int SetGamepadMappings(const char *mappings)
 
 // Check if gamepad is available
-pub unsafe fn IsGamepadAvailable(mut gamepad: i32) -> bool
+pub unsafe fn IsGamepadAvailable(gamepad: i32) -> bool
 {
     let mut result: bool = false;
 
@@ -2822,7 +2821,7 @@ pub unsafe fn GetGamepadName(gamepad: i32) -> Option<String>
 }
 
 // Check if gamepad button has been pressed once
-pub unsafe fn IsGamepadButtonPressed(mut gamepad: i32, mut button: i32) -> bool
+pub unsafe fn IsGamepadButtonPressed(gamepad: i32, button: i32) -> bool
 {
     let mut pressed: bool = false;
 
@@ -2835,7 +2834,7 @@ pub unsafe fn IsGamepadButtonPressed(mut gamepad: i32, mut button: i32) -> bool
 }
 
 // Check if gamepad button is being pressed
-pub unsafe fn IsGamepadButtonDown(mut gamepad: i32, mut button: i32) -> bool
+pub unsafe fn IsGamepadButtonDown(gamepad: i32, button: i32) -> bool
 {
     let mut down: bool = false;
 
@@ -2848,7 +2847,7 @@ pub unsafe fn IsGamepadButtonDown(mut gamepad: i32, mut button: i32) -> bool
 }
 
 // Check if gamepad button has NOT been pressed once
-pub unsafe fn IsGamepadButtonReleased(mut gamepad: i32, mut button: i32) -> bool
+pub unsafe fn IsGamepadButtonReleased(gamepad: i32, button: i32) -> bool
 {
     let mut released: bool = false;
 
@@ -2861,7 +2860,7 @@ pub unsafe fn IsGamepadButtonReleased(mut gamepad: i32, mut button: i32) -> bool
 }
 
 // Check if gamepad button is NOT being pressed
-pub unsafe fn IsGamepadButtonUp(mut gamepad: i32, mut button: i32) -> bool
+pub unsafe fn IsGamepadButtonUp(gamepad: i32, button: i32) -> bool
 {
     let mut up: bool = false;
 
@@ -2881,7 +2880,7 @@ pub unsafe fn GetGamepadButtonPressed() -> i32
 }
 
 // Get gamepad axis count
-pub unsafe fn GetGamepadAxisCount(mut gamepad: i32) -> i32
+pub unsafe fn GetGamepadAxisCount(gamepad: i32) -> i32
 {
     let mut result: i32 = 0;
 
@@ -2891,13 +2890,13 @@ pub unsafe fn GetGamepadAxisCount(mut gamepad: i32) -> i32
 }
 
 // Get axis movement vector for a gamepad
-pub unsafe fn GetGamepadAxisMovement(mut gamepad: i32, mut axis: i32) -> f32
+pub unsafe fn GetGamepadAxisMovement(gamepad: i32, axis: i32) -> f32
 {
     let mut value: f32 = if ((axis == GamepadAxis::GAMEPAD_AXIS_LEFT_TRIGGER as i32) || (axis == GamepadAxis::GAMEPAD_AXIS_RIGHT_TRIGGER as i32)) { -1.0 } else { 0.0 };
 
     if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[(gamepad) as usize] && (axis < MAX_GAMEPAD_AXES as i32))
     {
-        let mut movement: f32 = if (value < 0.0) { CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize] } else { CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize].abs() };
+        let movement: f32 = if (value < 0.0) { CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize] } else { CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize].abs() };
 
         if (movement > value) { value = CORE.Input.Gamepad.axisState[(gamepad) as usize][(axis) as usize]; }
     }
@@ -2914,7 +2913,7 @@ pub unsafe fn GetGamepadAxisMovement(mut gamepad: i32, mut axis: i32) -> f32
 //void SetMouseCursor(int cursor)
 
 // Check if mouse button has been pressed once
-pub unsafe fn IsMouseButtonPressed(mut button: i32) -> bool
+pub unsafe fn IsMouseButtonPressed(button: i32) -> bool
 {
     let mut pressed: bool = false;
 
@@ -2930,7 +2929,7 @@ pub unsafe fn IsMouseButtonPressed(mut button: i32) -> bool
 }
 
 // Check if mouse button is being pressed
-pub unsafe fn IsMouseButtonDown(mut button: i32) -> bool
+pub unsafe fn IsMouseButtonDown(button: i32) -> bool
 {
     let mut down: bool = false;
 
@@ -2946,7 +2945,7 @@ pub unsafe fn IsMouseButtonDown(mut button: i32) -> bool
 }
 
 // Check if mouse button has been released once
-pub unsafe fn IsMouseButtonReleased(mut button: i32) -> bool
+pub unsafe fn IsMouseButtonReleased(button: i32) -> bool
 {
     let mut released: bool = false;
 
@@ -2962,7 +2961,7 @@ pub unsafe fn IsMouseButtonReleased(mut button: i32) -> bool
 }
 
 // Check if mouse button is NOT being pressed
-pub unsafe fn IsMouseButtonUp(mut button: i32) -> bool
+pub unsafe fn IsMouseButtonUp(button: i32) -> bool
 {
     let mut up: bool = false;
 
@@ -2980,7 +2979,7 @@ pub unsafe fn IsMouseButtonUp(mut button: i32) -> bool
 // Get mouse position X
 pub unsafe fn GetMouseX() -> i32
 {
-    let mut mouseX: i32 = (((CORE.Input.Mouse.currentPosition.x + CORE.Input.Mouse.offset.x)*CORE.Input.Mouse.scale.x) as i32);
+    let mouseX: i32 = (((CORE.Input.Mouse.currentPosition.x + CORE.Input.Mouse.offset.x)*CORE.Input.Mouse.scale.x) as i32);
 
     return mouseX;
 }
@@ -2988,7 +2987,7 @@ pub unsafe fn GetMouseX() -> i32
 // Get mouse position Y
 pub unsafe fn GetMouseY() -> i32
 {
-    let mut mouseY: i32 = (((CORE.Input.Mouse.currentPosition.y + CORE.Input.Mouse.offset.y)*CORE.Input.Mouse.scale.y) as i32);
+    let mouseY: i32 = (((CORE.Input.Mouse.currentPosition.y + CORE.Input.Mouse.offset.y)*CORE.Input.Mouse.scale.y) as i32);
 
     return mouseY;
 }
@@ -3017,14 +3016,14 @@ pub unsafe fn GetMouseDelta() -> Vector2
 
 // Set mouse offset
 // NOTE: Useful when rendering to different size targets
-pub unsafe fn SetMouseOffset(mut offsetX: i32, mut offsetY: i32)
+pub unsafe fn SetMouseOffset(offsetX: i32, offsetY: i32)
 {
     CORE.Input.Mouse.offset = Vector2 { x: (offsetX as f32), y: (offsetY as f32) };
 }
 
 // Set mouse scaling
 // NOTE: Useful when rendering to different size targets
-pub unsafe fn SetMouseScale(mut scaleX: f32, mut scaleY: f32)
+pub unsafe fn SetMouseScale(scaleX: f32, scaleY: f32)
 {
     CORE.Input.Mouse.scale = Vector2 { x: scaleX, y: scaleY };
 }
@@ -3057,19 +3056,19 @@ pub unsafe fn GetMouseWheelMoveV() -> Vector2
 // Get touch position X for touch point 0 (relative to screen size)
 pub unsafe fn GetTouchX() -> i32
 {
-    let mut touchX: i32 = (CORE.Input.Touch.position[0].x as i32);
+    let touchX: i32 = (CORE.Input.Touch.position[0].x as i32);
     return touchX;
 }
 
 // Get touch position Y for touch point 0 (relative to screen size)
 pub unsafe fn GetTouchY() -> i32
 {
-    let mut touchY: i32 = (CORE.Input.Touch.position[0].y as i32);
+    let touchY: i32 = (CORE.Input.Touch.position[0].y as i32);
     return touchY;
 }
 
 // Get touch position XY for a touch point index (relative to screen size)
-pub unsafe fn GetTouchPosition(mut index: i32) -> Vector2
+pub unsafe fn GetTouchPosition(index: i32) -> Vector2
 {
     let mut position: Vector2 = Vector2 { x: -1.0, y: -1.0 };
 
@@ -3080,7 +3079,7 @@ pub unsafe fn GetTouchPosition(mut index: i32) -> Vector2
 }
 
 // Get touch point identifier for provided index
-pub unsafe fn GetTouchPointId(mut index: i32) -> i32
+pub unsafe fn GetTouchPointId(index: i32) -> i32
 {
     let mut id: i32 = -1;
 
@@ -3130,7 +3129,7 @@ pub unsafe fn InitTimer()
 }
 
 // Set viewport for a provided width and height
-pub unsafe fn SetupViewport(mut width: i32, mut height: i32)
+pub unsafe fn SetupViewport(width: i32, height: i32)
 {
     CORE.Window.render.x = width as f32;
     CORE.Window.render.y = height as f32;
