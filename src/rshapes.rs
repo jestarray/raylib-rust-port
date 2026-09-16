@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 #![allow(non_snake_case, non_upper_case_globals)]
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(missing_safety_doc, unused_parens, non_snake_case, static_mut_refs)]
@@ -10,7 +11,7 @@
     clippy::match_like_matches_macro,
     clippy::upper_case_acronyms,
     clippy::let_and_return,
-    clippy::double_parens
+    clippy::double_parens,
 )]
 use crate::rlgl::{
     rlBegin, rlColor4ub, rlEnd, rlGetMatrixTransform, rlNormal3f, rlSetTexture, rlTexCoord2f,
