@@ -8,7 +8,8 @@
     clippy::manual_map,
     clippy::match_like_matches_macro,
     clippy::upper_case_acronyms,
-    clippy::let_and_return
+    clippy::let_and_return,
+    clippy::double_parens
 )]
 use sdl3_sys::joystick::SDL_JoystickID;
 use sdl3_sys::mouse::SDL_Cursor;
