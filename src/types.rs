@@ -1090,7 +1090,7 @@ pub struct NPatchInfo {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct GlyphInfo {
     pub value: i32,
     pub offset_x: i32,
@@ -1107,7 +1107,7 @@ pub struct Font {
     pub glyph_padding: i32,
     pub texture: Texture,
     pub recs: Vec<Rectangle>,
-    pub glyphs: *mut GlyphInfo,
+    pub glyphs: Vec<GlyphInfo>,
 }
 
 #[repr(u32)]

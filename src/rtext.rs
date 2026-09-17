@@ -18,12 +18,11 @@ pub fn load_font(file_name: &str) -> Font {
                     format: 0,
                 },
                 recs: Vec::new(),
-                glyphs: std::ptr::null_mut(),
+                glyphs: Vec::new(),
             };
         }
 
-        let mut cdata: Vec<crate::external::stbtt_bakedchar> = Vec::with_capacity(96);
-        cdata.set_len(96);
+        let mut cdata = Vec::with_capacity(96);
 
         let mut pixels: Vec<u8> = vec![0; 512 * 512];
 
@@ -50,7 +49,7 @@ pub fn load_font(file_name: &str) -> Font {
         let texture = rtextures::load_texture_from_image(&image);
 
         let mut recs = Vec::with_capacity(96);
-        let glyphs = libc::malloc(std::mem::size_of::<GlyphInfo>() * 96) as *mut GlyphInfo;
+        let mut glyphs = vec![GlyphInfo::default(); 96];
 
         for i in 0..96 {
             let baked = cdata[i];
@@ -69,7 +68,7 @@ pub fn load_font(file_name: &str) -> Font {
                 advance_x: baked.xadvance as i32,
                 image: Image::default(),
             };
-            *glyphs.add(i) = glyph;
+            glyphs[i] = glyph;
         }
 
         Font {
@@ -86,10 +85,7 @@ pub fn load_font(file_name: &str) -> Font {
 pub fn unload_font(font: &mut Font) {
     unsafe {
         rtextures::unload_texture(&mut font.texture);
-        if !font.glyphs.is_null() {
-            libc::free(font.glyphs as *mut std::ffi::c_void);
-            font.glyphs = std::ptr::null_mut();
-        }
+        font.glyphs.clear()
     }
 }
 
@@ -101,7 +97,7 @@ pub fn draw_text_ex(
     spacing: f32,
     tint: Color,
 ) {
-    if font.texture.id == 0 || font.glyphs.is_null() {
+    if font.texture.id == 0 || font.glyphs.is_empty() {
         return;
     }
 
@@ -116,7 +112,7 @@ pub fn draw_text_ex(
 
         unsafe {
             let rec = font.recs[index as usize];
-            let glyph = *font.glyphs.add(index as usize);
+            let glyph = font.glyphs[index as usize];
 
             if rec.width > 0.0 && rec.height > 0.0 {
                 let dest = Rectangle::new(
@@ -152,7 +148,7 @@ static mut DEFAULT_FONT: Font = Font {
         format: 0,
     },
     recs: Vec::new(),
-    glyphs: std::ptr::null_mut(),
+    glyphs: Vec::new(),
 };
 
 pub fn load_font_default() {
@@ -276,8 +272,7 @@ pub fn load_font_default() {
         DEFAULT_FONT.base_size = 10;
 
         DEFAULT_FONT.recs = vec![Rectangle::default(); 244];
-        DEFAULT_FONT.glyphs =
-            libc::malloc(std::mem::size_of::<GlyphInfo>() * 224) as *mut GlyphInfo;
+        DEFAULT_FONT.glyphs = vec![GlyphInfo::default(); 224];
 
         let mut current_line = 0;
         let mut current_pos_x = 1;
@@ -312,7 +307,7 @@ pub fn load_font_default() {
                 current_pos_x = test_pos_x;
             }
 
-            *DEFAULT_FONT.glyphs.add(i) = GlyphInfo {
+            DEFAULT_FONT.glyphs[i] = GlyphInfo {
                 value: 32 + i as i32,
                 offset_x: 0,
                 offset_y: 0,
