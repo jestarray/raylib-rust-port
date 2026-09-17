@@ -14,7 +14,7 @@
     clippy::double_parens,
     clippy::missing_safety_doc
 )]
-use std::ffi::{c_char, CString};
+use std::{ffi::{CString, c_char}, path::Path};
 
 use crate::{
     math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{rlGetVersion, rlGlVersion}, types::{Color, Matrix, RAYLIB_VERSION, Texture2D, Vector2},
@@ -2250,134 +2250,115 @@ pub unsafe fn DecompressData(compData: *const u8, compDataSize: i32, dataSize: &
 //----------------------------------------------------------------------------------
 
 // Load automation events list from file, NULL for empty list, capacity = MAX_AUTOMATION_EVENTS
-pub unsafe fn LoadAutomationEventList(fileName: Option<&str>) -> AutomationEventList
-{
-    let list: AutomationEventList = std::mem::zeroed();
+pub fn LoadAutomationEventList<P: AsRef<Path>>(file_name: Option<P>) -> AutomationEventList {
+    let mut list = AutomationEventList {
+        capacity: 0,
+        count: 0,
+        events: Vec::new(),
+    };
 
     #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
     {
-        // Allocate and empty automation event list, ready to record new events
-        list.events = libc::calloc(MAX_AUTOMATION_EVENTS, std::mem::size_of::<AutomationEvent>()).cast();
         list.capacity = MAX_AUTOMATION_EVENTS as u32;
+        list.events = vec![AutomationEvent::default();MAX_AUTOMATION_EVENTS as usize];
 
-        if (fileName.is_none()) { info!("AUTOMATION: New empty events list loaded successfully"); }
-        else
-        {
-            let fileName = fileName.unwrap();
-            // Load automation events file (binary)
-            /*
-            //int dataSize = 0;
-            //unsigned char *data = LoadFileData(fileName, &dataSize);
+        let Some(path) = file_name else {
+            info!("AUTOMATION: New empty events list loaded successfully");
+            return list;
+        };
 
-            FILE *raeFile = fopen(fileName, "rb");
-            unsigned char fileId[4] = { 0 };
+        let file = match std::fs::File::open(&path) {
+            Ok(file) => file,
+            Err(_) => {
+                warn!("AUTOMATION: Could not open file {:?}", path.as_ref());
+                return list;
+            }
+        };
 
-            fread(fileId, 1, 4, raeFile);
+        let reader = std::io::BufReader::new(file);
+        let mut counter = 0;
 
-            if ((fileId[0] == 'r') && (fileId[1] == 'A') && (fileId[2] == 'E') && (fileId[1] == ' '))
-            {
-                fread(&eventCount, sizeof(int), 1, raeFile);
-                TRACELOG(LOG_WARNING, "Events loaded: %i\n", eventCount);
-                fread(events, sizeof(AutomationEvent), eventCount, raeFile);
+        for line_result in std::io::BufRead::lines(reader) {
+            let line = match line_result {
+                Ok(l) => l,
+                Err(_) => {
+                    warn!("AUTOMATION: Issue reading line to buffer");
+                    continue;
+                }
+            };
+
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
             }
 
-            fclose(raeFile);
-            */
-
-            // Load events file (text)
-            //unsigned char *buffer = LoadFileText(fileName);
-            let fileNameC = CString::new(fileName).unwrap();
-            let raeFile = libc::fopen(fileNameC.as_ptr(), c"rt".as_ptr());
-
-            if (!raeFile.is_null())
-            {
-                let mut counter: u32 = 0;
-                let mut buffer = [0 as c_char; 256];
-                let mut eventDesc = [0 as c_char; 64];
-
-                let mut result = libc::fgets(buffer.as_mut_ptr(), 256, raeFile);
-                if (result != buffer.as_mut_ptr()) { warn!("AUTOMATION: [{}] Issue reading line to buffer", fileName); }
-
-                while (libc::feof(raeFile) == 0)
-                {
-                    match buffer[0] as u8
-                    {
-                        b'c' => { libc::sscanf(buffer.as_ptr(), c"c %u".as_ptr(), &mut list.count); }
-                        b'e' =>
-                        {
-                            if (counter < list.capacity)
-                            {
-                                let event = list.events.add(counter as usize);
-                                libc::sscanf(buffer.as_ptr(), c"e %u %u %d %d %d %d %63[^\n]s".as_ptr(), &mut (*event).frame, &mut (*event).type_,
-                                    &mut (*event).params[0], &mut (*event).params[1], &mut (*event).params[2], &mut (*event).params[3], eventDesc.as_mut_ptr());
-
-                                counter += 1;
-                            }
-                            else { warn!("AUTOMATION: Event goes beyond automated list capacity (MAX: {}): {}", list.capacity, CStr::from_ptr(buffer.as_ptr()).to_string_lossy()); }
-                        }
-                        _ => {}
+            if trimmed.starts_with('c') {
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    if let Ok(c) = parts[1].parse::<u32>() {
+                        list.count = c;
                     }
-
-                    result = libc::fgets(buffer.as_mut_ptr(), 256, raeFile);
-                    if (result != buffer.as_mut_ptr()) { warn!("AUTOMATION: [{}] Issue reading line to buffer", fileName); }
                 }
+            } else if trimmed.starts_with('e') {
+                if (counter as u32) < list.capacity {
+                    let parts: Vec<&str> = trimmed.split_whitespace().collect();
 
-                if (counter != list.count)
-                {
-                    warn!("AUTOMATION: Events read from file [{}] do not mach event count specified [{}]", counter, list.count);
-                    list.count = counter;
+                    if parts.len() >= 7 {
+                        let frame = parts[1].parse::<u32>().unwrap_or(0);
+                        let type_ = parts[2].parse::<u32>().unwrap_or(0);
+                        let p0 = parts[3].parse::<i32>().unwrap_or(0);
+                        let p1 = parts[4].parse::<i32>().unwrap_or(0);
+                        let p2 = parts[5].parse::<i32>().unwrap_or(0);
+                        let p3 = parts[6].parse::<i32>().unwrap_or(0);
+
+                        list.events[counter] = AutomationEvent {
+                            frame,
+                            type_,
+                            params: [p0, p1, p2, p3],
+                        };
+
+                        counter += 1;
+                    }
+                } else {
+                    warn!(
+                        "AUTOMATION: Event goes beyond automated list capacity (MAX: {}): {}",
+                        list.capacity, line
+                    );
                 }
-
-                libc::fclose(raeFile);
-
-                info!("AUTOMATION: Events file loaded successfully");
             }
-
-            info!("AUTOMATION: Events loaded from file: {}", list.count);
         }
-    }
-    return list;
-}
 
+        if counter as u32 != list.count {
+            warn!(
+                "AUTOMATION: Events read from file [{}] do not match event count specified [{}]",
+                counter, list.count
+            );
+            list.count = counter as u32;
+        }
+
+        info!("AUTOMATION: Events file loaded successfully");
+        info!("AUTOMATION: Events loaded from file: {}", list.count);
+    }
+
+    list
+}
 // Unload automation events list from file
-pub unsafe fn UnloadAutomationEventList(list: AutomationEventList)
+pub unsafe fn UnloadAutomationEventList(list: &mut AutomationEventList)
 {
     #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
-    libc::free(list.events.cast());
+    list.events.clear();
 }
 
 // Export automation events list as text file
-pub unsafe fn ExportAutomationEventList(list: AutomationEventList, fileName: &str) -> bool
-{
-    let result = false;
+pub unsafe fn ExportAutomationEventList(list: AutomationEventList, fileName: &str) -> bool {
+    #[allow(unused_mut)]
+    let mut result = false;
 
     #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
     {
-        // Export events as binary file
-        // NOTE: Code not used, only for reference if required in the future
-        /*
-        if (list.count > 0)
-        {
-            int binarySize = 4 + sizeof(int) + sizeof(AutomationEvent)*list.count;
-            unsigned char *binBuffer = (unsigned char *)RL_CALLOC(binarySize, 1);
-            int offset = 0;
-            memcpy(binBuffer + offset, "rAE ", 4);
-            offset += 4;
-            memcpy(binBuffer + offset, &list.count, sizeof(int));
-            offset += sizeof(int);
-            memcpy(binBuffer + offset, list.events, sizeof(AutomationEvent)*list.count);
-            offset += sizeof(AutomationEvent)*list.count;
-
-            result = SaveFileData(TextFormat("%s.rae",fileName), binBuffer, binarySize);
-            RL_FREE(binBuffer);
-        }
-        */
-
         // Export events as text
-        // NOTE: Save to memory buffer and SaveFileText()
-        let mut txtData = String::with_capacity(256*list.count as usize + 2048); // 256 characters per line plus some header
+        let mut txtData = String::with_capacity(256 * list.count as usize + 2048);
 
-        let mut byteCount = 0;
         txtData.push_str("#\n");
         txtData.push_str("# Automation events exporter v1.0 - raylib automation events list\n");
         txtData.push_str("#\n");
@@ -2391,21 +2372,31 @@ pub unsafe fn ExportAutomationEventList(list: AutomationEventList, fileName: &st
         txtData.push_str("#\n\n");
 
         // Add events data
-        write!(txtData, "c {}\n", list.count).unwrap();
-        for i in 0..list.count
-        {
-            write!(txtData, "e {} {} {} {} {} {} // Event: {}\n", (*list.events.add(i as usize)).frame, (*list.events.add(i as usize)).type_,
-                (*list.events.add(i as usize)).params[0], (*list.events.add(i as usize)).params[1], (*list.events.add(i as usize)).params[2], (*list.events.add(i as usize)).params[3], autoEventTypeName[(*list.events.add(i as usize)).type_ as usize]).unwrap();
+        let _ = writeln!(txtData, "c {}", list.count);
+
+        for i in 0..list.count as usize {
+            let event = &list.events[i];
+            let type_idx = event.type_ as usize;
+
+            let _ = writeln!(
+                txtData,
+                "e {} {} {} {} {} {} // Event: {}",
+                event.frame,
+                event.type_,
+                event.params[0],
+                event.params[1],
+                event.params[2],
+                event.params[3],
+                autoEventTypeName[type_idx]
+            );
         }
-        byteCount = txtData.len();
 
-        // NOTE: Text data size exported is determined by '\0' (NULL) character
+        let _byteCount = txtData.len();
+
         result = SaveFileText(fileName, &txtData);
-
-        drop(txtData);
     }
 
-    return result;
+    result
 }
 
 // Setup automation event list to record to
@@ -2541,10 +2532,10 @@ pub unsafe fn IsKeyPressedRepeat(key: i32) -> bool
 }
 
 // Check if key is being pressed (key held down)
-pub unsafe fn IsKeyDown(key: i32) -> bool
+pub unsafe fn IsKeyDown(key: impl Into<i32>) -> bool
 {
     let mut down: bool = false;
-
+    let key = key.into();
     if ((key > 0) && (key < MAX_KEYBOARD_KEYS as i32))
     {
         if (CORE.Input.Keyboard.currentKeyState[(key) as usize] == 1) { down = true; }
@@ -2727,7 +2718,7 @@ pub unsafe fn GetGamepadAxisCount(gamepad: i32) -> i32
 }
 
 // Get axis movement vector for a gamepad
-pub unsafe fn GetGamepadAxisMovement(gamepad: i32, axis: GamepadAxis) -> f32
+pub unsafe fn GetGamepadAxisMovement(gamepad: i32, axis: i32) -> f32
 {
     let axis = axis as i32;
     let mut value: f32 = if ((axis == GamepadAxis::GAMEPAD_AXIS_LEFT_TRIGGER as i32) || (axis == GamepadAxis::GAMEPAD_AXIS_RIGHT_TRIGGER as i32)) { -1.0 } else { 0.0 };
@@ -2989,265 +2980,374 @@ pub unsafe fn SetupViewport(width: i32, height: i32)
 // Automation event recording
 // Checking events in current frame and save them into currentEventList
 // NOTE: Recording is by default done at EndDrawing(), before PollInputEvents()
-pub unsafe fn RecordAutomationEvent()
-{
-    if ((*currentEventList).count == (*currentEventList).capacity) { return; }
+pub unsafe fn RecordAutomationEvent() {
+    let gcurrentEventList = &mut *currentEventList;
+    if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+        return;
+    }
 
     // Keyboard input events recording
     //-------------------------------------------------------------------------------------
-    for key in 0..MAX_KEYBOARD_KEYS as i32
-    {
-        // Event type: INPUT_KEY_UP (only saved once)
-        if ((CORE.Input.Keyboard.previousKeyState[(key) as usize] != 0) && (CORE.Input.Keyboard.currentKeyState[(key) as usize] == 0))
-        {
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_KEY_UP as u32;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = key;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
+    for key in 0..MAX_KEYBOARD_KEYS as i32 {
+        let idx = (*gcurrentEventList).count as usize;
 
-            info!("AUTOMATION: Frame: {} | Event type: INPUT_KEY_UP | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-            (*currentEventList).count += 1;
+        // Event type: INPUT_KEY_UP (only saved once)
+        if (CORE.Input.Keyboard.previousKeyState[key as usize] != 0)
+            && (CORE.Input.Keyboard.currentKeyState[key as usize] == 0)
+        {
+            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
+            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_KEY_UP as u32;
+            (*gcurrentEventList).events[idx].params[0] = key;
+            (*gcurrentEventList).events[idx].params[1] = 0;
+            (*gcurrentEventList).events[idx].params[2] = 0;
+
+            info!(
+                "AUTOMATION: Frame: {} | Event type: INPUT_KEY_UP | Event parameters: {}, {}, {}",
+                (*gcurrentEventList).events[idx].frame,
+                (*gcurrentEventList).events[idx].params[0],
+                (*gcurrentEventList).events[idx].params[1],
+                (*gcurrentEventList).events[idx].params[2]
+            );
+            (*gcurrentEventList).count += 1;
         }
 
-        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+            return;
+        } // Security check
+
+        let idx = (*gcurrentEventList).count as usize;
 
         // Event type: INPUT_KEY_DOWN
-        if ((CORE.Input.Keyboard.currentKeyState[(key) as usize] != 0))
-        {
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_KEY_DOWN as u32;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = key;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
+        if CORE.Input.Keyboard.currentKeyState[key as usize] != 0 {
+            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
+            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_KEY_DOWN as u32;
+            (*gcurrentEventList).events[idx].params[0] = key;
+            (*gcurrentEventList).events[idx].params[1] = 0;
+            (*gcurrentEventList).events[idx].params[2] = 0;
 
-            info!("AUTOMATION: Frame: {} | Event type: INPUT_KEY_DOWN | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-            (*currentEventList).count += 1;
+            info!(
+                "AUTOMATION: Frame: {} | Event type: INPUT_KEY_DOWN | Event parameters: {}, {}, {}",
+                (*gcurrentEventList).events[idx].frame,
+                (*gcurrentEventList).events[idx].params[0],
+                (*gcurrentEventList).events[idx].params[1],
+                (*gcurrentEventList).events[idx].params[2]
+            );
+            (*gcurrentEventList).count += 1;
         }
 
-        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+            return;
+        } // Security check
     }
     //-------------------------------------------------------------------------------------
 
     // Mouse input currentEventList->events recording
     //-------------------------------------------------------------------------------------
-    for button in 0..MAX_MOUSE_BUTTONS as i32
-    {
-        // Event type: INPUT_MOUSE_BUTTON_UP
-        if ((CORE.Input.Mouse.previousButtonState[(button) as usize] != 0) && (CORE.Input.Mouse.currentButtonState[(button) as usize] == 0))
-        {
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_MOUSE_BUTTON_UP as u32;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = button;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
+    for button in 0..MAX_MOUSE_BUTTONS as i32 {
+        let idx = (*gcurrentEventList).count as usize;
 
-            info!("AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_BUTTON_UP | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-            (*currentEventList).count += 1;
+        // Event type: INPUT_MOUSE_BUTTON_UP
+        if (CORE.Input.Mouse.previousButtonState[button as usize] != 0)
+            && (CORE.Input.Mouse.currentButtonState[button as usize] == 0)
+        {
+            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
+            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_MOUSE_BUTTON_UP as u32;
+            (*gcurrentEventList).events[idx].params[0] = button;
+            (*gcurrentEventList).events[idx].params[1] = 0;
+            (*gcurrentEventList).events[idx].params[2] = 0;
+
+            info!(
+                "AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_BUTTON_UP | Event parameters: {}, {}, {}",
+                (*gcurrentEventList).events[idx].frame,
+                (*gcurrentEventList).events[idx].params[0],
+                (*gcurrentEventList).events[idx].params[1],
+                (*gcurrentEventList).events[idx].params[2]
+            );
+            (*gcurrentEventList).count += 1;
         }
 
-        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+            return;
+        } // Security check
+
+        let idx = (*gcurrentEventList).count as usize;
 
         // Event type: INPUT_MOUSE_BUTTON_DOWN
-        if ((CORE.Input.Mouse.currentButtonState[(button) as usize] != 0))
-        {
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_MOUSE_BUTTON_DOWN as u32;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = button;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
+        if CORE.Input.Mouse.currentButtonState[button as usize] != 0 {
+            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
+            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_MOUSE_BUTTON_DOWN as u32;
+            (*gcurrentEventList).events[idx].params[0] = button;
+            (*gcurrentEventList).events[idx].params[1] = 0;
+            (*gcurrentEventList).events[idx].params[2] = 0;
 
-            info!("AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_BUTTON_DOWN | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-            (*currentEventList).count += 1;
+            info!(
+                "AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_BUTTON_DOWN | Event parameters: {}, {}, {}",
+                (*gcurrentEventList).events[idx].frame,
+                (*gcurrentEventList).events[idx].params[0],
+                (*gcurrentEventList).events[idx].params[1],
+                (*gcurrentEventList).events[idx].params[2]
+            );
+            (*gcurrentEventList).count += 1;
         }
 
-        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+            return;
+        } // Security check
     }
 
     // Event type: INPUT_MOUSE_POSITION (only saved if changed)
-    if (((CORE.Input.Mouse.currentPosition.x as i32) != (CORE.Input.Mouse.previousPosition.x as i32)) ||
-        ((CORE.Input.Mouse.currentPosition.y as i32) != (CORE.Input.Mouse.previousPosition.y as i32)))
+    if ((CORE.Input.Mouse.currentPosition.x as i32) != (CORE.Input.Mouse.previousPosition.x as i32))
+        || ((CORE.Input.Mouse.currentPosition.y as i32) != (CORE.Input.Mouse.previousPosition.y as i32))
     {
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_MOUSE_POSITION as u32;
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = (CORE.Input.Mouse.currentPosition.x as i32);
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = (CORE.Input.Mouse.currentPosition.y as i32);
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
+        let idx = (*gcurrentEventList).count as usize;
 
-        info!("AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_POSITION | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-        (*currentEventList).count += 1;
+        (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
+        (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_MOUSE_POSITION as u32;
+        (*gcurrentEventList).events[idx].params[0] = CORE.Input.Mouse.currentPosition.x as i32;
+        (*gcurrentEventList).events[idx].params[1] = CORE.Input.Mouse.currentPosition.y as i32;
+        (*gcurrentEventList).events[idx].params[2] = 0;
 
-        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+        info!(
+            "AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_POSITION | Event parameters: {}, {}, {}",
+            (*gcurrentEventList).events[idx].frame,
+            (*gcurrentEventList).events[idx].params[0],
+            (*gcurrentEventList).events[idx].params[1],
+            (*gcurrentEventList).events[idx].params[2]
+        );
+        (*gcurrentEventList).count += 1;
+
+        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+            return;
+        } // Security check
     }
 
     // Event type: INPUT_MOUSE_WHEEL_MOTION
-    if (((CORE.Input.Mouse.currentWheelMove.x as i32) != (CORE.Input.Mouse.previousWheelMove.x as i32)) ||
-        ((CORE.Input.Mouse.currentWheelMove.y as i32) != (CORE.Input.Mouse.previousWheelMove.y as i32)))
+    if ((CORE.Input.Mouse.currentWheelMove.x as i32) != (CORE.Input.Mouse.previousWheelMove.x as i32))
+        || ((CORE.Input.Mouse.currentWheelMove.y as i32) != (CORE.Input.Mouse.previousWheelMove.y as i32))
     {
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_MOUSE_WHEEL_MOTION as u32;
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = (CORE.Input.Mouse.currentWheelMove.x as i32);
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = (CORE.Input.Mouse.currentWheelMove.y as i32);
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
+        let idx = (*gcurrentEventList).count as usize;
 
-        info!("AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_WHEEL_MOTION | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-        (*currentEventList).count += 1;
+        (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
+        (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_MOUSE_WHEEL_MOTION as u32;
+        (*gcurrentEventList).events[idx].params[0] = CORE.Input.Mouse.currentWheelMove.x as i32;
+        (*gcurrentEventList).events[idx].params[1] = CORE.Input.Mouse.currentWheelMove.y as i32;
+        (*gcurrentEventList).events[idx].params[2] = 0;
 
-        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+        info!(
+            "AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_WHEEL_MOTION | Event parameters: {}, {}, {}",
+            (*gcurrentEventList).events[idx].frame,
+            (*gcurrentEventList).events[idx].params[0],
+            (*gcurrentEventList).events[idx].params[1],
+            (*gcurrentEventList).events[idx].params[2]
+        );
+        (*gcurrentEventList).count += 1;
+
+        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+            return;
+        } // Security check
     }
     //-------------------------------------------------------------------------------------
 
     // Touch input currentEventList->events recording
     //-------------------------------------------------------------------------------------
-    for id in 0..MAX_TOUCH_POINTS as i32
-    {
-        // Event type: INPUT_TOUCH_UP
-        if ((CORE.Input.Touch.previousTouchState[(id) as usize] != 0) && (CORE.Input.Touch.currentTouchState[(id) as usize] == 0))
-        {
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_TOUCH_UP as u32;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = id;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
+    for id in 0..MAX_TOUCH_POINTS as i32 {
+        let idx = (*gcurrentEventList).count as usize;
 
-            info!("AUTOMATION: Frame: {} | Event type: INPUT_TOUCH_UP | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-            (*currentEventList).count += 1;
+        // Event type: INPUT_TOUCH_UP
+        if (CORE.Input.Touch.previousTouchState[id as usize] != 0)
+            && (CORE.Input.Touch.currentTouchState[id as usize] == 0)
+        {
+            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
+            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_TOUCH_UP as u32;
+            (*gcurrentEventList).events[idx].params[0] = id;
+            (*gcurrentEventList).events[idx].params[1] = 0;
+            (*gcurrentEventList).events[idx].params[2] = 0;
+
+            info!(
+                "AUTOMATION: Frame: {} | Event type: INPUT_TOUCH_UP | Event parameters: {}, {}, {}",
+                (*gcurrentEventList).events[idx].frame,
+                (*gcurrentEventList).events[idx].params[0],
+                (*gcurrentEventList).events[idx].params[1],
+                (*gcurrentEventList).events[idx].params[2]
+            );
+            (*gcurrentEventList).count += 1;
         }
 
-        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+            return;
+        } // Security check
+
+        let idx = (*gcurrentEventList).count as usize;
 
         // Event type: INPUT_TOUCH_DOWN
-        if ((CORE.Input.Touch.currentTouchState[(id) as usize] != 0))
-        {
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_TOUCH_DOWN as u32;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = id;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
+        if CORE.Input.Touch.currentTouchState[id as usize] != 0 {
+            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
+            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_TOUCH_DOWN as u32;
+            (*gcurrentEventList).events[idx].params[0] = id;
+            (*gcurrentEventList).events[idx].params[1] = 0;
+            (*gcurrentEventList).events[idx].params[2] = 0;
 
-            info!("AUTOMATION: Frame: {} | Event type: INPUT_TOUCH_DOWN | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-            (*currentEventList).count += 1;
+            info!(
+                "AUTOMATION: Frame: {} | Event type: INPUT_TOUCH_DOWN | Event parameters: {}, {}, {}",
+                (*gcurrentEventList).events[idx].frame,
+                (*gcurrentEventList).events[idx].params[0],
+                (*gcurrentEventList).events[idx].params[1],
+                (*gcurrentEventList).events[idx].params[2]
+            );
+            (*gcurrentEventList).count += 1;
         }
 
-        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+            return;
+        } // Security check
 
         // Event type: INPUT_TOUCH_POSITION
-        if (((CORE.Input.Touch.position[(id) as usize].x as i32) != (CORE.Input.Touch.previousPosition[(id) as usize].x as i32)) ||
-            ((CORE.Input.Touch.position[(id) as usize].y as i32) != (CORE.Input.Touch.previousPosition[(id) as usize].y as i32)))
+        if ((CORE.Input.Touch.position[id as usize].x as i32) != (CORE.Input.Touch.previousPosition[id as usize].x as i32))
+            || ((CORE.Input.Touch.position[id as usize].y as i32) != (CORE.Input.Touch.previousPosition[id as usize].y as i32))
         {
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_TOUCH_POSITION as u32;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = id;
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = (CORE.Input.Touch.position[(id) as usize].x as i32);
-            (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = (CORE.Input.Touch.position[(id) as usize].y as i32);
+            let idx = (*gcurrentEventList).count as usize;
 
-            info!("AUTOMATION: Frame: {} | Event type: INPUT_TOUCH_POSITION | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-            (*currentEventList).count += 1;
+            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
+            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_TOUCH_POSITION as u32;
+            (*gcurrentEventList).events[idx].params[0] = id;
+            (*gcurrentEventList).events[idx].params[1] = CORE.Input.Touch.position[id as usize].x as i32;
+            (*gcurrentEventList).events[idx].params[2] = CORE.Input.Touch.position[id as usize].y as i32;
+
+            info!(
+                "AUTOMATION: Frame: {} | Event type: INPUT_TOUCH_POSITION | Event parameters: {}, {}, {}",
+                (*gcurrentEventList).events[idx].frame,
+                (*gcurrentEventList).events[idx].params[0],
+                (*gcurrentEventList).events[idx].params[1],
+                (*gcurrentEventList).events[idx].params[2]
+            );
+            (*gcurrentEventList).count += 1;
         }
 
-
-        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+            return;
+        } // Security check
     }
     //-------------------------------------------------------------------------------------
 
     // Gamepad input currentEventList->events recording
     //-------------------------------------------------------------------------------------
-    for gamepad in 0..MAX_GAMEPADS as i32
-    {
-        // Event type: INPUT_GAMEPAD_CONNECT
-        /*
-        if ((CORE.Input.Gamepad.currentState[gamepad] != CORE.Input.Gamepad.previousState[gamepad]) &&
-            (CORE.Input.Gamepad.currentState[gamepad])) // Check if changed to ready
-        {
-            // TODO: Save gamepad connect event
-        }
-        */
+    for gamepad in 0..MAX_GAMEPADS as i32 {
+        for button in 0..MAX_GAMEPAD_BUTTONS as i32 {
+            let idx = (*gcurrentEventList).count as usize;
 
-        // Event type: INPUT_GAMEPAD_DISCONNECT
-        /*
-        if ((CORE.Input.Gamepad.currentState[gamepad] != CORE.Input.Gamepad.previousState[gamepad]) &&
-            (!CORE.Input.Gamepad.currentState[gamepad])) // Check if changed to not-ready
-        {
-            // TODO: Save gamepad disconnect event
-        }
-        */
-
-        for button in 0..MAX_GAMEPAD_BUTTONS as i32
-        {
             // Event type: INPUT_GAMEPAD_BUTTON_UP
-            if ((CORE.Input.Gamepad.previousButtonState[gamepad as usize][button as usize] != 0) && (CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] == 0))
+            if (CORE.Input.Gamepad.previousButtonState[gamepad as usize][button as usize] != 0)
+                && (CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] == 0)
             {
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_GAMEPAD_BUTTON_UP as u32;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = gamepad;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = button;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
+                (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
+                (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_GAMEPAD_BUTTON_UP as u32;
+                (*gcurrentEventList).events[idx].params[0] = gamepad;
+                (*gcurrentEventList).events[idx].params[1] = button;
+                (*gcurrentEventList).events[idx].params[2] = 0;
 
-                info!("AUTOMATION: Frame: {} | Event type: INPUT_GAMEPAD_BUTTON_UP | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-                (*currentEventList).count += 1;
+                info!(
+                    "AUTOMATION: Frame: {} | Event type: INPUT_GAMEPAD_BUTTON_UP | Event parameters: {}, {}, {}",
+                    (*gcurrentEventList).events[idx].frame,
+                    (*gcurrentEventList).events[idx].params[0],
+                    (*gcurrentEventList).events[idx].params[1],
+                    (*gcurrentEventList).events[idx].params[2]
+                );
+                (*gcurrentEventList).count += 1;
             }
 
-            if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+            if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+                return;
+            } // Security check
+
+            let idx = (*gcurrentEventList).count as usize;
 
             // Event type: INPUT_GAMEPAD_BUTTON_DOWN
-            if (CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] != 0)
-            {
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_GAMEPAD_BUTTON_DOWN as u32;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = gamepad;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = button;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
+            if CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] != 0 {
+                (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
+                (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_GAMEPAD_BUTTON_DOWN as u32;
+                (*gcurrentEventList).events[idx].params[0] = gamepad;
+                (*gcurrentEventList).events[idx].params[1] = button;
+                (*gcurrentEventList).events[idx].params[2] = 0;
 
-                info!("AUTOMATION: Frame: {} | Event type: INPUT_GAMEPAD_BUTTON_DOWN | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-                (*currentEventList).count += 1;
+                info!(
+                    "AUTOMATION: Frame: {} | Event type: INPUT_GAMEPAD_BUTTON_DOWN | Event parameters: {}, {}, {}",
+                    (*gcurrentEventList).events[idx].frame,
+                    (*gcurrentEventList).events[idx].params[0],
+                    (*gcurrentEventList).events[idx].params[1],
+                    (*gcurrentEventList).events[idx].params[2]
+                );
+                (*gcurrentEventList).count += 1;
             }
 
-            if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+            if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+                return;
+            } // Security check
         }
 
-        for axis in 0..MAX_GAMEPAD_AXES as i32
-        {
-            // Event type: INPUT_GAMEPAD_AXIS_MOTION
-            let mut defaultMovement: f32 = if ((axis == GamepadAxis::GAMEPAD_AXIS_LEFT_TRIGGER as i32) || (axis == GamepadAxis::GAMEPAD_AXIS_RIGHT_TRIGGER as i32)) { -1.0 } else { 0.0 };
-            if (GetGamepadAxisMovement(gamepad, axis) != defaultMovement)
+        for axis in 0..MAX_GAMEPAD_AXES as i32 {
+            let defaultMovement: f32 = if (axis == GamepadAxis::GAMEPAD_AXIS_LEFT_TRIGGER as i32)
+                || (axis == GamepadAxis::GAMEPAD_AXIS_RIGHT_TRIGGER as i32)
             {
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_GAMEPAD_AXIS_MOTION as u32;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = gamepad;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = axis;
-                (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = ((CORE.Input.Gamepad.axisState[(gamepad) as usize][(axis) as usize]*32768.0) as i32);
+                -1.0
+            } else {
+                0.0
+            };
 
-                info!("AUTOMATION: Frame: {} | Event type: INPUT_GAMEPAD_AXIS_MOTION | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-                (*currentEventList).count += 1;
+            if GetGamepadAxisMovement(gamepad, axis as i32) != defaultMovement {
+                let idx = (*gcurrentEventList).count as usize;
+
+                (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
+                (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_GAMEPAD_AXIS_MOTION as u32;
+                (*gcurrentEventList).events[idx].params[0] = gamepad;
+                (*gcurrentEventList).events[idx].params[1] = axis;
+                (*gcurrentEventList).events[idx].params[2] = (CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize] * 32768.0) as i32;
+
+                info!(
+                    "AUTOMATION: Frame: {} | Event type: INPUT_GAMEPAD_AXIS_MOTION | Event parameters: {}, {}, {}",
+                    (*gcurrentEventList).events[idx].frame,
+                    (*gcurrentEventList).events[idx].params[0],
+                    (*gcurrentEventList).events[idx].params[1],
+                    (*gcurrentEventList).events[idx].params[2]
+                );
+                (*gcurrentEventList).count += 1;
             }
 
-            if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+            if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+                return;
+            } // Security check
         }
     }
     //-------------------------------------------------------------------------------------
 
-#[cfg(feature = "SUPPORT_GESTURES_SYSTEM")]
-{
-    // Gestures input currentEventList->events recording
-    //-------------------------------------------------------------------------------------
-    if (GESTURES.current != Gesture::GESTURE_NONE as i32)
+    #[cfg(feature = "SUPPORT_GESTURES_SYSTEM")]
     {
-        // Event type: INPUT_GESTURE
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).frame = CORE.Time.frameCounter;
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).type_ = AutomationEventType::INPUT_GESTURE as u32;
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0] = GESTURES.current;
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1] = 0;
-        (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2] = 0;
+        // Gestures input currentEventList->events recording
+        //-------------------------------------------------------------------------------------
+        if GESTURES.current != Gesture::GESTURE_NONE as i32 {
+            let idx = (*currentEventList).count as usize;
 
-        info!("AUTOMATION: Frame: {} | Event type: INPUT_GESTURE | Event parameters: {}, {}, {}", (*(*currentEventList).events.add((*currentEventList).count as usize)).frame, (*(*currentEventList).events.add((*currentEventList).count as usize)).params[0], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[1], (*(*currentEventList).events.add((*currentEventList).count as usize)).params[2]);
-        (*currentEventList).count += 1;
+            (*currentEventList).events[idx].frame = CORE.Time.frameCounter;
+            (*currentEventList).events[idx].type_ = AutomationEventType::INPUT_GESTURE as u32;
+            (*currentEventList).events[idx].params[0] = GESTURES.current;
+            (*currentEventList).events[idx].params[1] = 0;
+            (*currentEventList).events[idx].params[2] = 0;
 
-        if ((*currentEventList).count == (*currentEventList).capacity) { return; }    // Security check
+            info!(
+                "AUTOMATION: Frame: {} | Event type: INPUT_GESTURE | Event parameters: {}, {}, {}",
+                (*currentEventList).events[idx].frame,
+                (*currentEventList).events[idx].params[0],
+                (*currentEventList).events[idx].params[1],
+                (*currentEventList).events[idx].params[2]
+            );
+            (*currentEventList).count += 1;
+
+            if (*currentEventList).count == (*currentEventList).capacity {
+                return;
+            } // Security check
+        }
+        //-------------------------------------------------------------------------------------
     }
-    //-------------------------------------------------------------------------------------
 }
-}
-
 
 #[cfg(not(feature = "SUPPORT_MODULE_RTEXT"))]
 // Formatting of text with variables to 'embed'

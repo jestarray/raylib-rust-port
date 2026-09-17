@@ -903,7 +903,7 @@ pub struct Camera3D {
 }
 pub type Camera = Camera3D;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 #[repr(C)]
 pub struct Camera2D {
     pub offset: Vector2,
@@ -1531,6 +1531,7 @@ pub struct FilePathList {
 // Automation event
 #[repr(C)]
 #[allow(non_snake_case)]
+#[derive(Copy, Clone, Default)]
 pub struct AutomationEvent {
     pub frame: u32,       // Event frame
     pub type_: u32,       // Event type (AutomationEventType)
@@ -1540,10 +1541,20 @@ pub struct AutomationEvent {
 // Automation event list
 #[repr(C)]
 #[allow(non_snake_case)]
+#[derive(Clone)]
 pub struct AutomationEventList {
     pub capacity: u32,                // Events max entries (MAX_AUTOMATION_EVENTS)
     pub count: u32,                   // Events entries count
-    pub events: *mut AutomationEvent, // Events entries
+    pub events: Vec<AutomationEvent>, // Events entries
+}
+impl AutomationEventList {
+    pub fn with_capacity(cap: u32) -> Self {
+        Self {
+            capacity: cap,
+            count: 0,
+            events: vec![AutomationEvent::default(); cap as usize],
+        }
+    }
 }
 
 #[repr(C)]
