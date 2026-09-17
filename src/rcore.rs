@@ -577,14 +577,7 @@ pub unsafe fn InitWindow(width: i32, height: i32, title: &str)
     CORE.Window.shouldClose = false;
 
     // Initialize random seed using available timer source instead of standard time() on embedded platforms
-    #[cfg(not(feature = "PICO_RP2350"))]
-    {
-    SetRandomSeed((libc::time(std::ptr::null_mut()) as u32));
-    }
-    #[cfg(not(any(not(feature = "PICO_RP2350"))))]
-    {
-    SetRandomSeed(get_rand_32());
-    }
+    // SetRandomSeed() // removed
 
     info!("SYSTEM: Working Directory: {}", GetWorkingDirectory());
 }

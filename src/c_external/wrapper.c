@@ -11,11 +11,11 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
-#include <stdlib.h>
-#define GLAD_MALLOC malloc
-#define GLAD_FREE free
-#define GLAD_GL_IMPLEMENTATION
-#include "glad.h"
+// #include <stdlib.h>
+//#define GLAD_MALLOC malloc
+//#define GLAD_FREE free
+//#define GLAD_GL_IMPLEMENTATION
+//#include "glad.h"
 
 // #define PAR_SHAPES_IMPLEMENTATION
 // #include "par_shapes.h"

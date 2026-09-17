@@ -15,12 +15,6 @@
 use std::{ffi::{c_char, c_void, CStr, CString}, mem::size_of, ptr::{null, null_mut}};
 
 use crate::{
-    external::{
-        GL_COMPRESSED_RGBA_ASTC_4x4_KHR, GL_COMPRESSED_RGBA_ASTC_8x8_KHR, GL_COMPRESSED_RGB8_ETC2,
-        GL_COMPRESSED_RGBA8_ETC2_EAC, GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,
-        GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-        GL_COMPRESSED_RGB_S3TC_DXT1_EXT, GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,
-    },
     types::Matrix,
 };
 use gl;
@@ -28,6 +22,14 @@ use log::{debug, error, info, warn};
 use strum_macros::FromRepr;
 
 // --- Constants ---
+// glad constants that raylib uses. defining a constant does not mean the GPU supports that format.
+pub const GL_COMPRESSED_RGBA_ASTC_4x4_KHR: u32 = 0x93B0;
+pub const GL_COMPRESSED_RGBA_ASTC_8x8_KHR: u32 = 0x93B7;
+pub const GL_COMPRESSED_RGB_S3TC_DXT1_EXT: u32 = 0x83F0;
+pub const GL_COMPRESSED_RGBA_S3TC_DXT1_EXT: u32 = 0x83F1;
+pub const GL_COMPRESSED_RGBA_S3TC_DXT3_EXT: u32 = 0x83F2;
+pub const GL_COMPRESSED_RGBA_S3TC_DXT5_EXT: u32 = 0x83F3;
+pub const GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT: u32 = 0x84FF;
 
 pub const RL_DEFAULT_BATCH_BUFFER_ELEMENTS: i32 = 8192;
 pub const RL_DEFAULT_BATCH_BUFFERS: i32 = 1;
@@ -2760,8 +2762,8 @@ pub unsafe fn rlGetGlTextureFormats(format: i32, glInternalFormat: *mut u32, glF
         Some(PixelFormat::PIXELFORMAT_COMPRESSED_DXT3_RGBA) => if RLGL.ExtSupported.texCompDXT { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT; },
         Some(PixelFormat::PIXELFORMAT_COMPRESSED_DXT5_RGBA) => if RLGL.ExtSupported.texCompDXT { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT; },
         Some(PixelFormat::PIXELFORMAT_COMPRESSED_ETC1_RGB) => if RLGL.ExtSupported.texCompETC1 { *glInternalFormat = 0x8D64; }, // GL_ETC1_RGB8_OES
-        Some(PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB) => if RLGL.ExtSupported.texCompETC2 { *glInternalFormat = GL_COMPRESSED_RGB8_ETC2; },
-        Some(PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA) => if RLGL.ExtSupported.texCompETC2 { *glInternalFormat = GL_COMPRESSED_RGBA8_ETC2_EAC; },
+        Some(PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB) => if RLGL.ExtSupported.texCompETC2 { *glInternalFormat = gl::COMPRESSED_RGB8_ETC2; },
+        Some(PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA) => if RLGL.ExtSupported.texCompETC2 { *glInternalFormat = gl::COMPRESSED_RGBA8_ETC2_EAC; },
         Some(PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGB) => if RLGL.ExtSupported.texCompPVRT { *glInternalFormat = 0x8C00; }, // GL_COMPRESSED_RGB_PVRTC_4BPPV1_IMG
         Some(PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGBA) => if RLGL.ExtSupported.texCompPVRT { *glInternalFormat = 0x8C02; }, // GL_COMPRESSED_RGBA_PVRTC_4BPPV1_IMG
         Some(PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA) => if RLGL.ExtSupported.texCompASTC { *glInternalFormat = GL_COMPRESSED_RGBA_ASTC_4x4_KHR; },
@@ -2832,8 +2834,8 @@ pub unsafe fn rlGetGlTextureFormats(format: i32, glInternalFormat: *mut u32, glF
         Some(PixelFormat::PIXELFORMAT_COMPRESSED_DXT3_RGBA) => if RLGL.ExtSupported.texCompDXT { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT3_EXT; },
         Some(PixelFormat::PIXELFORMAT_COMPRESSED_DXT5_RGBA) => if RLGL.ExtSupported.texCompDXT { *glInternalFormat = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT; },
         Some(PixelFormat::PIXELFORMAT_COMPRESSED_ETC1_RGB) => if RLGL.ExtSupported.texCompETC1 { *glInternalFormat = 0x8D64; }, // NOTE: Requires OpenGL ES 2.0 or OpenGL 4.3
-        Some(PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB) => if RLGL.ExtSupported.texCompETC2 { *glInternalFormat = GL_COMPRESSED_RGB8_ETC2; }, // NOTE: Requires OpenGL ES 3.0 or OpenGL 4.3
-        Some(PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA) => if RLGL.ExtSupported.texCompETC2 { *glInternalFormat = GL_COMPRESSED_RGBA8_ETC2_EAC; },
+        Some(PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_RGB) => if RLGL.ExtSupported.texCompETC2 { *glInternalFormat = gl::COMPRESSED_RGB8_ETC2; }, // NOTE: Requires OpenGL ES 3.0 or OpenGL 4.3
+        Some(PixelFormat::PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA) => if RLGL.ExtSupported.texCompETC2 { *glInternalFormat = gl::COMPRESSED_RGBA8_ETC2_EAC; },
         Some(PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGB) => if RLGL.ExtSupported.texCompPVRT { *glInternalFormat = 0x8C00; }, // NOTE: Requires PowerVR GPU
         Some(PixelFormat::PIXELFORMAT_COMPRESSED_PVRT_RGBA) => if RLGL.ExtSupported.texCompPVRT { *glInternalFormat = 0x8C02; },
         Some(PixelFormat::PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA) => if RLGL.ExtSupported.texCompASTC { *glInternalFormat = GL_COMPRESSED_RGBA_ASTC_4x4_KHR; },

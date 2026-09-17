@@ -1533,10 +1533,11 @@ pub unsafe fn PollInputEvents()
                         CORE.Input.Gamepad.axisState[nextAvailableSlot as usize][GAMEPAD_AXIS_RIGHT_TRIGGER as i32 as usize] = -1.0;
                         CORE.Input.Gamepad.name[nextAvailableSlot as usize].fill(0);
                         let controllerName = SDL_GameControllerNameForIndex(nextAvailableSlot as i32);
-                        let controllerName = if controllerName.is_null() { c"noname".as_ptr() } else { controllerName };
+                        #[allow(clippy::unnecessary_cast)]
+                        let controllerName = if controllerName.is_null() { c"noname".as_ptr() } else { controllerName } as *const std::ffi::c_char;
                         let destination = &mut CORE.Input.Gamepad.name[nextAvailableSlot as usize];
-                        let controllerNameLength = std::ffi::CStr::from_ptr(controllerName).to_bytes().len().min(destination.len().saturating_sub(1));destination.fill(0);
-                        std::ptr::copy_nonoverlapping(controllerName, destination.as_mut_ptr(), controllerNameLength);
+                        let controllerNameLength = std::ffi::CStr::from_ptr(controllerName as *const std::ffi::c_char).to_bytes().len().min(destination.len().saturating_sub(1));destination.fill(0);
+                        std::ptr::copy_nonoverlapping(controllerName, destination.as_mut_ptr() as *mut std::ffi::c_char, controllerNameLength);
                     }
                     else { warn!("PLATFORM: Unable to open game controller [ERROR: {}]", CStr::from_ptr(SDL_GetError()).to_string_lossy()); }
                 }
@@ -1888,9 +1889,10 @@ pub unsafe fn InitPlatform() -> i32
             CORE.Input.Gamepad.axisCount[i] = SDL_GetNumJoystickAxes(SDL_GetGamepadJoystick(platform.gamepad[i]));
             CORE.Input.Gamepad.axisState[i][GAMEPAD_AXIS_LEFT_TRIGGER as i32 as usize] = -1.0;
             CORE.Input.Gamepad.axisState[i][GAMEPAD_AXIS_RIGHT_TRIGGER as i32 as usize] = -1.0;
-            let joystickName = SDL_GetJoystickNameForID(*joysticks.add(i as usize));
+            #[allow(clippy::unnecessary_cast)] // DO NOT REMOVE THE AS *const CASTING OR IT WILL RUN INTO u8 vs i8 problem when compiling on android/desktop
+            let joystickName = SDL_GetJoystickNameForID(*joysticks.add(i as usize)) as *const i8;
             let destination = &mut CORE.Input.Gamepad.name[i];
-            let joystickNameLength = std::ffi::CStr::from_ptr(joystickName).to_bytes().len().min(destination.len().saturating_sub(1));
+            let joystickNameLength = std::ffi::CStr::from_ptr(joystickName as *const std::ffi::c_char).to_bytes().len().min(destination.len().saturating_sub(1));
             destination.fill(0);
             std::ptr::copy_nonoverlapping(joystickName, destination.as_mut_ptr(), joystickNameLength);
             CORE.Input.Gamepad.name[i][MAX_GAMEPAD_NAME_LENGTH - 1] = 0;

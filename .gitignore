@@ -1,1 +1,10 @@
 /target
+/android/.gradle/
+/android/.android/
+/android/build/
+/android/app/build/
+/android/app/src/main/jniLibs/
+/android/app/src/main/assets/
+/android/app/src/main/sdl-java/
+/android/native/target/
+/android/local.properties
