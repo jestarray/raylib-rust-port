@@ -77,7 +77,7 @@ pub fn GetPixelDataSize(width: i32, height: i32, format: i32) -> i32
 }
 
 /// Create an independently owned image from a rectangle in another image.
-/// Release the result with `unload_image()`.
+/// Release the result with [`UnloadImage()`].
 ///
 /// # Safety
 /// For a supported format, `image.data` must point to readable pixel storage

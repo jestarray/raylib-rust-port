@@ -19,88 +19,6 @@ use crate::rcore::LoadFileData;
 use crate::rlgl::{self, rlPopMatrix, rlPushMatrix, rlRotatef, rlTranslatef};
 use crate::rtextures::{self, DrawTexturePro, ImageFromImage};
 use crate::types::{Color, Font, FontType, GlyphInfo, Image, PixelFormat, Rectangle, Texture, Vector2};
-use std::fs;
-
-pub fn load_font(file_name: &str) -> Font {
-    unsafe {
-        let ttf_data = fs::read(file_name).unwrap_or_else(|_| Vec::new());
-        if ttf_data.is_empty() {
-            return Font {
-                baseSize: 10,
-                glyphCount: 0,
-                glyphPadding: 0,
-                texture: Texture {
-                    id: 0,
-                    width: 0,
-                    height: 0,
-                    mipmaps: 0,
-                    format: 0,
-                },
-                recs: Vec::new(),
-                glyphs: Vec::new(),
-            };
-        }
-
-        let mut cdata = Vec::with_capacity(96);
-
-        let mut pixels: Vec<u8> = vec![0; 512 * 512];
-
-        crate::external::stbtt_BakeFontBitmap(
-            ttf_data.as_ptr(),
-            0,
-            32.0,
-            pixels.as_mut_ptr(),
-            512,
-            512,
-            32,
-            96,
-            cdata.as_mut_ptr(),
-        );
-
-        let image = Image {
-            data: pixels.as_mut_ptr() as *mut std::ffi::c_void,
-            width: 512,
-            height: 512,
-            mipmaps: 1,
-            format: 1,
-        };
-
-        let texture = rtextures::LoadTextureFromImage(&image);
-
-        let mut recs = Vec::with_capacity(96);
-        let mut glyphs = vec![GlyphInfo::default(); 96];
-
-        for i in 0..96 {
-            let baked = cdata[i];
-            let rec = Rectangle::new(
-                baked.x0 as f32,
-                baked.y0 as f32,
-                (baked.x1 - baked.x0) as f32,
-                (baked.y1 - baked.y0) as f32,
-            );
-            recs[i] = rec;
-
-            let glyph = GlyphInfo {
-                value: i as i32 + 32,
-                offset_x: baked.xoff as i32,
-                offset_y: baked.yoff as i32,
-                advance_x: baked.xadvance as i32,
-                image: Image::default(),
-            };
-            glyphs[i] = glyph;
-        }
-
-        Font {
-            baseSize: 32,
-            glyphCount: 96,
-            glyphPadding: 0,
-            texture,
-            recs,
-            glyphs,
-        }
-    }
-}
-
 /// Load a font into GPU memory. TTF/OTF fonts use a 32-pixel height and the
 /// default 95 codepoints; image fonts use magenta borders and start at codepoint 32.
 ///
@@ -202,7 +120,7 @@ pub unsafe fn LoadFontFromMemory(
     }
 
     let padding = FONT_TTF_DEFAULT_CHARS_PADDING;
-    let Some((mut atlas, recs)) = gen_image_font_atlas(&glyphs, fontSize, padding) else {
+    let Some((mut atlas, recs)) = GenImageFontAtlas(&glyphs, fontSize, padding) else {
         for glyph in &mut glyphs {
             rtextures::UnloadImage(&mut glyph.image);
         }
@@ -233,7 +151,7 @@ pub unsafe fn LoadFontFromMemory(
 // Basic (packMethod == 0) atlas generation used by LoadFontFromMemory.
 // Glyph images must contain readable grayscale data. The returned Image owns
 // its allocation and must be released with UnloadImage.
-unsafe fn gen_image_font_atlas(glyphs: &[GlyphInfo], font_size: i32, padding: i32) -> Option<(Image, Vec<Rectangle>)> {
+unsafe fn GenImageFontAtlas(glyphs: &[GlyphInfo], font_size: i32, padding: i32) -> Option<(Image, Vec<Rectangle>)> {
     if glyphs.is_empty() || font_size <= 0 || padding < 0 {
         return None;
     }
