@@ -668,6 +668,17 @@ pub fn GetFontDefault() -> *mut Font {
         &raw mut DEFAULT_FONT
     }
 }
+pub fn DrawFPS(posX: i32, posY: i32)
+{
+    let mut color = Color::LIME;                         // Good FPS
+    let fps = unsafe { crate::rcore::GetFPS() };
+
+    if ((fps < 30) && (fps >= 15)) { color = Color::ORANGE; }  // Warning FPS
+    else if (fps < 15) { color = Color::RED; }             // Low FPS
+
+    DrawText(&format!("{} FPS", fps), posX, posY, 20, color);
+}
+
 /// Draw text (using default font)
 /// NOTE: fontSize work like in any drawing program but if fontSize is lower than font-base-size, then font-base-size is used
 /// NOTE: chars spacing is proportional to fontSize
