@@ -1541,55 +1541,40 @@ pub unsafe fn GetFrameTime() -> f32
 // take longer than expected... for that reason a busy wait loop is used
 // REF: http://stackoverflow.com/questions/43057578/c-programming-win32-games-sleep-taking-longer-than-expected
 // REF: http://www.geisswerks.com/ryan/FAQS/timing.html --> All about timing on Win32!
-pub unsafe fn WaitTime(seconds: f64)
-{
-    if (seconds < 0.0) { return; }    // Security check
+pub fn WaitTime(seconds: f64) {
+    if seconds <= 0.0 {
+        return;
+    }
 
-#[cfg(any(feature = "SUPPORT_BUSY_WAIT_LOOP", feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP"))]
-    let mut destinationTime: f64 = GetTime() + seconds;
+    #[cfg(any(
+        feature = "SUPPORT_BUSY_WAIT_LOOP",
+        feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP"
+    ))]
+    let destinationTime: f64 = unsafe { GetTime() } + seconds;
 
-#[cfg(feature = "SUPPORT_BUSY_WAIT_LOOP")]
-{
-    while (GetTime() < destinationTime) { }
-}
-#[cfg(not(any(feature = "SUPPORT_BUSY_WAIT_LOOP")))]
-{
-    #[cfg(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP")]
+    #[cfg(feature = "SUPPORT_BUSY_WAIT_LOOP")]
+    {
+        while unsafe { GetTime() } < destination_time {}
+    }
+
+    #[cfg(not(feature = "SUPPORT_BUSY_WAIT_LOOP"))]
+    {
+        #[cfg(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP")]
         let mut sleepSeconds: f64 = seconds - seconds*0.05;  // NOTE: Reserve a percentage of the time for busy waiting
-    #[cfg(not(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP"))]
+        #[cfg(not(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP"))]
         let sleepSeconds: f64 = seconds;
 
-    // System halt functions
-    #[cfg(target_os = "android")]
-    {
+        // Rust's std::thread::sleep cross-platform abstraction handles 
+        // nanosleep, usleep, Windows, and Apple automatically.
         std::thread::sleep(std::time::Duration::from_secs_f64(sleepSeconds));
-    }
-    #[cfg(target_os = "windows")]
-    {
-        std::thread::sleep(std::time::Duration::from_secs_f64(sleepSeconds));
-    }
-    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "emscripten"))]
-    {
-        let mut req: libc::timespec = std::mem::zeroed();
-        let sec: libc::time_t = sleepSeconds as libc::time_t;
-        let nsec: libc::c_long = ((sleepSeconds - sec as f64)*1000000000.0) as libc::c_long;
-        req.tv_sec = sec;
-        req.tv_nsec = nsec;
 
-        // NOTE: Use nanosleep() on Unix platforms... usleep() it's deprecated
-        while (libc::nanosleep(&req, &mut req) == -1) { continue; }
-    }
-    #[cfg(target_vendor = "apple")]
-    {
-        libc::usleep((sleepSeconds*1000000.0) as u32);
-    }
-
-    #[cfg(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP")]
-    {
-        while (GetTime() < destinationTime) { }
+        #[cfg(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP")]
+        {
+            while unsafe { GetTime() } < destinationTime {}
+        }
     }
 }
-}
+
 
 //----------------------------------------------------------------------------------
 // Module Functions Definition: Misc
