@@ -2515,11 +2515,11 @@ pub unsafe fn PlayAutomationEvent(event: AutomationEvent)
 //----------------------------------------------------------------------------------
 
 // Check if key has been pressed once
-pub unsafe fn IsKeyPressed(key: i32) -> bool
+pub unsafe fn IsKeyPressed(key: KeyboardKey) -> bool
 {
     let mut pressed: bool = false;
 
-    if ((key > 0) && (key < MAX_KEYBOARD_KEYS as i32))
+    if ((key as i32 > 0) && ((key as i32) < MAX_KEYBOARD_KEYS as i32))
     {
         if ((CORE.Input.Keyboard.previousKeyState[(key) as usize] == 0) && (CORE.Input.Keyboard.currentKeyState[(key) as usize] == 1)) { pressed = true; }
     }
@@ -2671,11 +2671,11 @@ pub unsafe fn IsGamepadButtonPressed(gamepad: i32, button: i32) -> bool
 }
 
 // Check if gamepad button is being pressed
-pub unsafe fn IsGamepadButtonDown(gamepad: i32, button: i32) -> bool
+pub unsafe fn IsGamepadButtonDown(gamepad: i32, button: GamepadButton) -> bool
 {
     let mut down: bool = false;
 
-    if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[(gamepad) as usize] && (button < MAX_GAMEPAD_BUTTONS as i32))
+    if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[(gamepad) as usize] && ((button as i32) < MAX_GAMEPAD_BUTTONS as i32))
     {
         if (CORE.Input.Gamepad.currentButtonState[(gamepad) as usize][(button) as usize] == 1) { down = true; }
     }
@@ -2727,8 +2727,9 @@ pub unsafe fn GetGamepadAxisCount(gamepad: i32) -> i32
 }
 
 // Get axis movement vector for a gamepad
-pub unsafe fn GetGamepadAxisMovement(gamepad: i32, axis: i32) -> f32
+pub unsafe fn GetGamepadAxisMovement(gamepad: i32, axis: GamepadAxis) -> f32
 {
+    let axis = axis as i32;
     let mut value: f32 = if ((axis == GamepadAxis::GAMEPAD_AXIS_LEFT_TRIGGER as i32) || (axis == GamepadAxis::GAMEPAD_AXIS_RIGHT_TRIGGER as i32)) { -1.0 } else { 0.0 };
 
     if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[(gamepad) as usize] && (axis < MAX_GAMEPAD_AXES as i32))
@@ -2750,10 +2751,10 @@ pub unsafe fn GetGamepadAxisMovement(gamepad: i32, axis: i32) -> f32
 //void SetMouseCursor(int cursor)
 
 // Check if mouse button has been pressed once
-pub unsafe fn IsMouseButtonPressed(button: i32) -> bool
+pub unsafe fn IsMouseButtonPressed(button: MouseButton) -> bool
 {
     let mut pressed: bool = false;
-
+    let button = button as i32;
     if ((button >= 0) && (button <= MouseButton::MOUSE_BUTTON_BACK as i32))
     {
         if ((CORE.Input.Mouse.currentButtonState[(button) as usize] == 1) && (CORE.Input.Mouse.previousButtonState[(button) as usize] == 0)) { pressed = true; }
