@@ -1744,34 +1744,17 @@ pub unsafe fn UnloadFileData(data: *mut u8)
 }
 
 // Save data to file from buffer
-pub unsafe fn SaveFileData(fileName: &str, data: *const c_void, dataSize: i32) -> bool
-{
-    let mut result = false;
-
-    if let Ok(fileNameC) = CString::new(fileName)
-    {
-        if let Some(callback) = saveFileData { return callback(fileName, data, dataSize); }
-
-        let file = libc::fopen(fileNameC.as_ptr(), c"wb".as_ptr());
-
-        if (!file.is_null())
-        {
-            // WARNING: fwrite() returns a size_t value, usually 'unsigned int' (32bit compilation) and 'unsigned long long' (64bit compilation)
-            // and expects a size_t input value but as dataSize is limited to INT_MAX (2147483647 bytes), there shouldn't be a problem
-            let count = libc::fwrite(data, std::mem::size_of::<u8>(), dataSize as usize, file) as i32;
-
-            if (count == 0) { warn!("FILEIO: [{}] Failed to write file", fileName); }
-            else if (count != dataSize) { warn!("FILEIO: [{}] File partially written", fileName); }
-            else { info!("FILEIO: [{}] File saved successfully", fileName); }
-
-            let closed = libc::fclose(file);
-            if (closed == 0) { result = true; }
+pub fn SaveFileData(file_name: &str, data: &[u8]) -> bool {
+    match std::fs::write(file_name, data) {
+        Ok(()) => {
+            info!("FILEIO: [{}] File saved successfully", file_name);
+            true
         }
-        else { warn!("FILEIO: [{}] Failed to open file", fileName); }
+        Err(err) => {
+            warn!("FILEIO: [{}] Failed to write file: {}", file_name, err);
+            false
+        }
     }
-    else { warn!("FILEIO: File name provided is not valid"); }
-
-    return result;
 }
 
 // Export data to code (.h), returns true on success
@@ -1848,32 +1831,17 @@ pub fn UnloadFileText(text: Option<String>)
 }
 
 // Save text data to file (write), string must be '\0' terminated
-pub unsafe fn SaveFileText(fileName: &str, text: &str) -> bool
-{
-    let mut result = false;
-
-    if let Ok(fileNameC) = CString::new(fileName)
-    {
-        if let Some(callback) = saveFileText { return callback(fileName, text); }
-
-        let file = libc::fopen(fileNameC.as_ptr(), c"wt".as_ptr());
-
-        if (!file.is_null())
-        {
-            let text = CString::new(text).unwrap();
-            let count = libc::fprintf(file, c"%s".as_ptr(), text.as_ptr());
-
-            if (count < 0) { warn!("FILEIO: [{}] Failed to write text file", fileName); }
-            else { info!("FILEIO: [{}] Text file saved successfully", fileName); }
-
-            let closed = libc::fclose(file);
-            if (closed == 0) { result = true; }
+pub fn SaveFileText(file_name: &str, text: &str) -> bool {
+    match std::fs::write(file_name, text) {
+        Ok(()) => {
+            info!("FILEIO: [{}] Text file saved successfully", file_name);
+            true
         }
-        else { warn!("FILEIO: [{}] Failed to open text file", fileName); }
+        Err(err) => {
+            warn!("FILEIO: [{}] Failed to write text file: {}", file_name, err);
+            false
+        }
     }
-    else { warn!("FILEIO: File name provided is not valid"); }
-
-    return result;
 }
 
 // Check if the file exists
