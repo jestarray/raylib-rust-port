@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 #![allow(unsafe_op_in_unsafe_fn)]
 #![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(missing_safety_doc, unused_parens, non_snake_case, static_mut_refs)]
+#![allow(unused_parens, non_snake_case, static_mut_refs)]
 #![allow(
     clippy::too_many_arguments,
     clippy::needless_return,
@@ -304,7 +304,7 @@ use crate::math::DEG2RAD;
 use crate::rlgl::*;
 use crate::types::{AutomationEvent, AutomationEventList, BlendMode, Camera, Camera2D, CameraProjection, ConfigFlags, GamepadAxis, GamepadButton, KeyboardKey, MouseButton, MouseCursor, Quaternion, Ray, RenderTexture2D, Shader, ShaderLocationIndex, TraceLogLevel, Vector3, VrDeviceInfo, VrStereoConfig};
 #[cfg(feature = "SUPPORT_MODULE_RTEXT")]
-use crate::rtext::{load_font_default as LoadFontDefault, get_font_default as GetFontDefault};
+use crate::rtext::{LoadFontDefault};
 
 //----------------------------------------------------------------------------------
 // Global Variables Definition
@@ -587,7 +587,7 @@ pub unsafe fn CloseWindow()
 {
 #[cfg(feature = "SUPPORT_MODULE_RTEXT")]
 {
-    UnloadFontDefault();        // WARNING: Module required: rtext
+    crate::rtext::UnloadFontDefault();        // WARNING: Module required: rtext
 }
 
     rlglClose();                // De-init rlgl

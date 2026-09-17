@@ -12,7 +12,6 @@ Goals:
 - [ ] review all `libc::` uses and place them with rust versions
 - [ ] have AI port a lot of 2d examples from raylib since our functions are nearly 1 to 1
 
-
 # stripping
 ## step 1:
 Use `unifdef` to strip out ifdef chunks:
@@ -103,3 +102,6 @@ APK installation, and the shared SDL entry point.
 # slight changes:
 - [ ] InitPlatform() checks for `SDL_GetError()` and prints them
 - REMOVED from rcore(because they pull in libc and external deps): SetRandomSeed, GetRandomValue, LoadRandomSequence, UnloadRandomSequence
+
+# major differences:
+- rtext functions will use rust &str, so they will diverge from the C a lot more

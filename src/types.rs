@@ -1102,9 +1102,9 @@ pub struct GlyphInfo {
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct Font {
-    pub base_size: i32,
-    pub glyph_count: i32,
-    pub glyph_padding: i32,
+    pub baseSize: i32,
+    pub glyphCount: i32,
+    pub glyphPadding: i32,
     pub texture: Texture,
     pub recs: Vec<Rectangle>,
     pub glyphs: Vec<GlyphInfo>,

@@ -1,6 +1,132 @@
-use crate::types::{Color, Image, Rectangle, Texture, Vector2};
-use crate::rlgl::{self, RL_QUADS};
+#![allow(unused_variables)]
+#![allow(unsafe_op_in_unsafe_fn)]
+#![allow(non_snake_case, non_upper_case_globals)]
+#![cfg_attr(rustfmt, rustfmt_skip)]
+#![allow(missing_safety_doc, unused_parens, non_snake_case, static_mut_refs)]
+#![allow(
+    clippy::too_many_arguments,
+    clippy::needless_return,
+    clippy::manual_range_contains,
+    clippy::field_reassign_with_default,
+    clippy::manual_map,
+    clippy::match_like_matches_macro,
+    clippy::upper_case_acronyms,
+    clippy::let_and_return,
+    clippy::double_parens,
+)]
+use crate::rlgl::{RL_QUADS, rlBegin, rlColor4ub, rlEnd, rlGetPixelDataSize, rlLoadTexture, rlPopMatrix, rlPushMatrix, rlRotatef, rlSetTexture, rlTexCoord2f, rlTranslatef, rlUnloadTexture, rlVertex2f};
+use crate::types::{Color, Image, NPatchInfo, NPatchLayout, Rectangle, Texture, Vector2};
 use std::ffi::CString;
+use log::{warn};
+use crate::types::PixelFormat::*;
+
+#[allow(non_snake_case)]
+pub fn GetPixelDataSize(width: i32, height: i32, format: i32) -> i32
+{
+    let mut dataSize = 0;       // Size in bytes
+    let mut bpp = 0;            // Bits per pixel
+
+    match format
+    {
+        f if f == PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32 => bpp = 8,
+        f if f == PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA as i32 ||
+             f == PIXELFORMAT_UNCOMPRESSED_R5G6B5 as i32 ||
+             f == PIXELFORMAT_UNCOMPRESSED_R5G5B5A1 as i32 ||
+             f == PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 as i32 => bpp = 16,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 => bpp = 32,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R8G8B8 as i32 => bpp = 24,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R32 as i32 => bpp = 32,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R32G32B32 as i32 => bpp = 32*3,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 as i32 => bpp = 32*4,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R16 as i32 => bpp = 16,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R16G16B16 as i32 => bpp = 16*3,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 as i32 => bpp = 16*4,
+        f if f == PIXELFORMAT_COMPRESSED_DXT1_RGB as i32 ||
+             f == PIXELFORMAT_COMPRESSED_DXT1_RGBA as i32 ||
+             f == PIXELFORMAT_COMPRESSED_ETC1_RGB as i32 ||
+             f == PIXELFORMAT_COMPRESSED_ETC2_RGB as i32 ||
+             f == PIXELFORMAT_COMPRESSED_PVRT_RGB as i32 ||
+             f == PIXELFORMAT_COMPRESSED_PVRT_RGBA as i32 => bpp = 4,
+        f if f == PIXELFORMAT_COMPRESSED_DXT3_RGBA as i32 ||
+             f == PIXELFORMAT_COMPRESSED_DXT5_RGBA as i32 ||
+             f == PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA as i32 ||
+             f == PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA as i32 => bpp = 8,
+        f if f == PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA as i32 => bpp = 2,
+        _ => {}
+    }
+
+    let dataSizeBytes = (width as u64).wrapping_mul(height as u64).wrapping_mul(bpp as u64) >> 3;  // Get size in bytes (dividing by 8)
+
+    if dataSizeBytes < i32::MAX as u64
+    {
+        dataSize = dataSizeBytes as i32;
+
+        // Most compressed formats works on 4x4 blocks,
+        // if texture is smaller, minimum dataSize is 8 or 16
+        if (width < 4) && (height < 4)
+        {
+            if (format >= PIXELFORMAT_COMPRESSED_DXT1_RGB as i32) && (format < PIXELFORMAT_COMPRESSED_DXT3_RGBA as i32) { dataSize = 8; }
+            else if (format >= PIXELFORMAT_COMPRESSED_DXT3_RGBA as i32) && (format < PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA as i32) { dataSize = 16; }
+        }
+    }
+
+    // NOTE: In case required image data larger than 2GB, no memory allocated at all (NULL)
+    if dataSize == 0 { eprintln!("Requested image size is larger than 2GB, it can not be allocated"); }
+
+    return dataSize;
+}
+
+/// Create an independently owned image from a rectangle in another image.
+/// Release the result with `unload_image()`.
+///
+/// # Safety
+/// For a supported format, `image.data` must point to readable pixel storage
+/// covering `image.width * image.height` pixels for the duration of this call.
+#[allow(non_snake_case, unused_parens)]
+pub unsafe fn ImageFromImage(image: Image, rec: Rectangle) -> Image
+{
+    let mut result = Image {
+        data: std::ptr::null_mut(),
+        width: 0,
+        height: 0,
+        mipmaps: 0,
+        format: 0,
+    };
+
+    // Security check to avoid program crash
+    if (image.data.is_null() || (image.width == 0) || (image.height == 0)) { return result; }
+
+    if (image.format < PIXELFORMAT_COMPRESSED_DXT1_RGB as i32)
+    {
+        // Basic rectangle validation: size smaller than image size
+        if ((rec.x >= 0.0) && (rec.y >= 0.0) && (rec.width > 0.0) && (rec.height > 0.0) &&
+            ((rec.x as i32 + rec.width as i32) <= image.width) &&
+            ((rec.y as i32 + rec.height as i32) <= image.height))
+        {
+            let bytesPerPixel = GetPixelDataSize(1, 1, image.format) as usize;
+
+            result.width = rec.width as i32;
+            result.height = rec.height as i32;
+            result.data = unsafe { libc::calloc((rec.width *rec.height *bytesPerPixel as f32) as usize, 1) };
+            result.format = image.format;
+            result.mipmaps = 1;
+
+            for y in 0..rec.height as i32
+            {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        (image.data as *const u8).add(((y + rec.y as i32)*image.width + rec.x as i32) as usize*bytesPerPixel),
+                        (result.data as *mut u8).add((y*rec.width as i32) as usize*bytesPerPixel),
+                        rec.width as i32 as usize*bytesPerPixel);
+                }
+            }
+        }
+        else { warn!("IMAGE: ImageToImage(), rectangle provided not valid"); }
+    }
+    else { warn!("IMAGE: Image manipulation not supported for compressed formats"); }
+
+    return result;
+}
 
 pub fn load_image(file_name: &str) -> Image {
     unsafe {
@@ -73,7 +199,7 @@ pub fn load_image(file_name: &str) -> Image {
     }
 }
 
-pub fn unload_image(image: &mut Image) {
+pub fn UnloadImage(image: &mut Image) {
     unsafe {
         if !image.data.is_null() {
             crate::external::stbi_image_free(image.data);
@@ -82,19 +208,19 @@ pub fn unload_image(image: &mut Image) {
     }
 }
 
-pub fn load_texture(file_name: &str) -> Texture {
+pub fn LoadTexture(file_name: &str) -> Texture {
     let mut image = load_image(file_name);
-    let texture = load_texture_from_image(&image);
-    unload_image(&mut image);
+    let texture = LoadTextureFromImage(&image);
+    UnloadImage(&mut image);
     texture
 }
 
-pub fn load_texture_from_image(image: &Image) -> Texture {
+pub fn LoadTextureFromImage(image: &Image) -> Texture {
     if image.data.is_null() || image.width <= 0 || image.height <= 0 {
         return Texture { id: 0, width: 0, height: 0, mipmaps: 0, format: 0 };
     }
     unsafe {
-        let id = rlgl::rlLoadTexture(
+        let id = rlLoadTexture(
             image.data,
             image.width,
             image.height,
@@ -112,18 +238,25 @@ pub fn load_texture_from_image(image: &Image) -> Texture {
     }
 }
 
-pub fn unload_texture(texture: &mut Texture) {
+pub fn UnloadTexture(texture: &mut Texture) {
     unsafe {
-        rlgl::rlUnloadTexture(texture.id);
+        rlUnloadTexture(texture.id);
         texture.id = 0;
     }
 }
 
-pub fn draw_texture(texture: &Texture, pos_x: i32, pos_y: i32, tint: Color) {
-    draw_texture_ex(texture, Vector2::new(pos_x as f32, pos_y as f32), 0.0, 1.0, tint);
+// Draw a texture
+pub fn DrawTexture(texture: &Texture, pos_x: i32, pos_y: i32, tint: Color) {
+    DrawTextureEx(texture, Vector2::new(pos_x as f32, pos_y as f32), 0.0, 1.0, tint);
 }
 
-pub fn draw_texture_ex(texture: &Texture, position: Vector2, rotation: f32, scale: f32, tint: Color) {
+// Draw a texture with position defined as Vector2
+pub fn DrawTextureV(texture: &Texture, pos: Vector2,  tint: Color) {
+    DrawTextureEx(texture, pos, 0.0, 1.0, tint);
+}
+
+// Draw a texture with rotation and scale
+pub fn DrawTextureEx(texture: &Texture, position: Vector2, rotation: f32, scale: f32, tint: Color) {
     let source = Rectangle::new(0.0, 0.0, texture.width as f32, texture.height as f32);
     let dest = Rectangle::new(
         position.x,
@@ -132,16 +265,19 @@ pub fn draw_texture_ex(texture: &Texture, position: Vector2, rotation: f32, scal
         texture.height as f32 * scale,
     );
     let origin = Vector2::new(0.0, 0.0);
-    draw_texture_pro(texture, source, dest, origin, rotation, tint);
+    DrawTexturePro(texture, source, dest, origin, rotation, tint);
 }
 
-pub fn draw_texture_rec(texture: &Texture, source: Rectangle, position: Vector2, tint: Color) {
+// Draw a part of a texture (defined by a rectangle)
+pub fn DrawTextureRec(texture: &Texture, source: Rectangle, position: Vector2, tint: Color) {
     let dest = Rectangle::new(position.x, position.y, source.width.abs(), source.height.abs());
     let origin = Vector2::new(0.0, 0.0);
-    draw_texture_pro(texture, source, dest, origin, 0.0, tint);
+    DrawTexturePro(texture, source, dest, origin, 0.0, tint);
 }
 
-pub fn draw_texture_pro(
+// Draw a part of a texture (defined by a rectangle) with 'pro' parameters
+// NOTE: origin is relative to destination rectangle size
+pub fn DrawTexturePro(
     texture: &Texture,
     source: Rectangle,
     dest: Rectangle,
@@ -202,45 +338,45 @@ pub fn draw_texture_pro(
     }
 
     unsafe {
-        rlgl::rlSetTexture(texture.id);
-        rlgl::rlBegin(RL_QUADS);
-        rlgl::rlColor4ub(tint.r, tint.g, tint.b, tint.a);
+        rlSetTexture(texture.id);
+        rlBegin(RL_QUADS);
+        rlColor4ub(tint.r, tint.g, tint.b, tint.a);
 
         // Bottom-left corner
-        rlgl::rlTexCoord2f(
+        rlTexCoord2f(
             if flip_x { (src.x + src.width) / width } else { src.x / width },
             if flip_y { src.y / height } else { (src.y + src.height) / height },
         );
-        rlgl::rlVertex2f(bottom_left.x, bottom_left.y);
+        rlVertex2f(bottom_left.x, bottom_left.y);
 
         // Bottom-right corner
-        rlgl::rlTexCoord2f(
+        rlTexCoord2f(
             if flip_x { src.x / width } else { (src.x + src.width) / width },
             if flip_y { src.y / height } else { (src.y + src.height) / height },
         );
-        rlgl::rlVertex2f(bottom_right.x, bottom_right.y);
+        rlVertex2f(bottom_right.x, bottom_right.y);
 
         // Top-right corner
-        rlgl::rlTexCoord2f(
+        rlTexCoord2f(
             if flip_x { src.x / width } else { (src.x + src.width) / width },
             if flip_y { (src.y + src.height) / height } else { src.y / height },
         );
-        rlgl::rlVertex2f(top_right.x, top_right.y);
+        rlVertex2f(top_right.x, top_right.y);
 
         // Top-left corner
-        rlgl::rlTexCoord2f(
+        rlTexCoord2f(
             if flip_x { (src.x + src.width) / width } else { src.x / width },
             if flip_y { (src.y + src.height) / height } else { src.y / height },
         );
-        rlgl::rlVertex2f(top_left.x, top_left.y);
+        rlVertex2f(top_left.x, top_left.y);
 
-        rlgl::rlEnd();
+        rlEnd();
     }
 }
 
-pub fn draw_texture_n_patch(
+pub fn DrawTextureNPatch(
     texture: &Texture,
-    n_patch_info: crate::types::NPatchInfo,
+    n_patch_info: NPatchInfo,
     dest: Rectangle,
     origin: Vector2,
     rotation: f32,
@@ -261,10 +397,10 @@ pub fn draw_texture_n_patch(
             source.y -= source.height;
         }
 
-        if n_patch_info.layout == crate::types::NPatchLayout::ThreePatchHorizontal as i32 {
+        if n_patch_info.layout == NPatchLayout::ThreePatchHorizontal as i32 {
             patch_height = source.height;
         }
-        if n_patch_info.layout == crate::types::NPatchLayout::ThreePatchVertical as i32 {
+        if n_patch_info.layout == NPatchLayout::ThreePatchVertical as i32 {
             patch_width = source.width;
         }
 
@@ -277,7 +413,7 @@ pub fn draw_texture_n_patch(
 
         // Adjust lateral border widths
         if patch_width <= (left_border + right_border)
-            && n_patch_info.layout != crate::types::NPatchLayout::ThreePatchVertical as i32
+            && n_patch_info.layout != NPatchLayout::ThreePatchVertical as i32
         {
             draw_center = false;
             left_border = (left_border / (left_border + right_border)) * patch_width;
@@ -286,7 +422,7 @@ pub fn draw_texture_n_patch(
 
         // Adjust lateral border heights
         if patch_height <= (top_border + bottom_border)
-            && n_patch_info.layout != crate::types::NPatchLayout::ThreePatchHorizontal as i32
+            && n_patch_info.layout != NPatchLayout::ThreePatchHorizontal as i32
         {
             draw_middle = false;
             top_border = (top_border / (top_border + bottom_border)) * patch_height;
@@ -307,121 +443,121 @@ pub fn draw_texture_n_patch(
         let coord_d = Vector2::new((source.x + source.width) / width, (source.y + source.height) / height);
 
         unsafe {
-            rlgl::rlSetTexture(texture.id);
-            rlgl::rlPushMatrix();
-            rlgl::rlTranslatef(dest.x, dest.y, 0.0);
-            rlgl::rlRotatef(rotation, 0.0, 0.0, 1.0);
-            rlgl::rlTranslatef(-origin.x, -origin.y, 0.0);
+            rlSetTexture(texture.id);
+            rlPushMatrix();
+            rlTranslatef(dest.x, dest.y, 0.0);
+            rlRotatef(rotation, 0.0, 0.0, 1.0);
+            rlTranslatef(-origin.x, -origin.y, 0.0);
 
-            rlgl::rlBegin(rlgl::RL_QUADS);
-            rlgl::rlColor4ub(tint.r, tint.g, tint.b, tint.a);
+            rlBegin(RL_QUADS);
+            rlColor4ub(tint.r, tint.g, tint.b, tint.a);
 
-            if n_patch_info.layout == crate::types::NPatchLayout::NinePatch as i32 {
+            if n_patch_info.layout == NPatchLayout::NinePatch as i32 {
                 // TOP-LEFT QUAD
-                rlgl::rlTexCoord2f(coord_a.x, coord_b.y); rlgl::rlVertex2f(vert_a.x, vert_b.y);
-                rlgl::rlTexCoord2f(coord_b.x, coord_b.y); rlgl::rlVertex2f(vert_b.x, vert_b.y);
-                rlgl::rlTexCoord2f(coord_b.x, coord_a.y); rlgl::rlVertex2f(vert_b.x, vert_a.y);
-                rlgl::rlTexCoord2f(coord_a.x, coord_a.y); rlgl::rlVertex2f(vert_a.x, vert_a.y);
+                rlTexCoord2f(coord_a.x, coord_b.y); rlVertex2f(vert_a.x, vert_b.y);
+                rlTexCoord2f(coord_b.x, coord_b.y); rlVertex2f(vert_b.x, vert_b.y);
+                rlTexCoord2f(coord_b.x, coord_a.y); rlVertex2f(vert_b.x, vert_a.y);
+                rlTexCoord2f(coord_a.x, coord_a.y); rlVertex2f(vert_a.x, vert_a.y);
 
                 if draw_center {
                     // TOP-CENTER QUAD
-                    rlgl::rlTexCoord2f(coord_b.x, coord_b.y); rlgl::rlVertex2f(vert_b.x, vert_b.y);
-                    rlgl::rlTexCoord2f(coord_c.x, coord_b.y); rlgl::rlVertex2f(vert_c.x, vert_b.y);
-                    rlgl::rlTexCoord2f(coord_c.x, coord_a.y); rlgl::rlVertex2f(vert_c.x, vert_a.y);
-                    rlgl::rlTexCoord2f(coord_b.x, coord_a.y); rlgl::rlVertex2f(vert_b.x, vert_a.y);
+                    rlTexCoord2f(coord_b.x, coord_b.y); rlVertex2f(vert_b.x, vert_b.y);
+                    rlTexCoord2f(coord_c.x, coord_b.y); rlVertex2f(vert_c.x, vert_b.y);
+                    rlTexCoord2f(coord_c.x, coord_a.y); rlVertex2f(vert_c.x, vert_a.y);
+                    rlTexCoord2f(coord_b.x, coord_a.y); rlVertex2f(vert_b.x, vert_a.y);
                 }
 
                 // TOP-RIGHT QUAD
-                rlgl::rlTexCoord2f(coord_c.x, coord_b.y); rlgl::rlVertex2f(vert_c.x, vert_b.y);
-                rlgl::rlTexCoord2f(coord_d.x, coord_b.y); rlgl::rlVertex2f(vert_d.x, vert_b.y);
-                rlgl::rlTexCoord2f(coord_d.x, coord_a.y); rlgl::rlVertex2f(vert_d.x, vert_a.y);
-                rlgl::rlTexCoord2f(coord_c.x, coord_a.y); rlgl::rlVertex2f(vert_c.x, vert_a.y);
+                rlTexCoord2f(coord_c.x, coord_b.y); rlVertex2f(vert_c.x, vert_b.y);
+                rlTexCoord2f(coord_d.x, coord_b.y); rlVertex2f(vert_d.x, vert_b.y);
+                rlTexCoord2f(coord_d.x, coord_a.y); rlVertex2f(vert_d.x, vert_a.y);
+                rlTexCoord2f(coord_c.x, coord_a.y); rlVertex2f(vert_c.x, vert_a.y);
 
                 if draw_middle {
                     // MIDDLE-LEFT QUAD
-                    rlgl::rlTexCoord2f(coord_a.x, coord_c.y); rlgl::rlVertex2f(vert_a.x, vert_c.y);
-                    rlgl::rlTexCoord2f(coord_b.x, coord_c.y); rlgl::rlVertex2f(vert_b.x, vert_c.y);
-                    rlgl::rlTexCoord2f(coord_b.x, coord_b.y); rlgl::rlVertex2f(vert_b.x, vert_b.y);
-                    rlgl::rlTexCoord2f(coord_a.x, coord_b.y); rlgl::rlVertex2f(vert_a.x, vert_b.y);
+                    rlTexCoord2f(coord_a.x, coord_c.y); rlVertex2f(vert_a.x, vert_c.y);
+                    rlTexCoord2f(coord_b.x, coord_c.y); rlVertex2f(vert_b.x, vert_c.y);
+                    rlTexCoord2f(coord_b.x, coord_b.y); rlVertex2f(vert_b.x, vert_b.y);
+                    rlTexCoord2f(coord_a.x, coord_b.y); rlVertex2f(vert_a.x, vert_b.y);
 
                     if draw_center {
                         // MIDDLE-CENTER QUAD
-                        rlgl::rlTexCoord2f(coord_b.x, coord_c.y); rlgl::rlVertex2f(vert_b.x, vert_c.y);
-                        rlgl::rlTexCoord2f(coord_c.x, coord_c.y); rlgl::rlVertex2f(vert_c.x, vert_c.y);
-                        rlgl::rlTexCoord2f(coord_c.x, coord_b.y); rlgl::rlVertex2f(vert_c.x, vert_b.y);
-                        rlgl::rlTexCoord2f(coord_b.x, coord_b.y); rlgl::rlVertex2f(vert_b.x, vert_b.y);
+                        rlTexCoord2f(coord_b.x, coord_c.y); rlVertex2f(vert_b.x, vert_c.y);
+                        rlTexCoord2f(coord_c.x, coord_c.y); rlVertex2f(vert_c.x, vert_c.y);
+                        rlTexCoord2f(coord_c.x, coord_b.y); rlVertex2f(vert_c.x, vert_b.y);
+                        rlTexCoord2f(coord_b.x, coord_b.y); rlVertex2f(vert_b.x, vert_b.y);
                     }
 
                     // MIDDLE-RIGHT QUAD
-                    rlgl::rlTexCoord2f(coord_c.x, coord_c.y); rlgl::rlVertex2f(vert_c.x, vert_c.y);
-                    rlgl::rlTexCoord2f(coord_d.x, coord_c.y); rlgl::rlVertex2f(vert_d.x, vert_c.y);
-                    rlgl::rlTexCoord2f(coord_d.x, coord_b.y); rlgl::rlVertex2f(vert_d.x, vert_b.y);
-                    rlgl::rlTexCoord2f(coord_c.x, coord_b.y); rlgl::rlVertex2f(vert_c.x, vert_b.y);
+                    rlTexCoord2f(coord_c.x, coord_c.y); rlVertex2f(vert_c.x, vert_c.y);
+                    rlTexCoord2f(coord_d.x, coord_c.y); rlVertex2f(vert_d.x, vert_c.y);
+                    rlTexCoord2f(coord_d.x, coord_b.y); rlVertex2f(vert_d.x, vert_b.y);
+                    rlTexCoord2f(coord_c.x, coord_b.y); rlVertex2f(vert_c.x, vert_b.y);
                 }
 
                 // BOTTOM-LEFT QUAD
-                rlgl::rlTexCoord2f(coord_a.x, coord_d.y); rlgl::rlVertex2f(vert_a.x, vert_d.y);
-                rlgl::rlTexCoord2f(coord_b.x, coord_d.y); rlgl::rlVertex2f(vert_b.x, vert_d.y);
-                rlgl::rlTexCoord2f(coord_b.x, coord_c.y); rlgl::rlVertex2f(vert_b.x, vert_c.y);
-                rlgl::rlTexCoord2f(coord_a.x, coord_c.y); rlgl::rlVertex2f(vert_a.x, vert_c.y);
+                rlTexCoord2f(coord_a.x, coord_d.y); rlVertex2f(vert_a.x, vert_d.y);
+                rlTexCoord2f(coord_b.x, coord_d.y); rlVertex2f(vert_b.x, vert_d.y);
+                rlTexCoord2f(coord_b.x, coord_c.y); rlVertex2f(vert_b.x, vert_c.y);
+                rlTexCoord2f(coord_a.x, coord_c.y); rlVertex2f(vert_a.x, vert_c.y);
 
                 if draw_center {
                     // BOTTOM-CENTER QUAD
-                    rlgl::rlTexCoord2f(coord_b.x, coord_d.y); rlgl::rlVertex2f(vert_b.x, vert_d.y);
-                    rlgl::rlTexCoord2f(coord_c.x, coord_d.y); rlgl::rlVertex2f(vert_c.x, vert_d.y);
-                    rlgl::rlTexCoord2f(coord_c.x, coord_c.y); rlgl::rlVertex2f(vert_c.x, vert_c.y);
-                    rlgl::rlTexCoord2f(coord_b.x, coord_c.y); rlgl::rlVertex2f(vert_b.x, vert_c.y);
+                    rlTexCoord2f(coord_b.x, coord_d.y); rlVertex2f(vert_b.x, vert_d.y);
+                    rlTexCoord2f(coord_c.x, coord_d.y); rlVertex2f(vert_c.x, vert_d.y);
+                    rlTexCoord2f(coord_c.x, coord_c.y); rlVertex2f(vert_c.x, vert_c.y);
+                    rlTexCoord2f(coord_b.x, coord_c.y); rlVertex2f(vert_b.x, vert_c.y);
                 }
 
                 // BOTTOM-RIGHT QUAD
-                rlgl::rlTexCoord2f(coord_c.x, coord_d.y); rlgl::rlVertex2f(vert_c.x, vert_d.y);
-                rlgl::rlTexCoord2f(coord_d.x, coord_d.y); rlgl::rlVertex2f(vert_d.x, vert_d.y);
-                rlgl::rlTexCoord2f(coord_d.x, coord_c.y); rlgl::rlVertex2f(vert_d.x, vert_c.y);
-                rlgl::rlTexCoord2f(coord_c.x, coord_c.y); rlgl::rlVertex2f(vert_c.x, vert_c.y);
-            } else if n_patch_info.layout == crate::types::NPatchLayout::ThreePatchVertical as i32 {
+                rlTexCoord2f(coord_c.x, coord_d.y); rlVertex2f(vert_c.x, vert_d.y);
+                rlTexCoord2f(coord_d.x, coord_d.y); rlVertex2f(vert_d.x, vert_d.y);
+                rlTexCoord2f(coord_d.x, coord_c.y); rlVertex2f(vert_d.x, vert_c.y);
+                rlTexCoord2f(coord_c.x, coord_c.y); rlVertex2f(vert_c.x, vert_c.y);
+            } else if n_patch_info.layout == NPatchLayout::ThreePatchVertical as i32 {
                 // TOP QUAD
-                rlgl::rlTexCoord2f(coord_a.x, coord_b.y); rlgl::rlVertex2f(vert_a.x, vert_b.y);
-                rlgl::rlTexCoord2f(coord_d.x, coord_b.y); rlgl::rlVertex2f(vert_d.x, vert_b.y);
-                rlgl::rlTexCoord2f(coord_d.x, coord_a.y); rlgl::rlVertex2f(vert_d.x, vert_a.y);
-                rlgl::rlTexCoord2f(coord_a.x, coord_a.y); rlgl::rlVertex2f(vert_a.x, vert_a.y);
+                rlTexCoord2f(coord_a.x, coord_b.y); rlVertex2f(vert_a.x, vert_b.y);
+                rlTexCoord2f(coord_d.x, coord_b.y); rlVertex2f(vert_d.x, vert_b.y);
+                rlTexCoord2f(coord_d.x, coord_a.y); rlVertex2f(vert_d.x, vert_a.y);
+                rlTexCoord2f(coord_a.x, coord_a.y); rlVertex2f(vert_a.x, vert_a.y);
 
                 if draw_center {
                     // MIDDLE QUAD
-                    rlgl::rlTexCoord2f(coord_a.x, coord_c.y); rlgl::rlVertex2f(vert_a.x, vert_c.y);
-                    rlgl::rlTexCoord2f(coord_d.x, coord_c.y); rlgl::rlVertex2f(vert_d.x, vert_c.y);
-                    rlgl::rlTexCoord2f(coord_d.x, coord_b.y); rlgl::rlVertex2f(vert_d.x, vert_b.y);
-                    rlgl::rlTexCoord2f(coord_a.x, coord_b.y); rlgl::rlVertex2f(vert_a.x, vert_b.y);
+                    rlTexCoord2f(coord_a.x, coord_c.y); rlVertex2f(vert_a.x, vert_c.y);
+                    rlTexCoord2f(coord_d.x, coord_c.y); rlVertex2f(vert_d.x, vert_c.y);
+                    rlTexCoord2f(coord_d.x, coord_b.y); rlVertex2f(vert_d.x, vert_b.y);
+                    rlTexCoord2f(coord_a.x, coord_b.y); rlVertex2f(vert_a.x, vert_b.y);
                 }
 
                 // BOTTOM QUAD
-                rlgl::rlTexCoord2f(coord_a.x, coord_d.y); rlgl::rlVertex2f(vert_a.x, vert_d.y);
-                rlgl::rlTexCoord2f(coord_d.x, coord_d.y); rlgl::rlVertex2f(vert_d.x, vert_d.y);
-                rlgl::rlTexCoord2f(coord_d.x, coord_c.y); rlgl::rlVertex2f(vert_d.x, vert_c.y);
-                rlgl::rlTexCoord2f(coord_a.x, coord_c.y); rlgl::rlVertex2f(vert_a.x, vert_c.y);
-            } else if n_patch_info.layout == crate::types::NPatchLayout::ThreePatchHorizontal as i32 {
+                rlTexCoord2f(coord_a.x, coord_d.y); rlVertex2f(vert_a.x, vert_d.y);
+                rlTexCoord2f(coord_d.x, coord_d.y); rlVertex2f(vert_d.x, vert_d.y);
+                rlTexCoord2f(coord_d.x, coord_c.y); rlVertex2f(vert_d.x, vert_c.y);
+                rlTexCoord2f(coord_a.x, coord_c.y); rlVertex2f(vert_a.x, vert_c.y);
+            } else if n_patch_info.layout == NPatchLayout::ThreePatchHorizontal as i32 {
                 // LEFT QUAD
-                rlgl::rlTexCoord2f(coord_a.x, coord_d.y); rlgl::rlVertex2f(vert_a.x, vert_d.y);
-                rlgl::rlTexCoord2f(coord_b.x, coord_d.y); rlgl::rlVertex2f(vert_b.x, vert_d.y);
-                rlgl::rlTexCoord2f(coord_b.x, coord_a.y); rlgl::rlVertex2f(vert_b.x, vert_a.y);
-                rlgl::rlTexCoord2f(coord_a.x, coord_a.y); rlgl::rlVertex2f(vert_a.x, vert_a.y);
+                rlTexCoord2f(coord_a.x, coord_d.y); rlVertex2f(vert_a.x, vert_d.y);
+                rlTexCoord2f(coord_b.x, coord_d.y); rlVertex2f(vert_b.x, vert_d.y);
+                rlTexCoord2f(coord_b.x, coord_a.y); rlVertex2f(vert_b.x, vert_a.y);
+                rlTexCoord2f(coord_a.x, coord_a.y); rlVertex2f(vert_a.x, vert_a.y);
 
                 if draw_center {
                     // CENTER QUAD
-                    rlgl::rlTexCoord2f(coord_b.x, coord_d.y); rlgl::rlVertex2f(vert_b.x, vert_d.y);
-                    rlgl::rlTexCoord2f(coord_c.x, coord_d.y); rlgl::rlVertex2f(vert_c.x, vert_d.y);
-                    rlgl::rlTexCoord2f(coord_c.x, coord_a.y); rlgl::rlVertex2f(vert_c.x, vert_a.y);
-                    rlgl::rlTexCoord2f(coord_b.x, coord_a.y); rlgl::rlVertex2f(vert_b.x, vert_a.y);
+                    rlTexCoord2f(coord_b.x, coord_d.y); rlVertex2f(vert_b.x, vert_d.y);
+                    rlTexCoord2f(coord_c.x, coord_d.y); rlVertex2f(vert_c.x, vert_d.y);
+                    rlTexCoord2f(coord_c.x, coord_a.y); rlVertex2f(vert_c.x, vert_a.y);
+                    rlTexCoord2f(coord_b.x, coord_a.y); rlVertex2f(vert_b.x, vert_a.y);
                 }
 
                 // RIGHT QUAD
-                rlgl::rlTexCoord2f(coord_c.x, coord_d.y); rlgl::rlVertex2f(vert_c.x, vert_d.y);
-                rlgl::rlTexCoord2f(coord_d.x, coord_d.y); rlgl::rlVertex2f(vert_d.x, vert_d.y);
-                rlgl::rlTexCoord2f(coord_d.x, coord_a.y); rlgl::rlVertex2f(vert_d.x, vert_a.y);
-                rlgl::rlTexCoord2f(coord_c.x, coord_a.y); rlgl::rlVertex2f(vert_c.x, vert_a.y);
+                rlTexCoord2f(coord_c.x, coord_d.y); rlVertex2f(vert_c.x, vert_d.y);
+                rlTexCoord2f(coord_d.x, coord_d.y); rlVertex2f(vert_d.x, vert_d.y);
+                rlTexCoord2f(coord_d.x, coord_a.y); rlVertex2f(vert_d.x, vert_a.y);
+                rlTexCoord2f(coord_c.x, coord_a.y); rlVertex2f(vert_c.x, vert_a.y);
             }
 
-            rlgl::rlEnd();
-            rlgl::rlPopMatrix();
+            rlEnd();
+            rlPopMatrix();
         }
     }
 }

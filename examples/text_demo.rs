@@ -1,7 +1,9 @@
-use raylib_rs::rcore::*;
-use raylib_rs::rcore_desktop_sdl::WindowShouldClose;
-use raylib_rs::rtext::*;
-use raylib_rs::types::Color;
+use raylib::rcore::{
+    BeginDrawing, ClearBackground, CloseWindow, EndDrawing, InitWindow, SetTargetFPS,
+};
+use raylib::rcore_desktop_sdl::*;
+use raylib::rtext::*;
+use raylib::types::Color;
 
 fn main() {
     let screen_width = 800;
