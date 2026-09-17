@@ -1,9 +1,11 @@
-use raylib_rs::rcore::*;
-use raylib_rs::rcore_desktop_sdl::*;
-use raylib_rs::rshapes::*;
-use raylib_rs::rtext::*;
-use raylib_rs::types::KeyboardKey::*;
-use raylib_rs::types::{Camera2D, Color, Rectangle, Vector2};
+use raylib::rcore::*;
+use raylib::rcore_desktop_sdl::*;
+use raylib::rshapes::*;
+use raylib::rtext::DrawText;
+use raylib::rtext::*;
+use raylib::rtextures::Fade;
+use raylib::types::KeyboardKey::*;
+use raylib::types::{Camera2D, Color, Rectangle, Vector2};
 
 const MAX_BUILDINGS: usize = 100;
 
@@ -120,20 +122,20 @@ fn main() {
             DrawRectangle(screen_width - 5, 5, 5, screen_height - 10, Color::RED);
             DrawRectangle(0, screen_height - 5, screen_width, 5, Color::RED);
 
-            //DrawRectangle(10, 10, 250, 113, Fade(Color::SKYBLUE, 0.5));
+            DrawRectangle(10, 10, 250, 113, Fade(Color::SKYBLUE, 0.5));
             DrawRectangleLines(10, 10, 250, 113, Color::BLUE);
 
-            //DrawText("Free 2D camera controls:", 20, 20, 10, Color::BLACK);
-            //DrawText("- Right/Left to move player", 40, 40, 10, Color::DARKGRAY);
-            //DrawText("- Mouse Wheel to Zoom in-out", 40, 60, 10, Color::DARKGRAY);
-            //DrawText("- A / S to Rotate", 40, 80, 10, Color::DARKGRAY);
-            //DrawText(
-            //    "- R to reset Zoom and Rotation",
-            //    40,
-            //    100,
-            //    10,
-            //    Color::DARKGRAY,
-            //);
+            DrawText("Free 2D camera controls:", 20, 20, 10, Color::BLACK);
+            DrawText("- Right/Left to move player", 40, 40, 10, Color::DARKGRAY);
+            DrawText("- Mouse Wheel to Zoom in-out", 40, 60, 10, Color::DARKGRAY);
+            DrawText("- A / S to Rotate", 40, 80, 10, Color::DARKGRAY);
+            DrawText(
+                "- R to reset Zoom and Rotation",
+                40,
+                100,
+                10,
+                Color::DARKGRAY,
+            );
 
             EndDrawing();
         }
