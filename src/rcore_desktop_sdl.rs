@@ -1009,22 +1009,26 @@ pub unsafe fn SetClipboardText(text: &str)
 }
 
 // Get clipboard text content
-pub unsafe fn GetClipboardText() -> String
-{
-    let mut buffer = [0 as std::ffi::c_char; MAX_CLIPBOARD_BUFFER_LENGTH];
-
-    let clipboard = SDL_GetClipboardText();
-
-    let clipboardSize = libc::snprintf(buffer.as_mut_ptr(), MAX_CLIPBOARD_BUFFER_LENGTH, c"%s".as_ptr(), clipboard);
-    if (clipboardSize >= MAX_CLIPBOARD_BUFFER_LENGTH as i32)
-    {
-        let truncate = buffer.as_mut_ptr().add(MAX_CLIPBOARD_BUFFER_LENGTH - 4);
-        libc::sprintf(truncate, c"...".as_ptr());
+pub unsafe fn GetClipboardText() -> String {
+    let clipboard = unsafe { SDL_GetClipboardText() };
+    if clipboard.is_null() {
+        return String::new();
     }
 
-    SDL_free(clipboard.cast());
+    let bytes = unsafe { CStr::from_ptr(clipboard) }.to_bytes();
 
-    return CStr::from_ptr(buffer.as_ptr()).to_string_lossy().into_owned();
+    let text = if bytes.len() >= MAX_CLIPBOARD_BUFFER_LENGTH {
+        let mut text =
+            String::from_utf8_lossy(&bytes[..MAX_CLIPBOARD_BUFFER_LENGTH - 4])
+                .into_owned();
+        text.push_str("...");
+        text
+    } else {
+        String::from_utf8_lossy(bytes).into_owned()
+    };
+
+    unsafe { SDL_free(clipboard.cast()) };
+    text
 }
 
 // Get clipboard image
