@@ -745,7 +745,7 @@ pub unsafe fn DrawRectangleRounded(rec: Rectangle, mut roundness: f32, mut segme
     if radius <= 0.0 { return; }
 
     // Calculate number of segments to use for the corners
-    if segments < 4
+    if segments < 1
     {
         // Calculate the maximum angle between segments based on the error rate (usually 0.5f)
         let th: f32 = (2.0*(1.0 - SMOOTH_CIRCLE_ERROR_RATE/radius).powf(2.0) - 1.0).acos();
@@ -771,13 +771,32 @@ pub unsafe fn DrawRectangleRounded(rec: Rectangle, mut roundness: f32, mut segme
           \|____________________|/
           P5                    P4
     */
-    // Coordinates of the 12 points that define the rounded rect
-    let point: [ Vector2; 12 ] = [
-        Vector2 {x: (rec.x as f32) + radius, y: rec.y}, Vector2 {x: ((rec.x + rec.width) as f32) - radius, y: rec.y}, Vector2 { x: rec.x + rec.width, y: (rec.y as f32) + radius },     // PO, P1, P2
-        Vector2 {x: rec.x + rec.width, y: ((rec.y + rec.height) as f32) - radius}, Vector2 {x: ((rec.x + rec.width) as f32) - radius, y: rec.y + rec.height},           // P3, P4
-        Vector2 {x: (rec.x as f32) + radius, y: rec.y + rec.height}, Vector2 { x: rec.x, y: ((rec.y + rec.height) as f32) - radius}, Vector2 {x: rec.x, y: (rec.y as f32) + radius},    // P5, P6, P7
-        Vector2 {x: (rec.x as f32) + radius, y: (rec.y as f32) + radius}, Vector2 {x: ((rec.x + rec.width) as f32) - radius, y: (rec.y as f32) + radius},                   // P8, P9
-        Vector2 {x: ((rec.x + rec.width) as f32) - radius, y: ((rec.y + rec.height) as f32) - radius}, Vector2 {x: (rec.x as f32) + radius, y: ((rec.y + rec.height) as f32) - radius} // P10, P11
+
+    // The x-coordinates used for the rounded rect
+    let x0 = rec.x + radius;
+    let x1 = (rec.x + rec.width) - radius;
+    let x2 = rec.x + rec.width;
+    let x3 = rec.x;
+
+    // The y-coordinates used for the rounded rect
+    let y0 = rec.y;
+    let y1 = rec.y + radius;
+    let y2 = (rec.y + rec.height) - radius;
+    let y3 = rec.y + rec.height;
+
+    let point = [
+        Vector2::new( x0, y0 ), // P0
+        Vector2::new( x1, y0 ), // P1
+        Vector2::new( x2, y1 ), // P2
+        Vector2::new( x2, y2 ), // P3
+        Vector2::new( x1, y3 ), // P4
+        Vector2::new( x0, y3 ), // P5
+        Vector2::new( x3, y2 ), // P6
+        Vector2::new( x3, y1 ), // P7
+        Vector2::new( x0, y1 ), // P8
+        Vector2::new( x1, y1 ), // P9
+        Vector2::new( x1, y2 ), // P10
+        Vector2::new( x0, y2 )  // P11
     ];
 
     let centers: [ Vector2; 4 ] = [ point[8], point[9], point[10], point[11] ];
@@ -906,7 +925,7 @@ pub unsafe fn DrawRectangleRoundedLines(rec: Rectangle, mut roundness: f32, mut 
     if radius <= 0.0 { return; }
 
     // Calculate number of segments to use for the corners
-    if segments < 4
+    if segments < 1
     {
         // Calculate the maximum angle between segments based on the error rate (usually 0.5f)
         let th: f32 = (2.0*(1.0 - SMOOTH_CIRCLE_ERROR_RATE/radius).powf(2.0) - 1.0).acos();
@@ -1003,14 +1022,13 @@ pub unsafe fn DrawRectangleRoundedLinesEx(mut rec: Rectangle, mut roundness: f32
 
     if roundness >= 1.0 { roundness = 1.0; }
 
-    let mut radius: f32 = 0.0;
     let mut roundedOutlineThick: f32 = 0.0;
     let mut outerRadius: f32 = 0.0;
     let mut innerRadius: f32 = 0.0;
     if thick >= 0.0
     {
         // Calculate corner radius
-        radius = if (rec.width > rec.height) { (rec.height*roundness)/2.0 } else { (rec.width*roundness)/2.0 };
+        let radius = if (rec.width > rec.height) { (rec.height*roundness)/2.0 } else { (rec.width*roundness)/2.0 };
         if radius <= 0.0 { return; }
 
         outerRadius = radius;
@@ -1032,7 +1050,7 @@ pub unsafe fn DrawRectangleRoundedLinesEx(mut rec: Rectangle, mut roundness: f32
         }
 
         // Calculate number of segments to use for the corners
-        if segments < 4
+        if segments < 1
         {
             // Calculate the maximum angle between segments based on the error rate (usually 0.5f)
             let th: f32 = (2.0*(1.0 - SMOOTH_CIRCLE_ERROR_RATE/outerRadius).powf(2.0) - 1.0).acos();
@@ -1042,24 +1060,22 @@ pub unsafe fn DrawRectangleRoundedLinesEx(mut rec: Rectangle, mut roundness: f32
     }
     else
     {
-        thick *= -1.0;
-
         // Calculate corner radius
-        radius = if (rec.width > rec.height) { (rec.height*roundness)/2.0 } else { (rec.width*roundness)/2.0 };
+        let radius = if (rec.width > rec.height) { (rec.height*roundness)/2.0 } else { (rec.width*roundness)/2.0 };
         if radius <= 0.0 { return; } // Only possible if the rectangle has 0 width or height
 
         // Expand the rectangle
-        rec.x -= thick;
-        rec.y -= thick;
-        rec.width += thick*2.0;
-        rec.height += thick*2.0;
+        rec.x += thick;
+        rec.y += thick;
+        rec.width -= thick*2.0;
+        rec.height -= thick*2.0;
 
         innerRadius = radius;
-        outerRadius = innerRadius + thick;
-        roundedOutlineThick = thick;
+        outerRadius = innerRadius - thick;
+        roundedOutlineThick = -thick;
 
         // Calculate number of segments to use for the corners
-        if segments < 4
+        if segments < 1
         {
             // Calculate the maximum angle between segments based on the error rate (usually 0.5f)
             let th: f32 = (2.0*(1.0 - SMOOTH_CIRCLE_ERROR_RATE/innerRadius).powf(2.0) - 1.0).acos();
@@ -1072,7 +1088,7 @@ pub unsafe fn DrawRectangleRoundedLinesEx(mut rec: Rectangle, mut roundness: f32
 
     /*
     Quick sketch to make sense of all of this,
-    marks the 16 + 4(corner centers P16-19) points used
+    marks the 16 + 4 (corner centers P16-19) points used
 
            P0 ================== P1
           // P8                P9 \\
