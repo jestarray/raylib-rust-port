@@ -1731,63 +1731,10 @@ pub unsafe fn MemFree(ptr: *mut c_void)
 //----------------------------------------------------------------------------------
 // Module Functions Definition: File System management
 //----------------------------------------------------------------------------------
-// Load data from file into a buffer
-pub unsafe fn LoadFileData(fileName: &str, dataSize: &mut i32) -> *mut u8
-{
-    let mut data: *mut u8 = std::ptr::null_mut();
-    *dataSize = 0;
-
-    if let Ok(fileNameC) = CString::new(fileName)
-    {
-        if let Some(callback) = loadFileData { return callback(fileName, dataSize); }
-
-        let file = libc::fopen(fileNameC.as_ptr(), c"rb".as_ptr());
-
-        if (!file.is_null())
-        {
-            // WARNING: On binary streams SEEK_END could not be found,
-            // using fseek() and ftell() could not work in some (rare) cases
-            libc::fseek(file, 0, libc::SEEK_END);
-            let size = libc::ftell(file) as i32;     // WARNING: ftell() returns 'long int', maximum size returned is INT_MAX (2147483647 bytes)
-            libc::fseek(file, 0, libc::SEEK_SET);
-
-            if (size > 0)
-            {
-                data = libc::calloc(size as usize, std::mem::size_of::<u8>()).cast();
-
-                if (!data.is_null())
-                {
-                    // NOTE: fread() returns number of read elements instead of bytes, so reading [1 byte, size elements]
-                    let count = libc::fread(data.cast(), std::mem::size_of::<u8>(), size as usize, file);
-
-                    // WARNING: fread() returns a size_t value, usually 'unsigned int' (32bit compilation) and 'unsigned long long' (64bit compilation)
-                    // dataSize is unified along raylib as a 'int' type, so, for file-sizes >INT_MAX (2147483647 bytes) there is a limitation
-                    if (count > 2147483647)
-                    {
-                        warn!("FILEIO: [{}] File is bigger than 2147483647 bytes, avoid using LoadFileData()", fileName);
-
-                        libc::free(data.cast());
-                        data = std::ptr::null_mut();
-                    }
-                    else
-                    {
-                        *dataSize = count as i32;
-
-                        if (*dataSize != size) { warn!("FILEIO: [{}] File partially loaded ({} bytes out of {})", fileName, *dataSize, size); }
-                        else { info!("FILEIO: [{}] File loaded successfully", fileName); }
-                    }
-                }
-                else { warn!("FILEIO: [{}] Failed to allocated memory for file reading", fileName); }
-            }
-            else { warn!("FILEIO: [{}] Failed to read file", fileName); }
-
-            libc::fclose(file);
-        }
-        else { warn!("FILEIO: [{}] Failed to open file", fileName); }
-    }
-    else { warn!("FILEIO: File name provided is not valid"); }
-
-    return data;
+/// Reads an entire file into a byte vector (`Vec<u8>`).
+/// Automatically handles file opening, sizing, allocation, reading, and closing.
+pub fn LoadFileData<P: AsRef<std::path::Path>>(file_name: P) -> std::io::Result<Vec<u8>> {
+    std::fs::read(file_name)
 }
 
 // Unload file data allocated by LoadFileData()

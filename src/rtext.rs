@@ -15,6 +15,7 @@
 )]
 use log::{info, warn};
 
+use crate::rcore::LoadFileData;
 use crate::rlgl::{self, rlPopMatrix, rlPushMatrix, rlRotatef, rlTranslatef};
 use crate::rtextures::{self, DrawTexturePro, ImageFromImage};
 use crate::types::{Color, Font, FontType, GlyphInfo, Image, PixelFormat, Rectangle, Texture, Vector2};
@@ -161,15 +162,12 @@ pub unsafe fn LoadFontEx(fileName: &str, fontSize: i32, codepoints: Option<&[i32
         glyphs: Vec::new(),
     };
 
-    let mut data_size = 0;
-    let file_data = crate::rcore::LoadFileData(fileName, &mut data_size);
-    if !file_data.is_null() {
-        if data_size >= 0 {
-            let data = std::slice::from_raw_parts(file_data, data_size as usize);
-            let extension = crate::rcore::GetFileExtension(fileName).unwrap_or("");
+    let file_data = LoadFileData(fileName).unwrap();
+    let data_size = file_data.len();
+    if data_size > 0 {
+        let data = std::slice::from_raw_parts(file_data.as_ptr(), data_size as usize);
+        let extension = crate::rcore::GetFileExtension(fileName).unwrap_or("");
             font = LoadFontFromMemory(extension, data, fontSize, codepoints);
-        }
-        crate::rcore::UnloadFileData(file_data);
     }
 
     font
