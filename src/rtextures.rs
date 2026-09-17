@@ -128,6 +128,105 @@ pub unsafe fn ImageFromImage(image: Image, rec: Rectangle) -> Image
     return result;
 }
 
+/// Copy an uncompressed image into RGBA colors. Drop the vector to release it.
+/// Invalid dimensions, null data, and unsupported formats return an empty vector.
+///
+/// # Safety
+/// `image.data` must point to readable storage for the specified dimensions and
+/// pixel format for the duration of this call.
+pub unsafe fn LoadImageColors(image: &Image) -> Vec<Color> {
+    if image.data.is_null() || image.width <= 0 || image.height <= 0 {
+        return Vec::new();
+    }
+
+    let stride = match image.format {
+        f if f == PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32 => 1,
+        f if f == PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA as i32
+            || f == PIXELFORMAT_UNCOMPRESSED_R5G6B5 as i32
+            || f == PIXELFORMAT_UNCOMPRESSED_R5G5B5A1 as i32
+            || f == PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 as i32
+            || f == PIXELFORMAT_UNCOMPRESSED_R16 as i32 => 2,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R8G8B8 as i32 => 3,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32
+            || f == PIXELFORMAT_UNCOMPRESSED_R32 as i32 => 4,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R16G16B16 as i32 => 6,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 as i32 => 8,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R32G32B32 as i32 => 12,
+        f if f == PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 as i32 => 16,
+        _ => {
+            warn!("IMAGE: Pixel data retrieval not supported for this image format");
+            return Vec::new();
+        }
+    };
+    let Some(pixel_count) = (image.width as usize).checked_mul(image.height as usize) else {
+        return Vec::new();
+    };
+    let Some(byte_count) = pixel_count.checked_mul(stride) else {
+        return Vec::new();
+    };
+    if byte_count > isize::MAX as usize || pixel_count > isize::MAX as usize / std::mem::size_of::<Color>() {
+        return Vec::new();
+    }
+
+    // Decode half floats without requiring aligned input or a separate dependency.
+    let half_to_float = |bits: u16| -> f32 {
+        let sign = ((bits & 0x8000) as u32) << 16;
+        let exponent = (bits >> 10) & 0x1f;
+        let mantissa = (bits & 0x03ff) as u32;
+        match exponent {
+            0 => {
+                let value = mantissa as f32 * (1.0 / 16_777_216.0);
+                if sign == 0 { value } else { -value }
+            }
+            31 => f32::from_bits(sign | 0x7f800000 | (mantissa << 13)),
+            _ => f32::from_bits(sign | (((exponent as u32) + 112) << 23) | (mantissa << 13)),
+        }
+    };
+
+    let bytes = std::slice::from_raw_parts(image.data.cast::<u8>(), byte_count);
+    let mut colors = Vec::with_capacity(pixel_count);
+    for pixel in bytes.chunks_exact(stride) {
+        let color = match image.format {
+            f if f == PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32 => Color::new(pixel[0], pixel[0], pixel[0], 255),
+            f if f == PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA as i32 => Color::new(pixel[0], pixel[0], pixel[0], pixel[1]),
+            f if f == PIXELFORMAT_UNCOMPRESSED_R8G8B8 as i32 => Color::new(pixel[0], pixel[1], pixel[2], 255),
+            f if f == PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 => Color::new(pixel[0], pixel[1], pixel[2], pixel[3]),
+            f if f == PIXELFORMAT_UNCOMPRESSED_R5G6B5 as i32 => {
+                let value = u16::from_ne_bytes([pixel[0], pixel[1]]);
+                // Preserve the C helper's integer channel scaling.
+                Color::new(((value >> 11) * (255 / 31)) as u8,
+                    (((value >> 5) & 63) * (255 / 63)) as u8, ((value & 31) * (255 / 31)) as u8, 255)
+            }
+            f if f == PIXELFORMAT_UNCOMPRESSED_R5G5B5A1 as i32 => {
+                let value = u16::from_ne_bytes([pixel[0], pixel[1]]);
+                Color::new(((value >> 11) * (255 / 31)) as u8,
+                    (((value >> 6) & 31) * (255 / 31)) as u8,
+                    (((value >> 1) & 31) * (255 / 31)) as u8, ((value & 1) * 255) as u8)
+            }
+            f if f == PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 as i32 => {
+                let value = u16::from_ne_bytes([pixel[0], pixel[1]]);
+                Color::new(((value >> 12) * 17) as u8, (((value >> 8) & 15) * 17) as u8,
+                    (((value >> 4) & 15) * 17) as u8, ((value & 15) * 17) as u8)
+            }
+            _ => {
+                let mut channels = [0, 0, 0, 255];
+                if image.format >= PIXELFORMAT_UNCOMPRESSED_R16 as i32 {
+                    for (channel, bytes) in channels.iter_mut().zip(pixel.chunks_exact(2)) {
+                        *channel = (half_to_float(u16::from_ne_bytes([bytes[0], bytes[1]])) * 255.0) as u8;
+                    }
+                } else {
+                    for (channel, bytes) in channels.iter_mut().zip(pixel.chunks_exact(4)) {
+                        *channel = (f32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) * 255.0) as u8;
+                    }
+                }
+                Color::new(channels[0], channels[1], channels[2], channels[3])
+            }
+        };
+        colors.push(color);
+    }
+    colors
+}
+
 pub fn load_image(file_name: &str) -> Image {
     unsafe {
         let Ok(c_file_name) = CString::new(file_name) else {
@@ -560,4 +659,16 @@ pub fn DrawTextureNPatch(
             rlPopMatrix();
         }
     }
+}
+
+// Get color with alpha applied, alpha goes from 0.0 to 1.0
+pub fn Fade(color: Color, alpha: f32) -> Color {
+    let mut result = color;
+
+    // Clamp alpha between 0.0 and 1.0
+    let alpha = alpha.clamp(0.0, 1.0);
+
+    result.a = (255.0 * alpha) as u8;
+
+    result
 }

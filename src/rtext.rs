@@ -13,11 +13,11 @@
     clippy::let_and_return,
     clippy::double_parens
 )]
-use log::info;
+use log::{info, warn};
 
-use crate::rlgl::{rlPopMatrix, rlPushMatrix, rlRotatef, rlTranslatef};
+use crate::rlgl::{self, rlPopMatrix, rlPushMatrix, rlRotatef, rlTranslatef};
 use crate::rtextures::{self, DrawTexturePro, ImageFromImage};
-use crate::types::{Color, Font, GlyphInfo, Image, Rectangle, Texture, Vector2};
+use crate::types::{Color, Font, FontType, GlyphInfo, Image, PixelFormat, Rectangle, Texture, Vector2};
 use std::fs;
 
 pub fn load_font(file_name: &str) -> Font {
@@ -100,7 +100,465 @@ pub fn load_font(file_name: &str) -> Font {
     }
 }
 
-pub fn unload_font(font: &mut Font) {
+/// Load a font into GPU memory. TTF/OTF fonts use a 32-pixel height and the
+/// default 95 codepoints; image fonts use magenta borders and start at codepoint 32.
+///
+/// # Safety
+/// TTF/OTF files and any configured file-loading callback must satisfy the
+/// requirements of `LoadFontEx`. Call on the rendering thread with an initialized
+/// graphics context.
+pub unsafe fn LoadFont(fileName: &str) -> Font {
+    const FONT_TTF_DEFAULT_SIZE: i32 = 32;
+    const FONT_TTF_DEFAULT_FIRST_CHAR: i32 = 32;
+
+    let font = if crate::rcore::IsFileExtension(fileName, ".ttf")
+        || crate::rcore::IsFileExtension(fileName, ".otf")
+    {
+        LoadFontEx(fileName, FONT_TTF_DEFAULT_SIZE, None)
+    } else {
+        let mut image = rtextures::load_image(fileName);
+        let font = if !image.data.is_null() {
+            LoadFontFromImage(&image, Color::MAGENTA, FONT_TTF_DEFAULT_FIRST_CHAR)
+        } else {
+            (&*GetFontDefault()).clone()
+        };
+        rtextures::UnloadImage(&mut image);
+        font
+    };
+
+    if font.texture.id == 0 {
+        warn!("FONT: [{}] Failed to load font texture", fileName);
+    } else {
+        // Apply the TEXTURE_FILTER_POINT behavior, including existing mipmaps.
+        let min_filter = if font.texture.mipmaps > 1 {
+            rlgl::RL_TEXTURE_FILTER_MIP_NEAREST
+        } else {
+            rlgl::RL_TEXTURE_FILTER_NEAREST
+        };
+        rlgl::rlTextureParameters(font.texture.id, rlgl::RL_TEXTURE_MIN_FILTER as i32, min_filter as i32);
+        rlgl::rlTextureParameters(font.texture.id, rlgl::RL_TEXTURE_MAG_FILTER as i32, rlgl::RL_TEXTURE_FILTER_NEAREST as i32);
+        info!("FONT: Data loaded successfully ({} pixel size | {} glyphs)", font.baseSize, font.glyphCount);
+    }
+
+    font
+}
+
+/// Load a font file at the requested pixel height and with the selected codepoints.
+/// `None` selects the default character set (32..126).
+/// A file-read failure returns an empty font, matching the C implementation.
+///
+/// # Safety
+/// TTF/OTF files must contain complete, valid font data. Any configured file-loading
+/// callback must return a readable buffer of its reported length, compatible with
+/// `UnloadFileData`. Call on the rendering thread with an initialized graphics context.
+pub unsafe fn LoadFontEx(fileName: &str, fontSize: i32, codepoints: Option<&[i32]>) -> Font {
+    let mut font = Font {
+        baseSize: 0,
+        glyphCount: 0,
+        glyphPadding: 0,
+        texture: Texture { id: 0, width: 0, height: 0, mipmaps: 0, format: 0 },
+        recs: Vec::new(),
+        glyphs: Vec::new(),
+    };
+
+    let mut data_size = 0;
+    let file_data = crate::rcore::LoadFileData(fileName, &mut data_size);
+    if !file_data.is_null() {
+        if data_size >= 0 {
+            let data = std::slice::from_raw_parts(file_data, data_size as usize);
+            let extension = crate::rcore::GetFileExtension(fileName).unwrap_or("");
+            font = LoadFontFromMemory(extension, data, fontSize, codepoints);
+        }
+        crate::rcore::UnloadFileData(file_data);
+    }
+
+    font
+}
+
+/// Load a TTF or OTF font from memory. The extension is matched ignoring ASCII case.
+/// `None` selects the default 95 codepoints; a slice selects exactly its entries.
+/// Unsupported types or missing glyphs return a clone of the default font,
+/// sharing its image and texture data.
+///
+/// # Safety
+/// For TTF/OTF input, `fileData` must contain a complete, valid font at offset zero;
+/// stb_truetype does not bounds-check font data. Call on the rendering thread
+/// with an initialized graphics context.
+pub unsafe fn LoadFontFromMemory(
+    fileType: &str,
+    fileData: &[u8],
+    fontSize: i32,
+    codepoints: Option<&[i32]>,
+) -> Font {
+    const FONT_TTF_DEFAULT_CHARS_PADDING: i32 = 4;
+
+    let mut glyphs = if fileType.eq_ignore_ascii_case(".ttf") || fileType.eq_ignore_ascii_case(".otf") {
+        LoadFontData(fileData, fontSize, codepoints, FontType::FONT_DEFAULT)
+    } else {
+        Vec::new()
+    };
+
+    if glyphs.is_empty() {
+        warn!("FONT: Font type is unsupported or no glyphs were found, reverted to default font");
+        return (&*GetFontDefault()).clone();
+    }
+
+    let padding = FONT_TTF_DEFAULT_CHARS_PADDING;
+    let Some((mut atlas, recs)) = gen_image_font_atlas(&glyphs, fontSize, padding) else {
+        for glyph in &mut glyphs {
+            rtextures::UnloadImage(&mut glyph.image);
+        }
+        warn!("FONT: Failed to generate font atlas, reverted to default font");
+        return (&*GetFontDefault()).clone();
+    };
+
+    let texture = rtextures::LoadTextureFromImage(&atlas);
+
+    // Replace grayscale glyph images with gray-alpha copies for image text drawing.
+    for (glyph, &rec) in glyphs.iter_mut().zip(&recs) {
+        rtextures::UnloadImage(&mut glyph.image);
+        glyph.image = ImageFromImage(atlas, rec);
+    }
+    rtextures::UnloadImage(&mut atlas);
+
+    info!("FONT: Data loaded successfully ({} pixel size | {} glyphs)", fontSize, glyphs.len());
+    Font {
+        baseSize: fontSize,
+        glyphCount: glyphs.len() as i32,
+        glyphPadding: padding,
+        texture,
+        recs,
+        glyphs,
+    }
+}
+
+// Basic (packMethod == 0) atlas generation used by LoadFontFromMemory.
+// Glyph images must contain readable grayscale data. The returned Image owns
+// its allocation and must be released with UnloadImage.
+unsafe fn gen_image_font_atlas(glyphs: &[GlyphInfo], font_size: i32, padding: i32) -> Option<(Image, Vec<Rectangle>)> {
+    if glyphs.is_empty() || font_size <= 0 || padding < 0 {
+        return None;
+    }
+
+    let padding = padding as usize;
+    let double_padding = padding.checked_mul(2)?;
+    let padded_font_size = (font_size as usize).checked_add(double_padding)?;
+    let mut total_width = 0usize;
+    let mut max_glyph_width = 0usize;
+    for glyph in glyphs {
+        let width = usize::try_from(glyph.image.width).ok()?;
+        let height = usize::try_from(glyph.image.height).ok()?;
+        if width > 0 && height > 0 && (glyph.image.data.is_null()
+            || glyph.image.format != PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32)
+        {
+            return None;
+        }
+        total_width = total_width.checked_add(width.checked_add(double_padding)?)?;
+        max_glyph_width = max_glyph_width.max(width);
+    }
+
+    let total_area = total_width.checked_mul(padded_font_size)? as f64 * 1.2;
+    let estimated_size = (total_area.sqrt().ceil() as usize).max(1).checked_next_power_of_two()?;
+    // Ensure even a single unusually wide glyph fits with the packing margins.
+    let minimum_width = max_glyph_width.checked_add(padding.checked_mul(3)?)?.checked_add(1)?;
+    let width = estimated_size.max(minimum_width.checked_next_power_of_two()?);
+    let mut height = if total_area < (width as f64 * width as f64 / 2.0) {
+        (width / 2).max(1)
+    } else {
+        width
+    };
+
+    // Keep image sizes within the i32 indexing used by the image helpers.
+    let atlas_byte_count = |height: usize| -> Option<usize> {
+        if width > i32::MAX as usize || height > i32::MAX as usize {
+            return None;
+        }
+        let count = width.checked_mul(height)?.checked_mul(2)?;
+        if count > i32::MAX as usize { None } else { Some(count) }
+    };
+    let mut pixels = vec![0u8; atlas_byte_count(height)?];
+    let mut recs = Vec::with_capacity(glyphs.len());
+    let mut offset_x = padding;
+    let mut offset_y = padding;
+    let mut row_height = font_size as usize;
+
+    for glyph in glyphs {
+        let glyph_width = glyph.image.width as usize;
+        let glyph_height = glyph.image.height as usize;
+        if offset_x >= width - glyph_width - double_padding {
+            offset_x = padding;
+            offset_y = offset_y.checked_add(row_height.checked_add(double_padding)?)?;
+            row_height = font_size as usize;
+        }
+        row_height = row_height.max(glyph_height);
+        let required_height = offset_y.checked_add(row_height)?.checked_add(padding)?;
+        while required_height > height {
+            height = height.checked_mul(2)?;
+            pixels.resize(atlas_byte_count(height)?, 0);
+        }
+
+        if glyph_width > 0 && glyph_height > 0 {
+            let glyph_size = glyph_width.checked_mul(glyph_height)?;
+            if glyph_size > isize::MAX as usize { return None; }
+            let source = std::slice::from_raw_parts(glyph.image.data.cast::<u8>(), glyph_size);
+            for y in 0..glyph_height {
+                for x in 0..glyph_width {
+                    pixels[((offset_y + y) * width + offset_x + x) * 2 + 1] = source[y * glyph_width + x];
+                }
+            }
+        }
+        recs.push(Rectangle::new(offset_x as f32, offset_y as f32, glyph_width as f32, glyph_height as f32));
+        offset_x += glyph_width + double_padding;
+    }
+
+    // Gray is white everywhere; the glyph coverage is stored in alpha.
+    for pixel in pixels.chunks_exact_mut(2) {
+        pixel[0] = 255;
+    }
+    // Reserve the white 3x3 atlas corner used for drawing shapes.
+    if width >= 3 && height >= 3 {
+        for y in height - 3..height {
+            for x in width - 3..width {
+                pixels[(y * width + x) * 2 + 1] = 255;
+            }
+        }
+    }
+
+    let data = libc::malloc(pixels.len());
+    if data.is_null() { return None; }
+    std::ptr::copy_nonoverlapping(pixels.as_ptr(), data.cast::<u8>(), pixels.len());
+    Some((Image {
+        data,
+        width: width as i32,
+        height: height as i32,
+        mipmaps: 1,
+        format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA as i32,
+    }, recs))
+}
+
+/// Load an XNA-style image font with key-colored borders between glyphs.
+/// The source image is borrowed; the resulting glyph images are independent copies.
+/// Invalid input returns a clone of the default font, sharing its image and texture data.
+///
+/// # Safety
+/// `image.data` must cover the image dimensions in its declared pixel format.
+/// Call on the rendering thread with an initialized graphics context.
+pub unsafe fn LoadFontFromImage(image: &Image, key: Color, firstChar: i32) -> Font {
+    const MAX_GLYPHS_FROM_IMAGE: usize = 256;
+
+    let default_font = || (&*GetFontDefault()).clone();
+    let mut pixels = rtextures::LoadImageColors(image);
+    let Some(first_pixel) = pixels.iter().position(|&pixel| pixel != key) else {
+        return default_font();
+    };
+
+    let width = image.width as usize;
+    let height = image.height as usize;
+    let char_spacing = first_pixel % width;
+    let line_spacing = first_pixel / width;
+    if char_spacing == 0 || line_spacing == 0 {
+        return default_font();
+    }
+
+    let mut char_height = 0;
+    while line_spacing + char_height < height
+        && pixels[(line_spacing + char_height) * width + char_spacing] != key
+    {
+        char_height += 1;
+    }
+
+    let mut recs = Vec::with_capacity(MAX_GLYPHS_FROM_IMAGE);
+    let mut y = line_spacing;
+    while y + char_height <= height && recs.len() < MAX_GLYPHS_FROM_IMAGE {
+        let mut x = char_spacing;
+        while x < width && pixels[y * width + x] != key && recs.len() < MAX_GLYPHS_FROM_IMAGE {
+            let mut char_width = 0;
+            while x + char_width < width && pixels[y * width + x + char_width] != key {
+                char_width += 1;
+            }
+            recs.push(Rectangle::new(x as f32, y as f32, char_width as f32, char_height as f32));
+            x += char_width + char_spacing;
+        }
+        y += char_height + line_spacing;
+    }
+
+    if recs.is_empty() || firstChar.checked_add(recs.len() as i32 - 1).is_none() {
+        return default_font();
+    }
+
+    // Clear the key color to prevent borders bleeding into scaled glyphs.
+    for pixel in &mut pixels {
+        if *pixel == key {
+            *pixel = Color::BLANK;
+        }
+    }
+    let font_clear = Image {
+        data: pixels.as_mut_ptr().cast(),
+        width: image.width,
+        height: image.height,
+        mipmaps: 1,
+        format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32,
+    };
+
+    let texture = rtextures::LoadTextureFromImage(&font_clear);
+    let glyphs = recs.iter().enumerate().map(|(index, &rec)| GlyphInfo {
+        value: firstChar + index as i32,
+        offset_x: 0,
+        offset_y: 0,
+        advance_x: 0,
+        image: ImageFromImage(font_clear, rec),
+    }).collect();
+
+    // `pixels` owns font_clear.data and is dropped after uploading and copying.
+    Font {
+        baseSize: char_height as i32,
+        glyphCount: recs.len() as i32,
+        glyphPadding: 0,
+        texture,
+        recs,
+        glyphs,
+    }
+}
+
+/// Load glyph metrics and grayscale images from TTF data.
+/// `None` selects codepoints 32..127; an explicit slice selects exactly its entries.
+/// The returned vector's length is the number of glyphs found in the font.
+/// Release each glyph's image with `rtextures::UnloadImage` before dropping the vector.
+///
+/// # Safety
+/// `fileData` must contain a complete, valid font at offset zero. stb_truetype
+/// does not bounds-check font data against the slice length.
+pub unsafe fn LoadFontData(
+    fileData: &[u8],
+    fontSize: i32,
+    codepoints: Option<&[i32]>,
+    font_type: FontType,
+) -> Vec<GlyphInfo> {
+    use crate::external;
+
+    const FONT_SDF_CHAR_PADDING: i32 = 4;
+    const FONT_SDF_ON_EDGE_VALUE: u8 = 128;
+    const FONT_SDF_PIXEL_DIST_SCALE: f32 = 64.0;
+    const FONT_BITMAP_ALPHA_THRESHOLD: u8 = 80;
+
+    if fileData.is_empty() || fontSize <= 0 {
+        return Vec::new();
+    }
+
+    let default_codepoints: [i32; 95] = std::array::from_fn(|i| i as i32 + 32);
+    let required_codepoints = codepoints.unwrap_or(&default_codepoints);
+    if required_codepoints.is_empty() {
+        return Vec::new();
+    }
+
+    let mut font_info: external::stbtt_fontinfo = std::mem::zeroed();
+    if external::stbtt_InitFont(&mut font_info, fileData.as_ptr(), 0) == 0 {
+        warn!("FONT: Failed to process TTF font data");
+        return Vec::new();
+    }
+
+    let scale_factor = external::stbtt_ScaleForPixelHeight(&font_info, fontSize as f32);
+    let mut ascent = 0;
+    let mut descent = 0;
+    let mut line_gap = 0;
+    external::stbtt_GetFontVMetrics(&font_info, &mut ascent, &mut descent, &mut line_gap);
+
+    let glyph_count = required_codepoints.iter().filter(|&&cp| {
+        external::stbtt_FindGlyphIndex(&font_info, cp) > 0
+    }).count();
+    let mut glyphs = Vec::with_capacity(glyph_count);
+
+    for &cp in required_codepoints {
+        if external::stbtt_FindGlyphIndex(&font_info, cp) == 0 {
+            continue;
+        }
+
+        let mut glyph = GlyphInfo { value: cp, ..GlyphInfo::default() };
+        let mut cp_width = 0;
+        let mut cp_height = 0;
+
+        glyph.image.data = match font_type {
+            FontType::FONT_DEFAULT | FontType::FONT_BITMAP => {
+                external::stbtt_GetCodepointBitmap(
+                    &font_info, scale_factor, scale_factor, cp,
+                    &mut cp_width, &mut cp_height, &mut glyph.offset_x, &mut glyph.offset_y,
+                ).cast()
+            }
+            FontType::FONT_SDF if cp != 32 => {
+                external::stbtt_GetCodepointSDF(
+                    &font_info, scale_factor, cp,
+                    FONT_SDF_CHAR_PADDING, FONT_SDF_ON_EDGE_VALUE, FONT_SDF_PIXEL_DIST_SCALE,
+                    &mut cp_width, &mut cp_height, &mut glyph.offset_x, &mut glyph.offset_y,
+                ).cast()
+            }
+            FontType::FONT_SDF => std::ptr::null_mut(),
+        };
+
+        if !glyph.image.data.is_null() {
+            external::stbtt_GetCodepointHMetrics(&font_info, cp, &mut glyph.advance_x, std::ptr::null_mut());
+            glyph.advance_x = (glyph.advance_x as f32 * scale_factor) as i32;
+
+            if font_type != FontType::FONT_SDF && cp_height > fontSize {
+                warn!("FONT: [0x{:04x}] Glyph height is bigger than requested font size: {} > {}", cp, cp_height, fontSize);
+            }
+
+            glyph.image.width = cp_width;
+            glyph.image.height = cp_height;
+            glyph.image.mipmaps = 1;
+            glyph.image.format = PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32;
+            glyph.offset_y += (ascent as f32 * scale_factor) as i32;
+        }
+
+        // Spaces need a blank image with their advance width for atlas generation.
+        if cp == 0x20 || cp == 0x3000 {
+            external::stbtt_GetCodepointHMetrics(&font_info, cp, &mut glyph.advance_x, std::ptr::null_mut());
+            glyph.advance_x = (glyph.advance_x as f32 * scale_factor) as i32;
+
+            // Release any rendered bitmap before replacing it with a blank image.
+            if !glyph.image.data.is_null() {
+                if font_type == FontType::FONT_SDF {
+                    external::stbtt_FreeSDF(glyph.image.data.cast(), font_info.userdata);
+                } else {
+                    external::stbtt_FreeBitmap(glyph.image.data.cast(), font_info.userdata);
+                }
+            }
+
+            let width = glyph.advance_x;
+            let data = if width > 0 {
+                // calloc checks the multiplication for allocation-size overflow.
+                libc::calloc(width as usize, fontSize as usize)
+            } else {
+                glyph.advance_x = 0;
+                std::ptr::null_mut()
+            };
+            glyph.image = Image {
+                data,
+                width,
+                height: fontSize,
+                mipmaps: 1,
+                format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32,
+            };
+        }
+
+        if font_type == FontType::FONT_BITMAP && !glyph.image.data.is_null() {
+            // Use the final image dimensions, including any replacement space image.
+            let pixel_count = glyph.image.width as usize * glyph.image.height as usize;
+            let pixels = std::slice::from_raw_parts_mut(glyph.image.data.cast::<u8>(), pixel_count);
+            for pixel in pixels {
+                *pixel = if *pixel < FONT_BITMAP_ALPHA_THRESHOLD { 0 } else { 255 };
+            }
+        }
+
+        glyphs.push(glyph);
+    }
+
+    if glyphs.len() < required_codepoints.len() {
+        warn!("FONT: Requested codepoints glyphs found: [{}/{}]", glyphs.len(), required_codepoints.len());
+    }
+    glyphs
+}
+
+pub fn UnloadFont(font: &mut Font) {
     unsafe {
         rtextures::UnloadTexture(&mut font.texture);
         font.glyphs.clear()
@@ -300,7 +758,7 @@ pub fn GetFontDefault() -> *mut Font {
 pub fn DrawText(text: &str, x: i32, y: i32, font_size: i32, color: Color) {
     let font = unsafe { GetFontDefault().as_ref_unchecked() };
     DrawTextEx(
-        &font,
+        font,
         text,
         Vector2::new(x as f32, y as f32),
         font_size as f32,
