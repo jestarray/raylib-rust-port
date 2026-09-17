@@ -47,18 +47,18 @@ unsafe fn start() {
     let mut texture = LoadTexture("resources/space.png");
 
     // Load shader and setup location points and values
-    let shader = LoadShader(
+    let mut shader = LoadShader(
         None,
         Some(&format!("resources/shaders/glsl{}/wave.fs", GLSL_VERSION)),
     );
 
-    let secondsLoc = GetShaderLocation(shader, "seconds");
-    let freqXLoc = GetShaderLocation(shader, "freqX");
-    let freqYLoc = GetShaderLocation(shader, "freqY");
-    let ampXLoc = GetShaderLocation(shader, "ampX");
-    let ampYLoc = GetShaderLocation(shader, "ampY");
-    let speedXLoc = GetShaderLocation(shader, "speedX");
-    let speedYLoc = GetShaderLocation(shader, "speedY");
+    let secondsLoc = GetShaderLocation(&shader, "seconds");
+    let freqXLoc = GetShaderLocation(&shader, "freqX");
+    let freqYLoc = GetShaderLocation(&shader, "freqY");
+    let ampXLoc = GetShaderLocation(&shader, "ampX");
+    let ampYLoc = GetShaderLocation(&shader, "ampY");
+    let speedXLoc = GetShaderLocation(&shader, "speedX");
+    let speedYLoc = GetShaderLocation(&shader, "speedY");
 
     // Shader uniform values that can be updated at any time
     let mut freqX: f32 = 25.0;
@@ -69,18 +69,19 @@ unsafe fn start() {
     let mut speedY: f32 = 8.0;
 
     let screenSize: [f32; 2] = [GetScreenWidth() as f32, GetScreenHeight() as f32];
+    let locIndex = GetShaderLocation(&shader, "size");
     SetShaderValue(
-        shader,
-        GetShaderLocation(shader, "size"),
+        &mut shader,
+        locIndex,
         screenSize.as_ptr() as *const c_void,
         SHADER_UNIFORM_VEC2 as i32,
     );
-    SetShaderValue(shader, freqXLoc, &freqX as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
-    SetShaderValue(shader, freqYLoc, &freqY as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
-    SetShaderValue(shader, ampXLoc, &ampX as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
-    SetShaderValue(shader, ampYLoc, &ampY as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
-    SetShaderValue(shader, speedXLoc, &speedX as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
-    SetShaderValue(shader, speedYLoc, &speedY as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
+    SetShaderValue(&mut shader, freqXLoc, &freqX as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
+    SetShaderValue(&mut shader, freqYLoc, &freqY as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
+    SetShaderValue(&mut shader, ampXLoc, &ampX as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
+    SetShaderValue(&mut shader, ampYLoc, &ampY as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
+    SetShaderValue(&mut shader, speedXLoc, &speedX as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
+    SetShaderValue(&mut shader, speedYLoc, &speedY as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
 
     let mut seconds: f32 = 0.0;
 
@@ -91,14 +92,14 @@ unsafe fn start() {
         // Update
         seconds += GetFrameTime();
 
-        SetShaderValue(shader, secondsLoc, &seconds as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
+        SetShaderValue(&mut shader, secondsLoc, &seconds as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
 
         // Draw
         BeginDrawing();
 
         ClearBackground(RAYWHITE);
 
-        BeginShaderMode(shader);
+        BeginShaderMode(&mut shader);
 
         DrawTexture(&texture, 0, 0, WHITE);
         DrawTexture(&texture, texture.width, 0, WHITE);
@@ -109,7 +110,7 @@ unsafe fn start() {
     }
 
     // De-Initialization
-    UnloadShader(shader);
+    UnloadShader(&mut shader);
     UnloadTexture(&mut texture);
 
     CloseWindow();

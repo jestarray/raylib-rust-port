@@ -1484,10 +1484,10 @@ pub enum Gesture {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Shader {
     pub id: u32,
-    pub locs: *mut ::std::os::raw::c_int,
+    pub locs: Vec<i32>,
 }
 
 // use crate::Matrix; // or import the matching C-compatible Matrix type

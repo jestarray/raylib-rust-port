@@ -915,9 +915,9 @@ pub unsafe fn EndTextureMode()
 }
 
 // Begin custom shader mode
-pub unsafe fn BeginShaderMode(shader: Shader)
+pub unsafe fn BeginShaderMode(shader: &mut Shader)
 {
-    rlSetShader(shader.id, shader.locs);
+    rlSetShader(shader.id, shader.locs.as_mut_ptr());
 }
 
 // End custom shader mode (returns to default shader)
@@ -1084,7 +1084,7 @@ pub fn UnloadVrStereoConfig(config: VrStereoConfig)
 // NOTE: If shader filename is NULL, using default vertex/fragment shaders
 pub unsafe fn LoadShader(vsFileName: Option<&str>, fsFileName: Option<&str>) -> Shader
 {
-    let mut shader: Shader = unsafe { std::mem::zeroed() };
+    let mut shader = Shader::default();
 
     let mut vShaderStr: Option<String> = None;
     let mut fShaderStr: Option<String> = None;
@@ -1103,24 +1103,30 @@ pub unsafe fn LoadShader(vsFileName: Option<&str>, fsFileName: Option<&str>) -> 
 }
 
 // Load shader from code strings and bind default locations
-pub unsafe fn LoadShaderFromMemory(vsCode: Option<&str>, fsCode: Option<&str>) -> Shader
-{
-    let mut shader: Shader = unsafe { std::mem::zeroed() };
+pub unsafe fn LoadShaderFromMemory(vsCode: Option<&str>, fsCode: Option<&str>) -> Shader {
+    let mut shader: Shader = Shader::default();
 
     let vsCode = vsCode.map(|code| CString::new(code).unwrap());
     let fsCode = fsCode.map(|code| CString::new(code).unwrap());
-    shader.id = rlLoadShaderProgram(vsCode.as_ref().map_or(std::ptr::null(), |code| code.as_ptr()), fsCode.as_ref().map_or(std::ptr::null(), |code| code.as_ptr()));
 
-    if (shader.id == 0)
-    {
+    shader.id = rlLoadShaderProgram(
+        vsCode.as_ref().map_or(std::ptr::null(), |code| code.as_ptr()),
+        fsCode.as_ref().map_or(std::ptr::null(), |code| code.as_ptr()),
+    );
+
+    if shader.id == 0 {
         // Shader could not be loaded but still loading the location points to avoid potential crashes
         // NOTE: All locations set to -1 (no location found)
-        shader.locs = libc::calloc(RL_MAX_SHADER_LOCATIONS, std::mem::size_of::<i32>()) as *mut i32;
-        for i in 0..RL_MAX_SHADER_LOCATIONS { *shader.locs.add((i) as usize) = -1; }
-    }
-    else if (shader.id == rlGetShaderIdDefault()) { shader.locs = rlGetShaderLocsDefault(); }
-    else if (shader.id > 0)
-    {
+        shader.locs = vec![-1; RL_MAX_SHADER_LOCATIONS as usize];
+    } else if shader.id == rlGetShaderIdDefault() {
+        // Copy the default locations into a new Vec<i32>
+        let default_locs_ptr = rlGetShaderLocsDefault();
+        if !default_locs_ptr.is_null() {
+            shader.locs = std::slice::from_raw_parts(default_locs_ptr, RL_MAX_SHADER_LOCATIONS as usize).to_vec();
+        } else {
+            shader.locs = vec![-1; RL_MAX_SHADER_LOCATIONS as usize];
+        }
+    } else if shader.id > 0 {
         // After custom shader loading, trying to set default location names
         // Default shader attribute locations have been binded before linking:
         //  - vertex position location    = 0
@@ -1136,33 +1142,51 @@ pub unsafe fn LoadShaderFromMemory(vsCode: Option<&str>, fsCode: Option<&str>) -
 
         // Load shader locations array
         // NOTE: All locations set to -1 (no location)
-        shader.locs = libc::calloc(RL_MAX_SHADER_LOCATIONS, std::mem::size_of::<i32>()) as *mut i32;
-        for i in 0..RL_MAX_SHADER_LOCATIONS { *shader.locs.add((i) as usize) = -1; }
+        shader.locs = vec![-1; RL_MAX_SHADER_LOCATIONS as usize];
 
         // Get handles to GLSL input attribute locations
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_POSITION as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_POSITION.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_TEXCOORD01 as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_TEXCOORD02 as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD2.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_NORMAL as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_NORMAL.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_TANGENT as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_TANGENT.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_COLOR as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_COLOR.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_BONEIDS as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_BONEINDICES.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_BONEWEIGHTS as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_BONEWEIGHTS.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_VERTEX_INSTANCETRANSFORM as i32) as usize) = rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_INSTANCETRANSFORM.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_VERTEX_POSITION as usize] =
+            rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_POSITION.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_VERTEX_TEXCOORD01 as usize] =
+            rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_VERTEX_TEXCOORD02 as usize] =
+            rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_TEXCOORD2.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_VERTEX_NORMAL as usize] =
+            rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_NORMAL.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_VERTEX_TANGENT as usize] =
+            rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_TANGENT.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_VERTEX_COLOR as usize] =
+            rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_COLOR.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_VERTEX_BONEIDS as usize] =
+            rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_BONEINDICES.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_VERTEX_BONEWEIGHTS as usize] =
+            rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_BONEWEIGHTS.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_VERTEX_INSTANCETRANSFORM as usize] =
+            rlGetLocationAttrib(shader.id, RL_DEFAULT_SHADER_ATTRIB_NAME_INSTANCETRANSFORM.as_ptr());
 
         // Get handles to GLSL uniform locations (vertex shader)
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MATRIX_MVP as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_MVP.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MATRIX_VIEW as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_VIEW.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MATRIX_PROJECTION as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_PROJECTION.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MATRIX_MODEL as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_MODEL.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MATRIX_NORMAL as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_NORMAL.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MATRIX_BONETRANSFORMS as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_BONEMATRICES.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_MATRIX_MVP as usize] =
+            rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_MVP.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_MATRIX_VIEW as usize] =
+            rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_VIEW.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_MATRIX_PROJECTION as usize] =
+            rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_PROJECTION.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_MATRIX_MODEL as usize] =
+            rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_MODEL.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_MATRIX_NORMAL as usize] =
+            rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_NORMAL.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_MATRIX_BONETRANSFORMS as usize] =
+            rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_BONEMATRICES.as_ptr());
 
         // Get handles to GLSL uniform locations (fragment shader)
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_COLOR_DIFFUSE as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_COLOR.as_ptr());
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MAP_ALBEDO as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE0.as_ptr());  // SHADER_LOC_MAP_ALBEDO
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MAP_METALNESS as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE1.as_ptr()); // SHADER_LOC_MAP_METALNESS
-        *shader.locs.add((ShaderLocationIndex::SHADER_LOC_MAP_NORMAL as i32) as usize) = rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE2.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_COLOR_DIFFUSE as usize] =
+            rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_UNIFORM_NAME_COLOR.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_MAP_ALBEDO as usize] =
+            rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE0.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_MAP_METALNESS as usize] =
+            rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE1.as_ptr());
+        shader.locs[ShaderLocationIndex::SHADER_LOC_MAP_NORMAL as usize] =
+            rlGetLocationUniform(shader.id, RL_DEFAULT_SHADER_SAMPLER2D_NAME_TEXTURE2.as_ptr());
     }
 
     return shader;
@@ -1172,7 +1196,7 @@ pub unsafe fn LoadShaderFromMemory(vsCode: Option<&str>, fsCode: Option<&str>) -
 pub fn IsShaderValid(shader: Shader) -> bool
 {
     return ((shader.id > 0) &&          // Validate shader id (GPU loaded successfully)
-            (!shader.locs.is_null()));     // Validate memory has been allocated for default shader locations
+            (!shader.locs.is_empty()));     // Validate memory has been allocated for default shader locations
 
     // The following locations are tried to be set automatically (locs[i] >= 0),
     // any of them can be checked for validation but the only mandatory one is, afaik, SHADER_LOC_VERTEX_POSITION
@@ -1201,19 +1225,19 @@ pub fn IsShaderValid(shader: Shader) -> bool
 }
 
 // Unload shader from GPU memory (VRAM)
-pub unsafe fn UnloadShader(shader: Shader)
+pub unsafe fn UnloadShader(shader: &mut Shader)
 {
     if (shader.id != rlGetShaderIdDefault())
     {
         rlUnloadShaderProgram(shader.id);
 
         // NOTE: If shader loading failed, it should be 0
-        libc::free(shader.locs.cast());
+        shader.locs.clear();
     }
 }
 
 // Get shader uniform location
-pub unsafe fn GetShaderLocation(shader: Shader, uniformName: &str) -> i32
+pub unsafe fn GetShaderLocation(shader: &Shader, uniformName: &str) -> i32
 {
     return rlGetLocationUniform(shader.id, CString::new(uniformName).unwrap().as_ptr());
 }
@@ -1225,13 +1249,13 @@ pub unsafe fn GetShaderLocationAttrib(shader: Shader, attribName: &str) -> i32
 }
 
 // Set shader uniform value
-pub unsafe fn SetShaderValue(shader: Shader, locIndex: i32, value: *const std::ffi::c_void, uniformType: i32)
+pub unsafe fn SetShaderValue(shader: &mut Shader, locIndex: i32, value: *const std::ffi::c_void, uniformType: i32)
 {
     SetShaderValueV(shader, locIndex, value, uniformType, 1);
 }
 
 // Set shader uniform value vector
-pub unsafe fn SetShaderValueV(shader: Shader, locIndex: i32, value: *const std::ffi::c_void, uniformType: i32, count: i32)
+pub unsafe fn SetShaderValueV(shader: &mut Shader, locIndex: i32, value: *const std::ffi::c_void, uniformType: i32, count: i32)
 {
     if (locIndex > -1)
     {
