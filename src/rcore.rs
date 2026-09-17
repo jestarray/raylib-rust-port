@@ -1542,9 +1542,13 @@ pub unsafe fn WaitTime(seconds: f64)
         let sleepSeconds: f64 = seconds;
 
     // System halt functions
+    #[cfg(target_os = "android")]
+    {
+        std::thread::sleep(std::time::Duration::from_secs_f64(sleepSeconds));
+    }
     #[cfg(target_os = "windows")]
     {
-        Sleep(((sleepSeconds*1000.0) as libc::c_ulong));
+        std::thread::sleep(std::time::Duration::from_secs_f64(sleepSeconds));
     }
     #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "emscripten"))]
     {
@@ -1577,132 +1581,6 @@ pub unsafe fn WaitTime(seconds: f64)
 //void OpenURL(const char *url)
 
 // Set the seed for the random number generator
-pub unsafe fn SetRandomSeed(seed: u32)
-{
-#[cfg(feature = "SUPPORT_RPRAND_GENERATOR")]
-{
-    rprand_set_seed(seed);
-}
-#[cfg(not(any(feature = "SUPPORT_RPRAND_GENERATOR")))]
-{
-    libc::srand(seed);
-}
-}
-
-// Get a random value between min and max included
-pub unsafe fn GetRandomValue(mut min: i32, mut max: i32) -> i32
-{
-    let mut value: i32 = 0;
-
-    if (min > max)
-    {
-        let tmp: i32 = max;
-        max = min;
-        min = tmp;
-    }
-
-#[cfg(feature = "SUPPORT_RPRAND_GENERATOR")]
-{
-    value = rprand_get_value(min, max);
-}
-#[cfg(not(any(feature = "SUPPORT_RPRAND_GENERATOR")))]
-{
-    // WARNING: Ranges higher than RAND_MAX will return invalid results
-    // More specifically, if (max - min) > INT_MAX there will be an overflow,
-    // and otherwise if (max - min) > RAND_MAX the random value will incorrectly never exceed a certain threshold
-    // NOTE: Depending on the library it can be as low as 32767
-    if ((max.wrapping_sub(min) as u32) > (libc::RAND_MAX as u32))
-    {
-        warn!("Invalid GetRandomValue() arguments, range should not be higher than {}", libc::RAND_MAX);
-    }
-
-    // NOTE: This one-line approach produces a non-uniform distribution,
-    // as stated by Donald Knuth in the book The Art of Programming, so
-    // using below approach for more uniform results
-    //value = (rand()%(abs(max - min) + 1) + min);
-
-    // More uniform range solution
-    let range: i32 = max.wrapping_sub(min).wrapping_add(1);
-
-    // Degenerate/overflow case: fall back to min (same behavior as "always min" instead of UB)
-    if (range <= 0) { value = min; }
-    else
-    {
-        // Rejection sampling to get a uniform integer in [min, max]
-        let c: libc::c_ulong = (libc::RAND_MAX as libc::c_ulong) + 1; // Number of possible results
-        let m: libc::c_ulong = (range as libc::c_ulong);          // Size of the target interval
-        let t: libc::c_ulong = c - (c%m);                     // Largest multiple of m <= c
-        let mut r: libc::c_ulong = 0;
-
-        loop
-        {
-            r = (libc::rand() as libc::c_ulong);
-            if (r < t) { break; }   // Only accept values within the fair region
-        }
-
-        value = min + ((r%m) as i32);
-    }
-}
-
-    return value;
-}
-
-// Load random values sequence, no values repeated, min and max included
-pub unsafe fn LoadRandomSequence(count: u32, min: i32, max: i32) -> *mut i32
-{
-    let mut values: *mut i32 = std::ptr::null_mut();
-
-#[cfg(feature = "SUPPORT_RPRAND_GENERATOR")]
-{
-    values = rprand_load_sequence(count, min, max);
-}
-#[cfg(not(any(feature = "SUPPORT_RPRAND_GENERATOR")))]
-{
-    if (count > ((max.wrapping_sub(min).wrapping_abs() as u32) + 1)) { return values; }  // Security check
-
-    values = libc::calloc(count as usize, std::mem::size_of::<i32>()) as *mut i32;
-
-    let mut value: i32 = 0;
-    let mut dupValue: bool = false;
-
-    let mut i: i32 = 0;
-    while (i < count as i32)
-    {
-        value = GetRandomValue(min, max);
-        dupValue = false;
-
-        for j in 0..i
-        {
-            if (*values.add((j) as usize) == value)
-            {
-                dupValue = true;
-                break;
-            }
-        }
-
-        if (!dupValue)
-        {
-            *values.add((i) as usize) = value;
-            i += 1;
-        }
-    }
-}
-
-    return values;
-}
-
-// Unload random values sequence
-pub unsafe fn UnloadRandomSequence(sequence: *mut i32)
-{
-#[cfg(feature = "SUPPORT_RPRAND_GENERATOR")]
-{
-    rprand_unload_sequence(sequence);
-}
-#[cfg(not(any(feature = "SUPPORT_RPRAND_GENERATOR")))]
-{
-    libc::free(sequence.cast());
-}
-}
 
 // Takes a screenshot of current screen
 pub unsafe fn TakeScreenshot(fileName: &str)

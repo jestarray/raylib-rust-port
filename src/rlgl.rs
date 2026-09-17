@@ -1632,6 +1632,9 @@ pub unsafe fn rlglInit(width: i32, height: i32)
 
     // Init state: Color/Depth buffers clear
     gl::ClearColor(0.0, 0.0, 0.0, 1.0);                   // Set clear color (black)
+    #[cfg(feature = "GRAPHICS_API_OPENGL_ES2")]
+    gl::ClearDepthf(1.0);
+    #[cfg(not(feature = "GRAPHICS_API_OPENGL_ES2"))]
     gl::ClearDepth(1.0);                                  // Set clear depth value (default)
     gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);     // Clear color and depth buffers (depth buffer required for 3D)
 
@@ -2563,7 +2566,8 @@ pub unsafe fn rlLoadTextureDepth(width: i32, height: i32, mut useRenderBuffer: b
 
     // NOTE: Letting the implementation to choose the best bit-depth
     // Possible formats: GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT24, GL_DEPTH_COMPONENT32 and GL_DEPTH_COMPONENT32F
-    let glInternalFormat = gl::DEPTH_COMPONENT;
+    #[allow(unused_mut)] // mut is conditionally needed for gles2+
+    let mut glInternalFormat = gl::DEPTH_COMPONENT;
 
     #[cfg(feature = "GRAPHICS_API_OPENGL_ES2")]
     {

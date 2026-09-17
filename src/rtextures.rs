@@ -4,11 +4,15 @@ use std::ffi::CString;
 
 pub fn load_image(file_name: &str) -> Image {
     unsafe {
-        let c_file_name = CString::new(file_name).unwrap();
+        let Ok(c_file_name) = CString::new(file_name) else {
+            log::error!("Image path contains a NUL byte");
+            return Image { data: std::ptr::null_mut(), width: 0, height: 0, mipmaps: 0, format: 0 };
+        };
         let mut width: i32 = 0;
         let mut height: i32 = 0;
         let mut channels: i32 = 0;
         
+        #[cfg(not(target_os = "android"))]
         let data = crate::external::stbi_load(
             c_file_name.as_ptr(),
             &mut width,
@@ -17,8 +21,27 @@ pub fn load_image(file_name: &str) -> Image {
             0,
         );
 
+        #[cfg(target_os = "android")]
+        let data = {
+            // SDL resolves relative paths against internal storage and APK assets.
+            // stb's ordinary file loader cannot read an APK asset directly.
+            let mut size = 0;
+            let bytes = sdl3_sys::iostream::SDL_LoadFile(c_file_name.as_ptr(), &mut size);
+            let decoded = if !bytes.is_null() && size > 0 && size <= i32::MAX as usize {
+                crate::external::stbi_load_from_memory(
+                    bytes.cast(), size as i32, &mut width, &mut height, &mut channels, 0,
+                )
+            } else {
+                log::error!("SDL: Cannot read image {}: {}", file_name,
+                    std::ffi::CStr::from_ptr(sdl3_sys::error::SDL_GetError()).to_string_lossy());
+                std::ptr::null_mut()
+            };
+            sdl3_sys::stdinc::SDL_free(bytes);
+            decoded
+        };
+
         if data.is_null() {
-            println!("ERROR: Failed to load image: {}", file_name);
+            log::error!("Failed to load image: {}", file_name);
             return Image {
                 data: std::ptr::null_mut(),
                 width: 0,
@@ -67,6 +90,9 @@ pub fn load_texture(file_name: &str) -> Texture {
 }
 
 pub fn load_texture_from_image(image: &Image) -> Texture {
+    if image.data.is_null() || image.width <= 0 || image.height <= 0 {
+        return Texture { id: 0, width: 0, height: 0, mipmaps: 0, format: 0 };
+    }
     unsafe {
         let id = rlgl::rlLoadTexture(
             image.data,

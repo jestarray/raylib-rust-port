@@ -4,11 +4,13 @@ This is an attempt to port raylib for my specific usecase. Use it at your peril.
 Goals:
 - [ ] Support sdl3 only
 - [ ] gl3.3 only and es2/3(es3 is a superset of es2 so you can't support just es3)
-- [ ] Android support with sdl3 layer only
+- [x] Android support with sdl3 layer only
+    - [ ] use rust build system to copy the sdl3 android wrapper stuff instead of pythong script
 - [ ] won't support audio, models(for now) etc
 - [ ] strip most of raylib Image and replace it with rust image crate
 - [ ] use glam vectors and methods and phase out rust vector types
 - [ ] review all `libc::` uses and place them with rust versions
+- [ ] have AI port a lot of 2d examples from raylib since our functions are nearly 1 to 1
 
 
 # stripping
@@ -77,6 +79,10 @@ If you do decide to manually fix it up, I'd prompt AI again generate a file that
 cargo run --example texture_demo
 ```
 
+For an ARM64 Android phone with OpenGL ES 3.0, run `./android/build.sh`.
+See [Android build and device instructions](android/README.md) for prerequisites,
+APK installation, and the shared SDL entry point.
+
 
 # todo:
 - [ ] port rcore and the rest
@@ -92,3 +98,8 @@ cargo run --example texture_demo
 - [ ] rtextures
 - [ ] rtext
 - [ ] rmodels
+
+
+# slight changes:
+- [ ] InitPlatform() checks for `SDL_GetError()` and prints them
+- REMOVED from rcore(because they pull in libc and external deps): SetRandomSeed, GetRandomValue, LoadRandomSequence, UnloadRandomSequence

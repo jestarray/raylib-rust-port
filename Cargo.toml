@@ -3,9 +3,13 @@ name = "raylib-rs"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "raylib"
+crate-type = ["rlib", "cdylib"]
+
 [dependencies]
 glam = "0.33"
-sdl3-sys = { version = "0.7.1", features = ["use-pkg-config"]}
+sdl3-sys = { version = "0.7.1", features = ["build-from-source"]}
 libc = "0.2"
 gl = "0.14.0"
 log = { version = "0.4" }
@@ -14,7 +18,7 @@ strum = "0.28"
 strum_macros = "0.28"
 
 [features]
-default = ["GRAPHICS_API_OPENGL_33", "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"]
+default = ["GRAPHICS_API_OPENGL_33", "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT", "SUPPORT_PARTIALBUSY_WAIT_LOOP"]
 GRAPHICS_API_OPENGL_33 = []
 GRAPHICS_API_OPENGL_43 = ["GRAPHICS_API_OPENGL_33"]
 GRAPHICS_API_OPENGL_ES2 = []
@@ -24,7 +28,6 @@ RLGL_ENABLE_OPENGL_DEBUG_CONTEXT = []
 
 PICO_RP2350 = []
 PLATFORM_ANDROID = []
-PLATFORM_DESKTOP = ["PLATFORM_DESKTOP_GLFW"]
 PLATFORM_DESKTOP_GLFW = []
 PLATFORM_DESKTOP_RGFW = []
 PLATFORM_DESKTOP_SDL = []

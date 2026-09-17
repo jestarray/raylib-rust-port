@@ -1532,9 +1532,11 @@ pub unsafe fn PollInputEvents()
                         CORE.Input.Gamepad.axisState[nextAvailableSlot as usize][GAMEPAD_AXIS_LEFT_TRIGGER as i32 as usize] = -1.0;
                         CORE.Input.Gamepad.axisState[nextAvailableSlot as usize][GAMEPAD_AXIS_RIGHT_TRIGGER as i32 as usize] = -1.0;
                         CORE.Input.Gamepad.name[nextAvailableSlot as usize].fill(0);
-                        let controllerName: *const std::ffi::c_char = SDL_GameControllerNameForIndex(nextAvailableSlot as i32);
-                        if (controllerName != std::ptr::null_mut()) { libc::snprintf(CORE.Input.Gamepad.name[nextAvailableSlot as usize].as_mut_ptr(), MAX_GAMEPAD_NAME_LENGTH, c"%s".as_ptr(), controllerName); }
-                        else { libc::memcpy(CORE.Input.Gamepad.name[nextAvailableSlot as usize].as_mut_ptr().cast(), c"noname".as_ptr().cast(), 6); }
+                        let controllerName = SDL_GameControllerNameForIndex(nextAvailableSlot as i32);
+                        let controllerName = if controllerName.is_null() { c"noname".as_ptr() } else { controllerName };
+                        let destination = &mut CORE.Input.Gamepad.name[nextAvailableSlot as usize];
+                        let controllerNameLength = std::ffi::CStr::from_ptr(controllerName).to_bytes().len().min(destination.len().saturating_sub(1));destination.fill(0);
+                        std::ptr::copy_nonoverlapping(controllerName, destination.as_mut_ptr(), controllerNameLength);
                     }
                     else { warn!("PLATFORM: Unable to open game controller [ERROR: {}]", CStr::from_ptr(SDL_GetError()).to_string_lossy()); }
                 }
@@ -1710,8 +1712,11 @@ pub unsafe fn InitPlatform() -> i32
 {
     // Initialize SDL internal global state, only required systems
     // NOTE: Not all systems need to be initialized, SDL_INIT_AUDIO is not required, managed by miniaudio
-    let result: i32 = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD) as i32;
-    if (result < 0) { warn!("SDL: Failed to initialize SDL"); return -1; }
+    if !SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD) {
+        error!("SDL: Failed to initialize SDL: {}", CStr::from_ptr(SDL_GetError()).to_string_lossy());
+        SDL_Quit();
+        return -1;
+    }
 
     // Initialize graphic device: display/window and graphic context
     //----------------------------------------------------------------------------
@@ -1792,7 +1797,11 @@ pub unsafe fn InitPlatform() -> i32
 
     // Init window
     platform.window = SDL_CreateWindow(CORE.Window.title, CORE.Window.screen.x as i32, CORE.Window.screen.y as i32, flags);
-
+    if platform.window.is_null() {
+        error!("SDL: Failed to create window: {}", CStr::from_ptr(SDL_GetError()).to_string_lossy());
+        SDL_Quit();
+        return -1;
+    }
 
     // NOTE: SDL3 no longer enables text input by default,
     // it is needed to be enabled manually to keep GetCharPressed() working
@@ -1818,8 +1827,15 @@ pub unsafe fn InitPlatform() -> i32
         CORE.Window.display.x = (displayMode.w) as f32;
         CORE.Window.display.y = (displayMode.h) as f32;
 
-        CORE.Window.render.x = CORE.Window.screen.x;
-        CORE.Window.render.y = CORE.Window.screen.y;
+        // Android chooses the window size. Keep logical and framebuffer sizes
+        // distinct so the demo also handles displays with content scaling.
+        let (mut width, mut height) = (0, 0);
+        SDL_GetWindowSize(platform.window, &mut width, &mut height);
+        CORE.Window.screen.x = width as f32;
+        CORE.Window.screen.y = height as f32;
+        SDL_GetWindowSizeInPixels(platform.window, &mut width, &mut height);
+        CORE.Window.render.x = width as f32;
+        CORE.Window.render.y = height as f32;
         CORE.Window.currentFbo.x = CORE.Window.render.x;
         CORE.Window.currentFbo.y = CORE.Window.render.y;
 
@@ -1840,7 +1856,10 @@ pub unsafe fn InitPlatform() -> i32
     }
     else
     {
-        error!("PLATFORM: Failed to initialize graphics device");
+        error!("PLATFORM: Failed to initialize graphics device: {}", CStr::from_ptr(SDL_GetError()).to_string_lossy());
+        SDL_DestroyWindow(platform.window);
+        platform.window = std::ptr::null_mut();
+        SDL_Quit();
         return -1;
     }
 
@@ -1869,8 +1888,11 @@ pub unsafe fn InitPlatform() -> i32
             CORE.Input.Gamepad.axisCount[i] = SDL_GetNumJoystickAxes(SDL_GetGamepadJoystick(platform.gamepad[i]));
             CORE.Input.Gamepad.axisState[i][GAMEPAD_AXIS_LEFT_TRIGGER as i32 as usize] = -1.0;
             CORE.Input.Gamepad.axisState[i][GAMEPAD_AXIS_RIGHT_TRIGGER as i32 as usize] = -1.0;
-            let joystickName: *const std::ffi::c_char = SDL_GetJoystickNameForID(*joysticks.add(i as usize));
-            libc::snprintf(CORE.Input.Gamepad.name[i].as_mut_ptr(), MAX_GAMEPAD_NAME_LENGTH, c"%s".as_ptr(), joystickName);
+            let joystickName = SDL_GetJoystickNameForID(*joysticks.add(i as usize));
+            let destination = &mut CORE.Input.Gamepad.name[i];
+            let joystickNameLength = std::ffi::CStr::from_ptr(joystickName).to_bytes().len().min(destination.len().saturating_sub(1));
+            destination.fill(0);
+            std::ptr::copy_nonoverlapping(joystickName, destination.as_mut_ptr(), joystickNameLength);
             CORE.Input.Gamepad.name[i][MAX_GAMEPAD_NAME_LENGTH - 1] = 0;
         }
         else { warn!("PLATFORM: Unable to open game controller [ERROR: {}]", CStr::from_ptr(SDL_GetError()).to_string_lossy()); }
