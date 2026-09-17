@@ -11,7 +11,8 @@
     clippy::match_like_matches_macro,
     clippy::upper_case_acronyms,
     clippy::let_and_return,
-    clippy::double_parens
+    clippy::double_parens,
+    clippy::missing_safety_doc
 )]
 use std::ffi::{c_char, CString};
 
@@ -1569,6 +1570,23 @@ pub unsafe fn WaitTime(seconds: f64)
 //----------------------------------------------------------------------------------
 // Module Functions Definition: Misc
 //----------------------------------------------------------------------------------
+/// relies on SystemTime
+pub fn GetRandomValue(min: i32, max: i32) -> i32 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    assert!(min <= max, "min must be less than or equal to max");
+    
+    // Get system time nanoseconds for entropy
+    let start = SystemTime::now();
+    let since_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
+    let nanos = since_epoch.subsec_nanos() as u64;
+    
+    // Use i64 for the range calculation to safely handle negative numbers and prevent overflow
+    let range = (max as i64 - min as i64) + 1;
+    
+    // Apply modulo and offset, then cast back to i32
+    let offset = (nanos % range as u64) as i32;
+    min + offset
+}
 
 // NOTE: Functions with a platform-specific implementation on rcore_<platform>.c
 //void OpenURL(const char *url)
