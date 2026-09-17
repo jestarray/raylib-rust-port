@@ -1828,55 +1828,17 @@ pub unsafe fn ExportDataAsCode(data: &[u8], dataSize: i32, fileName: &str) -> bo
 
 // Load text data from file, returns a '\0' terminated string
 // NOTE: text chars array should be freed manually
-pub unsafe fn LoadFileText(fileName: &str) -> Option<String>
-{
-    let mut text = None;
-
-    if let Ok(fileNameC) = CString::new(fileName)
-    {
-        if let Some(callback) = loadFileText { return callback(fileName); }
-
-        let file = libc::fopen(fileNameC.as_ptr(), c"rt".as_ptr());
-
-        if (!file.is_null())
-        {
-            // WARNING: When reading a file as 'text' file,
-            // text mode causes carriage return-linefeed translation...
-            // ...but using fseek() should return correct byte-offset
-            libc::fseek(file, 0, libc::SEEK_END);
-            let size = libc::ftell(file) as u32;
-            libc::fseek(file, 0, libc::SEEK_SET);
-
-            if (size > 0)
-            {
-                let mut buffer = Vec::<u8>::new();
-
-                if (buffer.try_reserve_exact(size as usize + 1).is_ok())
-                {
-                    buffer.resize(size as usize + 1, 0);
-                    let count = libc::fread(buffer.as_mut_ptr().cast(), std::mem::size_of::<c_char>(), size as usize, file) as u32;
-
-                    // WARNING: \r\n is converted to \n on reading, so,
-                    // read bytes count gets reduced by the number of lines
-                    if (count < size) { buffer.truncate(count as usize + 1); }
-
-                    // Zero-terminate the string
-                    buffer[count as usize] = 0;
-                    text = Some(String::from_utf8_lossy(&buffer[..count as usize]).into_owned());
-
-                    info!("FILEIO: [{}] Text file loaded successfully", fileName);
-                }
-                else { warn!("FILEIO: [{}] Failed to allocated memory for file reading", fileName); }
-            }
-            else { warn!("FILEIO: [{}] Failed to read text file", fileName); }
-
-            libc::fclose(file);
+pub fn LoadFileText(file_name: &str) -> Option<String> {
+    match std::fs::read_to_string(file_name) {
+        Ok(text) => {
+            info!("FILEIO: [{}] Text file loaded successfully", file_name);
+            Some(text)
         }
-        else { warn!("FILEIO: [{}] Failed to open text file", fileName); }
+        Err(err) => {
+            warn!("FILEIO: [{}] Failed to read text file: {}", file_name, err);
+            None
+        }
     }
-    else { warn!("FILEIO: File name provided is not valid"); }
-
-    return text;
 }
 
 // Unload file text data allocated by LoadFileText()
