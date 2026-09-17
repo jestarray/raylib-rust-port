@@ -2151,54 +2151,6 @@ pub unsafe fn IsFileDropped() -> bool
 //----------------------------------------------------------------------------------
 
 // Compress data (DEFLATE algorithm)
-pub unsafe fn CompressData(data: *const u8, dataSize: i32, compDataSize: &mut i32) -> *mut u8
-{
-    const COMPRESSION_QUALITY_DEFLATE: i32 = 8;
-
-    let compData = std::ptr::null_mut();
-
-    #[cfg(feature = "SUPPORT_COMPRESSION_API")]
-    {
-        // Compress data and generate a valid DEFLATE stream
-        let sdefl = libc::calloc(1, std::mem::size_of::<sdefl>()) as *mut sdefl;   // WARNING: Possible stack overflow, struct sdefl is almost 1MB
-        let bounds = sdefl_bound(dataSize);
-        compData = libc::calloc(bounds as usize, 1).cast();
-
-        *compDataSize = sdeflate(sdefl, compData, data, dataSize, COMPRESSION_QUALITY_DEFLATE);   // Compression level 8, same as stbiw
-        libc::free(sdefl.cast());
-
-        info!("SYSTEM: Compress data: Original size: {} -> Comp. size: {}", dataSize, *compDataSize);
-    }
-
-    return compData;
-}
-
-// Decompress data (DEFLATE algorithm)
-pub unsafe fn DecompressData(compData: *const u8, compDataSize: i32, dataSize: &mut i32) -> *mut u8
-{
-    let data: *mut u8 = std::ptr::null_mut();
-
-    #[cfg(feature = "SUPPORT_COMPRESSION_API")]
-    {
-        // Decompress data from a valid DEFLATE stream
-        let data0 = libc::calloc(MAX_DECOMPRESSION_SIZE*1024*1024, 1) as *mut u8;
-        let size = sinflate(data0, (MAX_DECOMPRESSION_SIZE*1024*1024) as i32, compData, compDataSize);
-
-        // WARNING: RL_REALLOC can make (and leave) data copies in memory,
-        // that can be a security concern in case of compression of sensitive data
-        // So, using a second buffer to copy data manually, wiping original buffer memory
-        data = libc::calloc(size as usize, 1).cast();
-        std::ptr::copy_nonoverlapping(data0, data, size as usize);
-        std::ptr::write_bytes(data0, 0, MAX_DECOMPRESSION_SIZE*1024*1024); // Wipe memory, is memset() safe?
-        libc::free(data0.cast());
-
-        info!("SYSTEM: Decompress data: Comp. size: {} -> Original size: {}", compDataSize, size);
-
-        *dataSize = size;
-    }
-
-    return data;
-}
 //----------------------------------------------------------------------------------
 // Module Functions Definition: Automation Events Recording and Playing
 //----------------------------------------------------------------------------------
