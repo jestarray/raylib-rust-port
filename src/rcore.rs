@@ -1716,26 +1716,6 @@ pub unsafe fn SetTraceLogCallback(callback: Option<TraceLogCallback>)
 //----------------------------------------------------------------------------------
 // Module Functions Definition: Memory management
 //----------------------------------------------------------------------------------
-// Internal memory allocator
-// NOTE: Initializes to zero by default
-pub fn MemAlloc(size: u32) -> *mut c_void
-{
-    let ptr = unsafe { libc::calloc(size as usize, 1) };
-    return ptr;
-}
-
-// Internal memory reallocator
-pub unsafe fn MemRealloc(ptr: *mut c_void, size: u32) -> *mut c_void
-{
-    let ret = libc::realloc(ptr, size as usize);
-    return ret;
-}
-
-// Internal memory free
-pub unsafe fn MemFree(ptr: *mut c_void)
-{
-    libc::free(ptr);
-}
 
 //----------------------------------------------------------------------------------
 // Module Functions Definition: File System management
@@ -1749,7 +1729,7 @@ pub fn LoadFileData<P: AsRef<std::path::Path>>(file_name: P) -> std::io::Result<
 // Unload file data allocated by LoadFileData()
 pub unsafe fn UnloadFileData(data: *mut u8)
 {
-    libc::free(data.cast());
+    // LoadFileData replaced with rust standard lib stuff
 }
 
 // Save data to file from buffer
@@ -2824,7 +2804,7 @@ pub unsafe fn GetTouchPointCount() -> i32
 
 // Initialize hi-resolution timer
 pub unsafe fn InitTimer()
-{
+{   // NOTE: SDL Platform does not call this function! It sets it in its own file using SDL_GetPerformanceCounter
     // Setting a higher resolution can improve the accuracy of time-out intervals in wait functions
     // However, it can also reduce overall system performance, because the thread scheduler switches tasks more often
     // High resolutions can also prevent the CPU power management system from entering power-saving modes
@@ -2832,19 +2812,7 @@ pub unsafe fn InitTimer()
 #[cfg(all(target_os = "windows", feature = "SUPPORT_WINMM_HIGHRES_TIMER", not(feature = "SUPPORT_BUSY_WAIT_LOOP"), not(feature = "PLATFORM_DESKTOP_SDL")))]
 {
     timeBeginPeriod(1); // Setup high-resolution timer to 1ms (granularity of 1-2 ms)
-}
-
-#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "emscripten"))]
-{
-    let mut now: libc::timespec = std::mem::zeroed();
-
-    if (libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut now) == 0) { // Success
-    {
-        CORE.Time.base = (now.tv_sec as u64)*1000000000 + (now.tv_nsec as u64); }
-    }
-    else { warn!("TIMER: Hi-resolution timer not available"); }
-}
-
+}   
     CORE.Time.previous = GetTime(); // Get time as double
 }
 

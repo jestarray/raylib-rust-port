@@ -1419,7 +1419,7 @@ pub unsafe fn PollInputEvents()
                 if (CORE.Input.Keyboard.charPressedQueueCount < MAX_CHAR_PRESSED_QUEUE as i32)
                 {
                     // Add character (codepoint) to the queue
-                    let mut textLen: usize = libc::strlen(event.text.text);
+                    let mut textLen= unsafe { CStr::from_ptr(event.text.text).count_bytes() };
                     let codepoint: u32 = (SDL_StepUTF8(&mut event.text.text, &mut textLen) as u32);
 
                     CORE.Input.Keyboard.charPressedQueue[CORE.Input.Keyboard.charPressedQueueCount as usize] = codepoint as i32;
