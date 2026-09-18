@@ -4248,7 +4248,7 @@ pub unsafe fn rlGetPixelDataSize(width: i32, height: i32, format: i32) -> i32
 // Auxiliar math functions
 //-------------------------------------------------------------------------------
 // Get identity matrix
-pub unsafe fn rlMatrixIdentity() -> Matrix
+pub fn rlMatrixIdentity() -> Matrix
 {
     let mut matIdentity = Matrix::ZERO;
     matIdentity.m0 = 1.0;
@@ -4261,7 +4261,7 @@ pub unsafe fn rlMatrixIdentity() -> Matrix
 
 // Get float array of matrix data
 // Explicit conversion to column-major memory layout
-pub unsafe fn rlMatrixToFloatV(mat: Matrix) -> [f32; 16]
+pub fn rlMatrixToFloatV(mat: Matrix) -> [f32; 16]
 {
     let mut result = [0.0; 16];
 
@@ -4287,7 +4287,7 @@ pub unsafe fn rlMatrixToFloatV(mat: Matrix) -> [f32; 16]
 
 // Get two matrix multiplication
 // NOTE: When multiplying matrices... the order matters!
-pub unsafe fn rlMatrixMultiply(left: Matrix, right: Matrix) -> Matrix
+pub fn rlMatrixMultiply(left: Matrix, right: Matrix) -> Matrix
 {
     let mut result = Matrix::ZERO;
 
@@ -4312,7 +4312,7 @@ pub unsafe fn rlMatrixMultiply(left: Matrix, right: Matrix) -> Matrix
 }
 
 // Transposes provided matrix
-pub unsafe fn rlMatrixTranspose(mat: Matrix) -> Matrix
+pub fn rlMatrixTranspose(mat: Matrix) -> Matrix
 {
     let mut result = Matrix::ZERO;
 
@@ -4337,7 +4337,7 @@ pub unsafe fn rlMatrixTranspose(mat: Matrix) -> Matrix
 }
 
 // Invert provided matrix
-pub unsafe fn rlMatrixInvert(mat: Matrix) -> Matrix
+pub fn rlMatrixInvert(mat: Matrix) -> Matrix
 {
     let mut result = Matrix::ZERO;
 
