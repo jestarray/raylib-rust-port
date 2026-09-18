@@ -1333,12 +1333,12 @@ pub unsafe fn rlGetLineWidth() -> f32
 }
 
 // Set the point drawing size
-pub unsafe fn rlSetPointSize(size: f32)
+pub fn rlSetPointSize(size: f32)
 {
 }
 
 // Get the point drawing size
-pub unsafe fn rlGetPointSize() -> f32
+pub fn rlGetPointSize() -> f32
 {
     let size = 1.0;
     return size;
@@ -1890,7 +1890,7 @@ pub unsafe fn rlGetProcAddress(procName: *const c_char) -> *mut c_void
 }
 
 // Get current OpenGL version
-pub unsafe fn rlGetVersion() -> rlGlVersion
+pub fn rlGetVersion() -> rlGlVersion
 {
     let mut glVersion = rlGlVersion::RL_OPENGL_SOFTWARE;
 
@@ -2942,12 +2942,12 @@ pub unsafe fn rlReadTexturePixels(id: u32, width: i32, height: i32, format: i32)
 }
 
 // Copy framebuffer pixel data to internal buffer
-pub unsafe fn rlCopyFramebuffer(x: i32, y: i32, width: i32, height: i32, format: i32, pixels: *mut c_void)
+pub fn rlCopyFramebuffer(x: i32, y: i32, width: i32, height: i32, format: i32, pixels: *mut c_void)
 {
 }
 
 // Resize internal framebuffer
-pub unsafe fn rlResizeFramebuffer(width: i32, height: i32)
+pub fn rlResizeFramebuffer(width: i32, height: i32)
 {
 }
 
@@ -3231,12 +3231,12 @@ pub unsafe fn rlDrawVertexArrayElementsInstanced(offset: i32, count: i32, buffer
 }
 
 // Enable vertex state pointer
-pub unsafe fn rlEnableStatePointer(vertexAttribType: i32, buffer: *mut c_void)
+pub fn rlEnableStatePointer(vertexAttribType: i32, buffer: *mut c_void)
 {
 }
 
 // Disable vertex state pointer
-pub unsafe fn rlDisableStatePointer(vertexAttribType: i32)
+pub fn rlDisableStatePointer(vertexAttribType: i32)
 {
 }
 
@@ -3926,7 +3926,7 @@ pub unsafe fn rlLoadDrawCube()
 }
 
 // Get name string for pixel format
-pub unsafe fn rlGetPixelFormatName(format: u32) -> *const c_char
+pub fn rlGetPixelFormatName(format: u32) -> *const c_char
 {
     match PixelFormat::from_repr(format as i32)
     {
@@ -3960,7 +3960,7 @@ pub unsafe fn rlGetPixelFormatName(format: u32) -> *const c_char
 
 #[cfg(feature = "RLGL_SHOW_GL_DETAILS_INFO")]
 // Get compressed format official GL identifier name
-pub unsafe fn rlGetCompressedFormatName(format: i32) -> *const c_char
+pub fn rlGetCompressedFormatName(format: i32) -> *const c_char
 {
     match format
     {
@@ -4183,7 +4183,7 @@ pub unsafe fn rlUnloadShaderDefault()
 
 // Get pixel data size in bytes (image or texture)
 // NOTE: Size depends on pixel format
-pub unsafe fn rlGetPixelDataSize(width: i32, height: i32, format: i32) -> i32
+pub fn rlGetPixelDataSize(width: i32, height: i32, format: i32) -> i32
 {
     let mut dataSize = 0;       // Size in bytes
     let mut bpp = 0;            // Bits per pixel

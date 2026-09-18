@@ -699,7 +699,7 @@ pub unsafe fn SetWindowIcon(image: Image)
 }
 
 // Set icon for window
-pub unsafe fn SetWindowIcons(images: &[Image], count: i32)
+pub fn SetWindowIcons(images: &[Image], count: i32)
 {
     warn!("SetWindowIcons() not available on target platform");
 }

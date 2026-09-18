@@ -1442,7 +1442,7 @@ pub unsafe fn GetWorldToScreenEx(position: Vector3, camera: Camera, width: i32, 
 }
 
 // Get screen space position for a 2d camera world space position
-pub unsafe fn GetWorldToScreen2D(position: Vector2, camera: Camera2D) -> Vector2
+pub fn GetWorldToScreen2D(position: Vector2, camera: Camera2D) -> Vector2
 {
     let matCamera: Matrix = GetCameraMatrix2D(camera);
     let transform: Vector3 = Vector3Transform(Vector3 { x: position.x, y: position.y, z: 0.0 }, matCamera);
@@ -1451,7 +1451,7 @@ pub unsafe fn GetWorldToScreen2D(position: Vector2, camera: Camera2D) -> Vector2
 }
 
 // Get world space position for a 2d camera screen space position
-pub unsafe fn GetScreenToWorld2D(position: Vector2, camera: Camera2D) -> Vector2
+pub fn GetScreenToWorld2D(position: Vector2, camera: Camera2D) -> Vector2
 {
     let invMatCamera: Matrix = Matrix::invert(GetCameraMatrix2D(camera));
     let transform: Vector3 = Vector3Transform(Vector3 { x: position.x, y: position.y, z: 0.0 }, invMatCamera);
@@ -1603,7 +1603,7 @@ pub fn GetRandomValue(min: i32, max: i32) -> i32 {
 // Set the seed for the random number generator
 
 // Takes a screenshot of current screen
-pub unsafe fn TakeScreenshot(fileName: &str)
+pub fn TakeScreenshot(fileName: &str)
 {
 #[cfg(feature = "SUPPORT_MODULE_RTEXTURES")]
 {
@@ -1653,7 +1653,7 @@ pub unsafe fn SetConfigFlags(flags: u32)
 pub unsafe fn SetTraceLogLevel(logType: i32) { logTypeLevel = logType; }
 
 // Show trace log messages (LOG_INFO, LOG_WARNING, LOG_ERROR, LOG_DEBUG)
-pub unsafe fn TraceLog(logType: i32, text: std::fmt::Arguments<'_>)
+pub fn TraceLog(logType: i32, text: std::fmt::Arguments<'_>)
 {
     #[cfg(feature = "SUPPORT_TRACELOG")]
     {
@@ -1767,7 +1767,7 @@ pub fn SaveFileData(file_name: &str, data: &[u8]) -> bool {
 }
 
 // Export data to code (.h), returns true on success
-pub unsafe fn ExportDataAsCode(data: &[u8], dataSize: i32, fileName: &str) -> bool
+pub fn ExportDataAsCode(data: &[u8], dataSize: i32, fileName: &str) -> bool
 {
     let mut result = false;
 
@@ -2234,7 +2234,7 @@ pub fn LoadAutomationEventList<P: AsRef<Path>>(file_name: Option<P>) -> Automati
     list
 }
 // Unload automation events list from file
-pub unsafe fn UnloadAutomationEventList(list: &mut AutomationEventList)
+pub fn UnloadAutomationEventList(list: &mut AutomationEventList)
 {
     #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
     list.events.clear();

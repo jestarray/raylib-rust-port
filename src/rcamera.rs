@@ -36,20 +36,20 @@ pub const CAMERA_ORBITAL_SPEED: f32 = 0.5;                  // Radians per secon
 // Module Functions Definition
 //----------------------------------------------------------------------------------
 // Returns the cameras forward vector (normalized)
-pub unsafe fn  GetCameraForward(camera: &Camera) -> Vector3
+pub fn GetCameraForward(camera: &Camera) -> Vector3
 {
     return (camera.target - camera.position).normalize();
 }
 
 // Returns the cameras up vector (normalized)
 // Note: The up vector might not be perpendicular to the forward vector
-pub unsafe fn  GetCameraUp(camera: &Camera) -> Vector3
+pub fn GetCameraUp(camera: &Camera) -> Vector3
 {
     return camera.up.normalize();
 }
 
 // Returns the cameras right vector (normalized)
-pub unsafe fn  GetCameraRight(camera: &Camera) -> Vector3
+pub fn GetCameraRight(camera: &Camera) -> Vector3
 {
     let forward = GetCameraForward(camera);
     let up = GetCameraUp(camera);
@@ -58,7 +58,7 @@ pub unsafe fn  GetCameraRight(camera: &Camera) -> Vector3
 }
 
 // Moves the camera in its forward direction
-pub unsafe fn  CameraMoveForward(camera: &mut Camera, distance: f32, moveInWorldPlane: bool)
+pub fn CameraMoveForward(camera: &mut Camera, distance: f32, moveInWorldPlane: bool)
 {
     let mut forward = GetCameraForward(camera);
 
@@ -81,7 +81,7 @@ pub unsafe fn  CameraMoveForward(camera: &mut Camera, distance: f32, moveInWorld
 }
 
 // Moves the camera in its up direction
-pub unsafe fn  CameraMoveUp(camera: &mut Camera, distance: f32)
+pub fn CameraMoveUp(camera: &mut Camera, distance: f32)
 {
     let mut up = GetCameraUp(camera);
 
@@ -94,7 +94,7 @@ pub unsafe fn  CameraMoveUp(camera: &mut Camera, distance: f32)
 }
 
 // Moves the camera target in its current right direction
-pub unsafe fn  CameraMoveRight(camera: &mut Camera, distance: f32, moveInWorldPlane: bool)
+pub fn CameraMoveRight(camera: &mut Camera, distance: f32, moveInWorldPlane: bool)
 {
     let mut right = GetCameraRight(camera);
 
@@ -117,7 +117,7 @@ pub unsafe fn  CameraMoveRight(camera: &mut Camera, distance: f32, moveInWorldPl
 }
 
 // Moves the camera position closer/farther to/from the camera target
-pub unsafe fn  CameraMoveToTarget(camera: &mut Camera, delta: f32)
+pub fn CameraMoveToTarget(camera: &mut Camera, delta: f32)
 {
     let mut distance = camera.position.distance(camera.target);
 
@@ -136,7 +136,7 @@ pub unsafe fn  CameraMoveToTarget(camera: &mut Camera, delta: f32)
 // Yaw is "looking left and right"
 // If rotateAroundTarget is false, the camera rotates around its position
 // Note: angle must be provided in radians
-pub unsafe fn  CameraYaw(camera: &mut Camera, angle: f32, rotateAroundTarget: bool)
+pub fn CameraYaw(camera: &mut Camera, angle: f32, rotateAroundTarget: bool)
 {
     // Rotation axis
     let up = GetCameraUp(camera);
@@ -164,7 +164,7 @@ pub unsafe fn  CameraYaw(camera: &mut Camera, angle: f32, rotateAroundTarget: bo
 //  - rotateAroundTarget defines if rotation is around target or around its position
 //  - rotateUp rotates the up direction as well (typically only useful in CAMERA_FREE)
 // NOTE: [angle] must be provided in radians
-pub unsafe fn  CameraPitch(camera: &mut Camera, mut angle: f32, lockView: bool, rotateAroundTarget: bool, rotateUp: bool)
+pub fn CameraPitch(camera: &mut Camera, mut angle: f32, lockView: bool, rotateAroundTarget: bool, rotateUp: bool)
 {
     // Up direction
     let up = GetCameraUp(camera);
@@ -216,7 +216,7 @@ pub unsafe fn  CameraPitch(camera: &mut Camera, mut angle: f32, lockView: bool, 
 // Rotates the camera around its forward vector
 // Roll is "turning your head sideways to the left or right"
 // Note: angle must be provided in radians
-pub unsafe fn  CameraRoll(camera: &mut Camera, angle: f32)
+pub fn CameraRoll(camera: &mut Camera, angle: f32)
 {
     // Rotation axis
     let forward = GetCameraForward(camera);
@@ -226,13 +226,13 @@ pub unsafe fn  CameraRoll(camera: &mut Camera, angle: f32)
 }
 
 // Returns the camera view matrix
-pub unsafe fn  GetCameraViewMatrix(camera: &Camera) -> Matrix
+pub fn GetCameraViewMatrix(camera: &Camera) -> Matrix
 {
     return Matrix::look_at(camera.position, camera.target, camera.up);
 }
 
 // Returns the camera projection matrix
-pub unsafe fn  GetCameraProjectionMatrix(camera: &Camera, aspect: f32) -> Matrix
+pub fn GetCameraProjectionMatrix(camera: &Camera, aspect: f32) -> Matrix
 {
     if camera.projection == CAMERA_PERSPECTIVE as i32
     {
@@ -338,7 +338,7 @@ pub unsafe fn  UpdateCamera(camera: &mut Camera, mode: i32)
 // #endif // !RCAMERA_STANDALONE
 
 // Update camera movement, movement/rotation values should be provided by user
-pub unsafe fn  UpdateCameraPro(camera: &mut Camera, movement: Vector3, rotation: Vector3, zoom: f32)
+pub fn UpdateCameraPro(camera: &mut Camera, movement: Vector3, rotation: Vector3, zoom: f32)
 {
     // Required values
     // movement.x - Move forward/backward
