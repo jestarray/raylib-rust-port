@@ -2952,9 +2952,9 @@ pub fn rlResizeFramebuffer(width: i32, height: i32)
 }
 
 // Read screen pixel data (color buffer)
-pub unsafe fn rlReadScreenPixels(width: i32, height: i32) -> *mut u8
+pub unsafe fn rlReadScreenPixels(width: i32, height: i32) -> Vec<u8>
 {
-    let imgData = libc::calloc((width*height*4) as usize, size_of::<u8>()) as *mut u8;
+    let mut imgData = vec![0;(width*height*4) as usize];
 
     // NOTE: Buffer retrieved is GL_FRONT in single-buffered configurations
     // and GL_BACK in double-buffered configurations, make sure to call it at the end of frame
@@ -2962,7 +2962,7 @@ pub unsafe fn rlReadScreenPixels(width: i32, height: i32) -> *mut u8
 
     // NOTE: glReadPixels() returns image flipped vertically -> (0,0) is the bottom left corner of the framebuffer
     // WARNING: Getting alpha channel! Be careful, it can be transparent if not cleared properly!
-    gl::ReadPixels(0, 0, width, height, gl::RGBA, gl::UNSIGNED_BYTE, imgData as *mut c_void);
+    gl::ReadPixels(0, 0, width, height, gl::RGBA, gl::UNSIGNED_BYTE, imgData.as_mut_ptr() as *mut c_void);
 
     // Flip image vertically
     // NOTE: Alpha value has already been applied to RGB in framebuffer, not needed anymore
@@ -2973,19 +2973,19 @@ pub unsafe fn rlReadScreenPixels(width: i32, height: i32) -> *mut u8
             let s = (((height - 1) - y)*width*4 + x) as usize;
             let e = (y*width*4 + x) as usize;
 
-            let r = *imgData.add(s);
-            let g = *imgData.add(s + 1);
-            let b = *imgData.add(s + 2);
+            let r = imgData[s];
+            let g = imgData[s + 1];
+            let b = imgData[s + 2];
 
-            *imgData.add(s) = *imgData.add(e);
-            *imgData.add(s + 1) = *imgData.add(e + 1);
-            *imgData.add(s + 2) = *imgData.add(e + 2);
-            *imgData.add(s + 3) = 255; // Set alpha component value to 255 (no trasparent image retrieval)
+            imgData[s] = imgData[e];
+            imgData[s + 1] = imgData[e + 1];
+            imgData[s + 2] = imgData[e + 2];
+            imgData[s + 3] = 255; // Set alpha component value to 255 (no trasparent image retrieval)
 
-            *imgData.add(e) = r;
-            *imgData.add(e + 1) = g;
-            *imgData.add(e + 2) = b;
-            *imgData.add(e + 3) = 255; // Ditto
+            imgData[e] = r;
+            imgData[e + 1] = g;
+            imgData[e + 2] = b;
+            imgData[e + 3] = 255; // Ditto
         }
     }
 
