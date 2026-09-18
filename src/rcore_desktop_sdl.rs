@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 #![allow(unsafe_op_in_unsafe_fn)]
 #![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(missing_safety_doc, unused_parens, non_snake_case, static_mut_refs)]
+#![allow(clippy::missing_safety_doc, unused_parens, non_snake_case, static_mut_refs)]
 #![allow(
     clippy::too_many_arguments,
     clippy::needless_return,
@@ -275,7 +275,7 @@ pub unsafe fn SDL_GetCurrentDisplayMode_Adapter(displayID: SDL_DisplayID, mode: 
 {
     let currentMode: *const SDL_DisplayMode = sdl3_sys::video::SDL_GetCurrentDisplayMode(displayID);
 
-    if (currentMode == std::ptr::null_mut()) { warn!("SDL: No possible to get current display mode"); }
+    if currentMode.is_null() { warn!("SDL: No possible to get current display mode"); }
     else { *mode = std::ptr::read(currentMode); }
 }
 
@@ -295,9 +295,9 @@ pub unsafe fn SDL_GetDisplayDPI(displayIndex: i32, ddpi: *mut f32, hdpi: *mut f3
 {
     let dpi: f32 = SDL_GetWindowDisplayScale(platform.window)*96.0;
 
-    if (ddpi != std::ptr::null_mut()) { *ddpi = dpi; }
-    if (hdpi != std::ptr::null_mut()) { *hdpi = dpi; }
-    if (vdpi != std::ptr::null_mut()) { *vdpi = dpi; }
+    if !ddpi.is_null() { *ddpi = dpi; }
+    if !hdpi.is_null() { *hdpi = dpi; }
+    if !vdpi.is_null() { *vdpi = dpi; }
 
     return 0;
 }
@@ -730,7 +730,7 @@ pub unsafe fn SetWindowMonitor(monitor: i32)
         // NOTE 1: SDL started supporting moving exclusive fullscreen windows between displays on SDL3,
         // see commit https://github.com/libsdl-org/SDL/commit/3f5ef7dd422057edbcf3e736107e34be4b75d9ba
         // NOTE 2: A workaround for SDL2 is leaving fullscreen, moving the window, then entering full screen again
-        let wasFullscreen: bool = if (((CORE.Window.flags & FLAG_FULLSCREEN_MODE as u32) != 0)) { true } else { false };
+        let wasFullscreen: bool = (CORE.Window.flags & FLAG_FULLSCREEN_MODE as u32) != 0;
 
         let screenWidth: i32 = CORE.Window.screen.x as i32;
         let screenHeight: i32 = CORE.Window.screen.y as i32;
@@ -1267,7 +1267,7 @@ pub unsafe fn PollInputEvents()
         if (CORE.Input.Gamepad.ready[i])
         {
             // Register previous gamepad button states
-            for k in (0) as usize..(MAX_GAMEPAD_BUTTONS) as usize
+            for k in 0_usize..(MAX_GAMEPAD_BUTTONS)
             {
                 CORE.Input.Gamepad.previousButtonState[i][k] = CORE.Input.Gamepad.currentButtonState[i][k];
             }
@@ -1276,7 +1276,7 @@ pub unsafe fn PollInputEvents()
     }
 
     // Register previous touch states
-    for i in (0) as usize..(MAX_TOUCH_POINTS) as usize { CORE.Input.Touch.previousTouchState[i] = CORE.Input.Touch.currentTouchState[i]; }
+    for i in 0_usize..(MAX_TOUCH_POINTS) { CORE.Input.Touch.previousTouchState[i] = CORE.Input.Touch.currentTouchState[i]; }
 
     // Map touch position to mouse position for convenience
     if (CORE.Input.Touch.pointCount == 0) { CORE.Input.Touch.position[0] = CORE.Input.Mouse.currentPosition; }
@@ -1286,14 +1286,14 @@ pub unsafe fn PollInputEvents()
 
     // Register previous keys states
     // NOTE: Android supports up to 260 keys
-    for i in (0) as usize..(MAX_KEYBOARD_KEYS) as usize
+    for i in 0_usize..(MAX_KEYBOARD_KEYS)
     {
         CORE.Input.Keyboard.previousKeyState[i] = CORE.Input.Keyboard.currentKeyState[i];
         CORE.Input.Keyboard.keyRepeatInFrame[i] = 0;
     }
 
     // Register previous mouse states
-    for i in (0) as usize..(MAX_MOUSE_BUTTONS) as usize { CORE.Input.Mouse.previousButtonState[i] = CORE.Input.Mouse.currentButtonState[i]; }
+    for i in 0_usize..(MAX_MOUSE_BUTTONS) { CORE.Input.Mouse.previousButtonState[i] = CORE.Input.Mouse.currentButtonState[i]; }
 
     // Poll input events for current platform
     //-----------------------------------------------------------------------------
@@ -1513,33 +1513,33 @@ pub unsafe fn PollInputEvents()
                 let jid: SDL_JoystickID = event.jdevice.which; // Joystick device index
 
                 // Check if already added at InitPlatform
-                for i in (0) as usize..(MAX_GAMEPADS) as usize
+                for i in 0_usize..(MAX_GAMEPADS)
                 {
                     if (jid == platform.gamepadId[i]) { return; }
                 }
 
                 let mut nextAvailableSlot: usize = 0;
-                while (nextAvailableSlot < MAX_GAMEPADS && CORE.Input.Gamepad.ready[nextAvailableSlot as usize])
+                while (nextAvailableSlot < MAX_GAMEPADS && CORE.Input.Gamepad.ready[nextAvailableSlot])
                 {
                     nextAvailableSlot += 1;
                 }
 
-                if ((nextAvailableSlot < MAX_GAMEPADS) && !CORE.Input.Gamepad.ready[nextAvailableSlot as usize])
+                if ((nextAvailableSlot < MAX_GAMEPADS) && !CORE.Input.Gamepad.ready[nextAvailableSlot])
                 {
-                    platform.gamepad[nextAvailableSlot as usize] = SDL_OpenGamepad(jid);
-                    platform.gamepadId[nextAvailableSlot as usize] = SDL_GetJoystickID(SDL_GetGamepadJoystick(platform.gamepad[nextAvailableSlot as usize]));
+                    platform.gamepad[nextAvailableSlot] = SDL_OpenGamepad(jid);
+                    platform.gamepadId[nextAvailableSlot] = SDL_GetJoystickID(SDL_GetGamepadJoystick(platform.gamepad[nextAvailableSlot]));
 
-                    if (!platform.gamepad[nextAvailableSlot as usize].is_null())
+                    if (!platform.gamepad[nextAvailableSlot].is_null())
                     {
-                        CORE.Input.Gamepad.ready[nextAvailableSlot as usize] = true;
-                        CORE.Input.Gamepad.axisCount[nextAvailableSlot as usize] = SDL_GetNumJoystickAxes(SDL_GetGamepadJoystick(platform.gamepad[nextAvailableSlot as usize]));
-                        CORE.Input.Gamepad.axisState[nextAvailableSlot as usize][GAMEPAD_AXIS_LEFT_TRIGGER as i32 as usize] = -1.0;
-                        CORE.Input.Gamepad.axisState[nextAvailableSlot as usize][GAMEPAD_AXIS_RIGHT_TRIGGER as i32 as usize] = -1.0;
-                        CORE.Input.Gamepad.name[nextAvailableSlot as usize].fill(0);
+                        CORE.Input.Gamepad.ready[nextAvailableSlot] = true;
+                        CORE.Input.Gamepad.axisCount[nextAvailableSlot] = SDL_GetNumJoystickAxes(SDL_GetGamepadJoystick(platform.gamepad[nextAvailableSlot]));
+                        CORE.Input.Gamepad.axisState[nextAvailableSlot][GAMEPAD_AXIS_LEFT_TRIGGER as i32 as usize] = -1.0;
+                        CORE.Input.Gamepad.axisState[nextAvailableSlot][GAMEPAD_AXIS_RIGHT_TRIGGER as i32 as usize] = -1.0;
+                        CORE.Input.Gamepad.name[nextAvailableSlot].fill(0);
                         let controllerName = SDL_GameControllerNameForIndex(nextAvailableSlot as i32);
                         #[allow(clippy::unnecessary_cast)]
                         let controllerName = if controllerName.is_null() { c"noname".as_ptr() } else { controllerName } as *const std::ffi::c_char;
-                        let destination = &mut CORE.Input.Gamepad.name[nextAvailableSlot as usize];
+                        let destination = &mut CORE.Input.Gamepad.name[nextAvailableSlot];
                         let controllerNameLength = std::ffi::CStr::from_ptr(controllerName as *const std::ffi::c_char).to_bytes().len().min(destination.len().saturating_sub(1));destination.fill(0);
                         std::ptr::copy_nonoverlapping(controllerName, destination.as_mut_ptr() as *mut std::ffi::c_char, controllerNameLength);
                     }
@@ -1549,7 +1549,7 @@ pub unsafe fn PollInputEvents()
             value if value == SDL_EventType::JOYSTICK_REMOVED => {
                 let jid: SDL_JoystickID = event.jdevice.which; // Joystick instance id
 
-                for i in (0) as usize..(MAX_GAMEPADS) as usize
+                for i in 0_usize..(MAX_GAMEPADS)
                 {
                     if (platform.gamepadId[i] == jid)
                     {
@@ -1586,7 +1586,7 @@ pub unsafe fn PollInputEvents()
 
                 if (button >= 0)
                 {
-                    for i in (0) as usize..(MAX_GAMEPADS) as usize
+                    for i in 0_usize..(MAX_GAMEPADS)
                     {
                         if (platform.gamepadId[i] == event.gbutton.which)
                         {
@@ -1622,7 +1622,7 @@ pub unsafe fn PollInputEvents()
 
                 if (button >= 0)
                 {
-                    for i in (0) as usize..(MAX_GAMEPADS) as usize
+                    for i in 0_usize..(MAX_GAMEPADS)
                     {
                         if (platform.gamepadId[i] == event.gbutton.which)
                         {
@@ -1649,12 +1649,12 @@ pub unsafe fn PollInputEvents()
 
                 if (axis >= 0)
                 {
-                    for i in (0) as usize..(MAX_GAMEPADS) as usize
+                    for i in 0_usize..(MAX_GAMEPADS)
                     {
                         if (platform.gamepadId[i] == event.jaxis.which)
                         {
                             // SDL axis value range is -32768 to 32767, normalizing it to raylib's -1.0 to 1.0f range
-                            let value: f32 = event.jaxis.value as f32/(32767 as f32);
+                            let value: f32 = event.jaxis.value as f32/32767_f32;
                             CORE.Input.Gamepad.axisState[i][axis as usize] = value;
 
                             // Register button state for triggers in addition to their axes
@@ -1812,9 +1812,9 @@ pub unsafe fn InitPlatform() -> i32
     // it is needed to be enabled manually to keep GetCharPressed() working
     // REF: https://github.com/libsdl-org/SDL/commit/72fc6f86e5d605a3787222bc7dc18c5379047f4a
     let enableOSK: *const std::ffi::c_char = SDL_GetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD);
-    if (enableOSK == std::ptr::null_mut()) { SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, c"0".as_ptr()); }
+    if enableOSK.is_null() { SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, c"0".as_ptr()); }
     if (!SDL_StartTextInput(platform.window)) { warn!("SDL: Failed to start text input: {}", CStr::from_ptr(SDL_GetError()).to_string_lossy()); }
-    if (enableOSK == std::ptr::null_mut()) { SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, std::ptr::null_mut()); }
+    if enableOSK.is_null() { SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, std::ptr::null_mut()); }
 
     // Init OpenGL context
     if (rlGetVersion() != RL_OPENGL_SOFTWARE)
@@ -1822,7 +1822,7 @@ pub unsafe fn InitPlatform() -> i32
         platform.glContext = SDL_GL_CreateContext(platform.window);
     }
 
-    if ((platform.window != std::ptr::null_mut()) && ((rlGetVersion() == RL_OPENGL_SOFTWARE) || (platform.glContext != std::ptr::null_mut())))
+    if (!platform.window.is_null() && ((rlGetVersion() == RL_OPENGL_SOFTWARE) || !platform.glContext.is_null()))
     {
         CORE.Window.ready = true;
 
@@ -1850,7 +1850,7 @@ pub unsafe fn InitPlatform() -> i32
         info!("    > Render size:  {} x {}", CORE.Window.render.x, CORE.Window.render.y);
         info!("    > Viewport offsets: {}, {}", CORE.Window.renderOffset.x, CORE.Window.renderOffset.y);
 
-        if (platform.glContext != std::ptr::null_mut())
+        if !platform.glContext.is_null()
         {
             SDL_GL_SetSwapInterval(if (((CORE.Window.flags & FLAG_VSYNC_HINT as u32) != 0)) { 1 } else { 0 });
 
@@ -1873,7 +1873,7 @@ pub unsafe fn InitPlatform() -> i32
     // Initialize input events system
     //----------------------------------------------------------------------------
     // Initialize gamepads
-    for i in (0) as usize..(MAX_GAMEPADS) as usize
+    for i in 0_usize..(MAX_GAMEPADS)
     {
         platform.gamepadId[i] = SDL_JoystickID((-1i32) as u32); // Set all gamepad initial instance ids as invalid to not conflict with instance id zero
     }
@@ -1884,7 +1884,7 @@ pub unsafe fn InitPlatform() -> i32
     let mut i: usize = 0;
     while ((i as i32) < numJoysticks) && (i < MAX_GAMEPADS)
     {
-        platform.gamepad[i] = SDL_OpenGamepad(*joysticks.add(i as usize));
+        platform.gamepad[i] = SDL_OpenGamepad(*joysticks.add(i));
         platform.gamepadId[i] = SDL_GetJoystickID(SDL_GetGamepadJoystick(platform.gamepad[i]));
 
         if (!platform.gamepad[i].is_null())
@@ -1941,7 +1941,7 @@ pub unsafe fn InitPlatform() -> i32
 pub unsafe fn ClosePlatform()
 {
     SDL_DestroyCursor(platform.cursor); // Free cursor
-    if (platform.glContext != std::ptr::null_mut()) { SDL_GL_DestroyContext(platform.glContext); } // Deinitialize OpenGL context
+    if !platform.glContext.is_null() { SDL_GL_DestroyContext(platform.glContext); } // Deinitialize OpenGL context
     SDL_DestroyWindow(platform.window);
     SDL_Quit(); // Deinitialize SDL internal global state
 }
@@ -1965,31 +1965,31 @@ pub fn GetCodepointNextSDL(text: &str, codepointSize: &mut i32) -> i32
     *codepointSize = 1;
 
     // Get current codepoint and bytes processed
-    if (0xf0 == (0xf8 & (ptr.get(0).copied().unwrap_or(0) as i32)))
+    if (0xf0 == (0xf8 & (ptr.first().copied().unwrap_or(0) as i32)))
     {
         // 4 byte UTF-8 codepoint
         if (((((ptr.get(1).copied().unwrap_or(0) as i32) & 0xC0) ^ 0x80) != 0) || ((((ptr.get(2).copied().unwrap_or(0) as i32) & 0xC0) ^ 0x80) != 0) || ((((ptr.get(3).copied().unwrap_or(0) as i32) & 0xC0) ^ 0x80) != 0)) { return codepoint; } // 10xxxxxx checks
-        codepoint = ((0x07 & (ptr.get(0).copied().unwrap_or(0) as i32)) << 18) | ((0x3f & (ptr.get(1).copied().unwrap_or(0) as i32)) << 12) | ((0x3f & (ptr.get(2).copied().unwrap_or(0) as i32)) << 6) | (0x3f & (ptr.get(3).copied().unwrap_or(0) as i32));
+        codepoint = ((0x07 & (ptr.first().copied().unwrap_or(0) as i32)) << 18) | ((0x3f & (ptr.get(1).copied().unwrap_or(0) as i32)) << 12) | ((0x3f & (ptr.get(2).copied().unwrap_or(0) as i32)) << 6) | (0x3f & (ptr.get(3).copied().unwrap_or(0) as i32));
         *codepointSize = 4;
     }
-    else if (0xe0 == (0xf0 & (ptr.get(0).copied().unwrap_or(0) as i32)))
+    else if (0xe0 == (0xf0 & (ptr.first().copied().unwrap_or(0) as i32)))
     {
         // 3 byte UTF-8 codepoint */
         if (((((ptr.get(1).copied().unwrap_or(0) as i32) & 0xC0) ^ 0x80) != 0) || ((((ptr.get(2).copied().unwrap_or(0) as i32) & 0xC0) ^ 0x80) != 0)) { return codepoint; } // 10xxxxxx checks
-        codepoint = ((0x0f & (ptr.get(0).copied().unwrap_or(0) as i32)) << 12) | ((0x3f & (ptr.get(1).copied().unwrap_or(0) as i32)) << 6) | (0x3f & (ptr.get(2).copied().unwrap_or(0) as i32));
+        codepoint = ((0x0f & (ptr.first().copied().unwrap_or(0) as i32)) << 12) | ((0x3f & (ptr.get(1).copied().unwrap_or(0) as i32)) << 6) | (0x3f & (ptr.get(2).copied().unwrap_or(0) as i32));
         *codepointSize = 3;
     }
-    else if (0xc0 == (0xe0 & (ptr.get(0).copied().unwrap_or(0) as i32)))
+    else if (0xc0 == (0xe0 & (ptr.first().copied().unwrap_or(0) as i32)))
     {
         // 2 byte UTF-8 codepoint
         if ((((ptr.get(1).copied().unwrap_or(0) as i32) & 0xC0) ^ 0x80) != 0) { return codepoint; } // 10xxxxxx checks
-        codepoint = ((0x1f & (ptr.get(0).copied().unwrap_or(0) as i32)) << 6) | (0x3f & (ptr.get(1).copied().unwrap_or(0) as i32));
+        codepoint = ((0x1f & (ptr.first().copied().unwrap_or(0) as i32)) << 6) | (0x3f & (ptr.get(1).copied().unwrap_or(0) as i32));
         *codepointSize = 2;
     }
-    else if (0x00 == (0x80 & (ptr.get(0).copied().unwrap_or(0) as i32)))
+    else if (0x00 == (0x80 & (ptr.first().copied().unwrap_or(0) as i32)))
     {
         // 1 byte UTF-8 codepoint
-        codepoint = (ptr.get(0).copied().unwrap_or(0) as i32);
+        codepoint = (ptr.first().copied().unwrap_or(0) as i32);
         *codepointSize = 1;
     }
 
@@ -2003,9 +2003,9 @@ pub unsafe fn UpdateTouchPointsSDL(event: SDL_TouchFingerEvent)
     let fingers: *mut *mut SDL_Finger = SDL_GetTouchFingers(event.touchID, &mut count);
     CORE.Input.Touch.pointCount = count;
 
-    for i in (0) as usize..(CORE.Input.Touch.pointCount) as usize
+    for i in 0_usize..(CORE.Input.Touch.pointCount) as usize
     {
-        let finger: *mut SDL_Finger = *fingers.add(i as usize);
+        let finger: *mut SDL_Finger = *fingers.add(i);
         CORE.Input.Touch.pointId[i] = (*finger).id.0 as i32;
         CORE.Input.Touch.position[i].x = (*finger).x*CORE.Window.screen.x;
         CORE.Input.Touch.position[i].y = (*finger).y*CORE.Window.screen.y;
@@ -2015,5 +2015,5 @@ pub unsafe fn UpdateTouchPointsSDL(event: SDL_TouchFingerEvent)
     SDL_free(fingers.cast());
 
 
-    for i in (CORE.Input.Touch.pointCount) as usize..(MAX_TOUCH_POINTS) as usize { CORE.Input.Touch.currentTouchState[i] = 0; }
+    for i in (CORE.Input.Touch.pointCount) as usize..(MAX_TOUCH_POINTS) { CORE.Input.Touch.currentTouchState[i] = 0; }
 }

@@ -2,7 +2,7 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 #![allow(non_snake_case, non_upper_case_globals)]
 #![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(missing_safety_doc, unused_parens, non_snake_case, static_mut_refs)]
+#![allow(clippy::missing_safety_doc, unused_parens, static_mut_refs)]
 #![allow(
     clippy::too_many_arguments,
     clippy::needless_return,
@@ -364,17 +364,11 @@ pub unsafe fn DrawTriangleLinesEx(mut v1: Vector2, mut v2: Vector2, mut v3: Vect
     // Swap the vertices so the winding order is correct
     if thick < 0.0
     {
-        let mut temp: Vector2 = v1;
-        v1 = v4;
-        v4 = temp;
+        std::mem::swap(&mut v1, &mut v4);
 
-        temp = v2;
-        v2 = v5;
-        v5 = temp;
+        std::mem::swap(&mut v2, &mut v5);
 
-        temp = v3;
-        v3 = v6;
-        v6 = temp;
+        std::mem::swap(&mut v3, &mut v6);
     }
 
     rlSetTexture(GetShapesTexture().id);
@@ -520,9 +514,9 @@ pub unsafe fn DrawRectanglePro(rec: Rectangle, origin: Vector2, rotation: f32, c
     {
         let x: f32 = rec.x - origin.x;
         let y: f32 = rec.y - origin.y;
-        topLeft = Vector2 { x: x, y: y };
-        topRight = Vector2 { x: x + rec.width, y: y };
-        bottomLeft = Vector2 { x: x, y: y + rec.height };
+        topLeft = Vector2 { x, y };
+        topRight = Vector2 { x: x + rec.width, y };
+        bottomLeft = Vector2 { x, y: y + rec.height };
         bottomRight = Vector2 { x: x + rec.width, y: y + rec.height };
     }
     else
@@ -1011,7 +1005,7 @@ pub unsafe fn DrawRectangleRoundedLines(rec: Rectangle, mut roundness: f32, mut 
 }
 
 // Draw rectangle with rounded edges outline with line thickness
-pub unsafe fn DrawRectangleRoundedLinesEx(mut rec: Rectangle, mut roundness: f32, mut segments: i32, mut thick: f32, color: Color)
+pub unsafe fn DrawRectangleRoundedLinesEx(mut rec: Rectangle, mut roundness: f32, mut segments: i32, thick: f32, color: Color)
 {
     // Not a rounded rectangle
     if roundness <= 0.0
@@ -1366,9 +1360,7 @@ pub unsafe fn DrawCircleSector(center: Vector2, mut radius: f32, mut startAngle:
     if endAngle < startAngle
     {
         // Swap values
-        let tmp: f32 = startAngle;
-        startAngle = endAngle;
-        endAngle = tmp;
+        std::mem::swap(&mut startAngle, &mut endAngle);
     }
 
     // Drawing a whole circle, things get weird without limiting the circle to 360 degrees
@@ -1446,9 +1438,7 @@ pub unsafe fn DrawCircleSectorLines(center: Vector2, mut radius: f32, mut startA
     if endAngle < startAngle
     {
         // Swap values
-        let tmp: f32 = startAngle;
-        startAngle = endAngle;
-        endAngle = tmp;
+        std::mem::swap(&mut startAngle, &mut endAngle);
     }
 
     let mut showCapLines: bool = true;
@@ -1510,9 +1500,7 @@ pub unsafe fn DrawCircleSectorLinesEx(center: Vector2, mut radius: f32, mut star
     if endAngle < startAngle
     {
         // Swap values
-        let tmp: f32 = startAngle;
-        startAngle = endAngle;
-        endAngle = tmp;
+        std::mem::swap(&mut startAngle, &mut endAngle);
     }
 
     let mut showCapLines: bool = true;
@@ -1602,9 +1590,7 @@ pub unsafe fn DrawCircleSectorLinesEx(center: Vector2, mut radius: f32, mut star
     }
     else
     {
-        let tmp: f32 = outerRadius;
-        outerRadius = innerRadius;
-        innerRadius = tmp;
+        std::mem::swap(&mut outerRadius, &mut innerRadius);
     }
 
     // Cap 1 vertices
@@ -1901,13 +1887,9 @@ pub unsafe fn DrawCircleSectorLinesEx(center: Vector2, mut radius: f32, mut star
             }
 
             // Swap vertices to correct the winding order
-            let mut temp: Vector2 = c0;
-            c0 = c2;
-            c2 = temp;
+            std::mem::swap(&mut c0, &mut c2);
 
-            temp = c3;
-            c3 = c5;
-            c5 = temp;
+            std::mem::swap(&mut c3, &mut c5);
         }
     }
 
@@ -2207,13 +2189,9 @@ pub unsafe fn DrawEllipseLinesEx(center: Vector2, radiusH: f32, radiusV: f32, th
     else
     {
         // The outline is growing outside of the ellipse, so swap the inner and outer radius
-        let mut tmp: f32 = outerRadiusH;
-        outerRadiusH = innerRadiusH;
-        innerRadiusH = tmp;
+        std::mem::swap(&mut outerRadiusH, &mut innerRadiusH);
 
-        tmp = outerRadiusV;
-        outerRadiusV = innerRadiusV;
-        innerRadiusV = tmp;
+        std::mem::swap(&mut outerRadiusV, &mut innerRadiusV);
     }
 
     rlSetTexture(GetShapesTexture().id);
@@ -2250,9 +2228,7 @@ pub unsafe fn DrawRing(center: Vector2, mut innerRadius: f32, mut outerRadius: f
     // Function expects (outerRadius > innerRadius)
     if outerRadius < innerRadius
     {
-        let tmp: f32 = outerRadius;
-        outerRadius = innerRadius;
-        innerRadius = tmp;
+        std::mem::swap(&mut outerRadius, &mut innerRadius);
 
         if outerRadius <= 0.0 { outerRadius = 0.1; }
     }
@@ -2261,9 +2237,7 @@ pub unsafe fn DrawRing(center: Vector2, mut innerRadius: f32, mut outerRadius: f
     if endAngle < startAngle
     {
         // Swap values
-        let tmp: f32 = startAngle;
-        startAngle = endAngle;
-        endAngle = tmp;
+        std::mem::swap(&mut startAngle, &mut endAngle);
     }
 
     // Drawing a whole circle, things get weird without limiting the circle to 360 degrees
@@ -2325,9 +2299,7 @@ pub unsafe fn DrawRingLines(center: Vector2, mut innerRadius: f32, mut outerRadi
     // Function expects (outerRadius > innerRadius)
     if outerRadius < innerRadius
     {
-        let tmp: f32 = outerRadius;
-        outerRadius = innerRadius;
-        innerRadius = tmp;
+        std::mem::swap(&mut outerRadius, &mut innerRadius);
 
         if outerRadius <= 0.0 { outerRadius = 0.1; }
     }
@@ -2336,9 +2308,7 @@ pub unsafe fn DrawRingLines(center: Vector2, mut innerRadius: f32, mut outerRadi
     if endAngle < startAngle
     {
         // Swap values
-        let tmp: f32 = startAngle;
-        startAngle = endAngle;
-        endAngle = tmp;
+        std::mem::swap(&mut startAngle, &mut endAngle);
     }
 
     let mut showCapLines: bool = true;
@@ -2407,9 +2377,7 @@ pub unsafe fn DrawRingLinesEx(center: Vector2, mut innerRadius: f32, mut outerRa
     // Function expects (outerRadius > innerRadius)
     if outerRadius < innerRadius
     {
-        let tmp: f32 = outerRadius;
-        outerRadius = innerRadius;
-        innerRadius = tmp;
+        std::mem::swap(&mut outerRadius, &mut innerRadius);
 
         if outerRadius <= 0.0 { outerRadius = 0.1; }
     }
@@ -2418,9 +2386,7 @@ pub unsafe fn DrawRingLinesEx(center: Vector2, mut innerRadius: f32, mut outerRa
     if endAngle < startAngle
     {
         // Swap values
-        let tmp: f32 = startAngle;
-        startAngle = endAngle;
-        endAngle = tmp;
+        std::mem::swap(&mut startAngle, &mut endAngle);
     }
 
     let mut showCapLines: bool = true;
@@ -3049,7 +3015,7 @@ pub unsafe fn DrawSplineLinear(points: &[Vector2], pointCount: i32, thick: f32, 
 {
     if pointCount < 2 { return; }
 
-#[cfg(SUPPORT_SPLINE_MITERS)]
+#[cfg(feature="SUPPORT_SPLINE_MITERS")]
     {
     let mut prevNormal: Vector2 = Vector2 {x: -(points[1].y - points[0].y), y: (points[1].x - points[0].x)};
     let prevLength: f32 = (prevNormal.x*prevNormal.x + prevNormal.y*prevNormal.y).sqrt();
@@ -3133,7 +3099,7 @@ pub unsafe fn DrawSplineLinear(points: &[Vector2], pointCount: i32, thick: f32, 
     }
 
     }
-    #[cfg(not(SUPPORT_SPLINE_MITERS))]   // !SUPPORT_SPLINE_MITERS
+    #[cfg(not(feature="SUPPORT_SPLINE_MITERS"))]   // !SUPPORT_SPLINE_MITERS
     {
 
     let mut delta: Vector2 = Vector2 { x: 0.0, y: 0.0 };
@@ -3159,7 +3125,7 @@ pub unsafe fn DrawSplineLinear(points: &[Vector2], pointCount: i32, thick: f32, 
     }
     }
 
-#[cfg(SUPPORT_SPLINE_SEGMENT_CAPS)]
+#[cfg(feature="SUPPORT_SPLINE_SEGMENT_CAPS")]
     {
     // TODO: Add spline segment rounded caps at the begin/end of the spline?
     }
@@ -3274,7 +3240,7 @@ pub unsafe fn DrawSplineCatmullRom(points: &[Vector2], pointCount: i32, thick: f
         {
             t = ((j as f32))/((SPLINE_SEGMENT_DIVISIONS as f32));
 
-            let q0: f32 = (-1.0*t*t*t) + (2.0*t*t) + (-1.0*t);
+            let q0: f32 = (-t*t*t) + (2.0*t*t) + -t;
             let q1: f32 = (3.0*t*t*t) + (-5.0*t*t) + 2.0;
             let q2: f32 = (-3.0*t*t*t) + (4.0*t*t) + t;
             let q3: f32 = t*t*t - t*t;

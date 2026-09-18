@@ -228,7 +228,7 @@ unsafe fn GenImageFontAtlas(glyphs: &[GlyphInfo], font_size: i32, padding: i32) 
     }
 
     // Gray is white everywhere; the glyph coverage is stored in alpha.
-    for pixel in pixels.chunks_exact_mut(2) {
+    for pixel in pixels.as_chunks_mut::<2>().0 {
         pixel[0] = 255;
     }
     // Reserve the white 3x3 atlas corner used for drawing shapes.

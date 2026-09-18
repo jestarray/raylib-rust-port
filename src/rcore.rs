@@ -816,7 +816,7 @@ pub unsafe fn BeginMode3D(camera: Camera)
     rlPushMatrix();                 // Save previous matrix, which contains the settings for the 2d ortho projection
     rlLoadIdentity();               // Reset current matrix (projection)
 
-    let aspect: f32 = (CORE.Window.currentFbo.x as f32)/(CORE.Window.currentFbo.y as f32);
+    let aspect: f32 = CORE.Window.currentFbo.x/CORE.Window.currentFbo.y;
 
     // NOTE: zNear and zFar values are important when computing depth buffer values
     if (camera.projection == CameraProjection::Perspective as i32)
@@ -1117,14 +1117,14 @@ pub unsafe fn LoadShaderFromMemory(vsCode: Option<&str>, fsCode: Option<&str>) -
     if shader.id == 0 {
         // Shader could not be loaded but still loading the location points to avoid potential crashes
         // NOTE: All locations set to -1 (no location found)
-        shader.locs = vec![-1; RL_MAX_SHADER_LOCATIONS as usize];
+        shader.locs = vec![-1; RL_MAX_SHADER_LOCATIONS];
     } else if shader.id == rlGetShaderIdDefault() {
         // Copy the default locations into a new Vec<i32>
         let default_locs_ptr = rlGetShaderLocsDefault();
         if !default_locs_ptr.is_null() {
-            shader.locs = std::slice::from_raw_parts(default_locs_ptr, RL_MAX_SHADER_LOCATIONS as usize).to_vec();
+            shader.locs = std::slice::from_raw_parts(default_locs_ptr, RL_MAX_SHADER_LOCATIONS).to_vec();
         } else {
-            shader.locs = vec![-1; RL_MAX_SHADER_LOCATIONS as usize];
+            shader.locs = vec![-1; RL_MAX_SHADER_LOCATIONS];
         }
     } else if shader.id > 0 {
         // After custom shader loading, trying to set default location names
@@ -1142,7 +1142,7 @@ pub unsafe fn LoadShaderFromMemory(vsCode: Option<&str>, fsCode: Option<&str>) -
 
         // Load shader locations array
         // NOTE: All locations set to -1 (no location)
-        shader.locs = vec![-1; RL_MAX_SHADER_LOCATIONS as usize];
+        shader.locs = vec![-1; RL_MAX_SHADER_LOCATIONS];
 
         // Get handles to GLSL input attribute locations
         shader.locs[ShaderLocationIndex::SHADER_LOC_VERTEX_POSITION as usize] =
@@ -1311,7 +1311,7 @@ pub unsafe fn GetScreenToWorldRayEx(position: Vector2, camera: Camera, width: i3
     let z: f32 = 1.0;
 
     // Store values in a vector
-    let deviceCoords: Vector3 = Vector3 { x: x, y: y, z: z };
+    let deviceCoords: Vector3 = Vector3 { x, y, z };
 
     // Calculate view matrix from camera look at
     let matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
@@ -1327,7 +1327,7 @@ pub unsafe fn GetScreenToWorldRayEx(position: Vector2, camera: Camera, width: i3
     {
         let aspect: f64 = (width as f64)/(height as f64);
         let top: f64 = camera.fovy as f64/2.0;
-        let right: f64 = top*aspect as f64;
+        let right: f64 = top*aspect;
 
         // Calculate projection matrix from orthographic
         matProj = Matrix::ortho(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
@@ -1414,7 +1414,7 @@ pub unsafe fn GetWorldToScreenEx(position: Vector3, camera: Camera, width: i32, 
     {
         let aspect: f64 = (width as f64)/(height as f64);
         let top: f64 = camera.fovy as f64/2.0;
-        let right: f64 = top*aspect as f64;
+        let right: f64 = top*aspect;
 
         // Calculate projection matrix from orthographic
         matProj = Matrix::ortho(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
@@ -1500,7 +1500,7 @@ pub unsafe fn GetFPS() -> i32
         last = 0.0;
         index = 0;
 
-        for i in 0..FPS_CAPTURE_FRAMES_COUNT { history[(i) as usize] = 0.0; }
+        for h in history.iter_mut() { *h = 0.0; }
     }
 
     if (fpsFrame != 0.0)
@@ -1509,9 +1509,9 @@ pub unsafe fn GetFPS() -> i32
         {
             last = (GetTime() as f32);
             index = (index + 1)%FPS_CAPTURE_FRAMES_COUNT;
-            average -= history[(index) as usize];
-            history[(index) as usize] = fpsFrame/FPS_CAPTURE_FRAMES_COUNT as f32;
-            average += history[(index) as usize];
+            average -= history[(index)];
+            history[(index)] = fpsFrame/FPS_CAPTURE_FRAMES_COUNT as f32;
+            average += history[(index)];
         }
 
         fps = ((1.0/average).round() as i32);
@@ -1794,7 +1794,7 @@ pub unsafe fn ExportDataAsCode(data: &[u8], dataSize: i32, fileName: &str) -> bo
     for i in 0..varFileName.len()
     {
         // Convert variable name to uppercase
-        if ((varFileName[i] >= b'a') && (varFileName[i] <= b'z')) { varFileName[i] = varFileName[i] - 32; }
+        if ((varFileName[i] >= b'a') && (varFileName[i] <= b'z')) { varFileName[i] -= 32; }
         // Replace non valid character for C identifier with '_'
         else if (varFileName[i] == b'.' || varFileName[i] == b'-' || varFileName[i] == b'?' || varFileName[i] == b'!' || varFileName[i] == b'+') { varFileName[i] = b'_'; }
     }
@@ -1804,7 +1804,7 @@ pub unsafe fn ExportDataAsCode(data: &[u8], dataSize: i32, fileName: &str) -> bo
 
     write!(txtData, "static unsigned char {}_DATA[{}_DATA_SIZE] = {{ ", varFileName, varFileName).unwrap();
     for i in 0..(dataSize - 1) { write!(txtData, "0x{:x},{}", data[i as usize], if i%TEXT_BYTES_PER_LINE == 0 { "\n" } else { " " }).unwrap(); }
-    write!(txtData, "0x{:x} }};\n", data[(dataSize - 1) as usize]).unwrap();
+    writeln!(txtData, "0x{:x} }};", data[(dataSize - 1) as usize]).unwrap();
     byteCount = txtData.len();
 
     // NOTE: Text data size exported is determined by '\0' (NULL) character
@@ -2151,7 +2151,7 @@ pub fn LoadAutomationEventList<P: AsRef<Path>>(file_name: Option<P>) -> Automati
     #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]
     {
         list.capacity = MAX_AUTOMATION_EVENTS as u32;
-        list.events = vec![AutomationEvent::default();MAX_AUTOMATION_EVENTS as usize];
+        list.events = vec![AutomationEvent::default();MAX_AUTOMATION_EVENTS];
 
         let Some(path) = file_name else {
             info!("AUTOMATION: New empty events list loaded successfully");
@@ -2611,7 +2611,7 @@ pub unsafe fn GetGamepadAxisCount(gamepad: i32) -> i32
 // Get axis movement vector for a gamepad
 pub unsafe fn GetGamepadAxisMovement(gamepad: i32, axis: i32) -> f32
 {
-    let axis = axis as i32;
+    let axis = axis;
     let mut value: f32 = if ((axis == GamepadAxis::GAMEPAD_AXIS_LEFT_TRIGGER as i32) || (axis == GamepadAxis::GAMEPAD_AXIS_RIGHT_TRIGGER as i32)) { -1.0 } else { 0.0 };
 
     if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[(gamepad) as usize] && (axis < MAX_GAMEPAD_AXES as i32))
@@ -2753,8 +2753,8 @@ pub unsafe fn GetMouseWheelMove() -> f32
 {
     let mut result: f32 = 0.0;
 
-    if (CORE.Input.Mouse.currentWheelMove.x.abs() > CORE.Input.Mouse.currentWheelMove.y.abs()) { result = (CORE.Input.Mouse.currentWheelMove.x as f32); }
-    else { result = (CORE.Input.Mouse.currentWheelMove.y as f32); }
+    if (CORE.Input.Mouse.currentWheelMove.x.abs() > CORE.Input.Mouse.currentWheelMove.y.abs()) { result = CORE.Input.Mouse.currentWheelMove.x; }
+    else { result = CORE.Input.Mouse.currentWheelMove.y; }
 
     return result;
 }
@@ -3184,7 +3184,7 @@ pub unsafe fn RecordAutomationEvent() {
                 0.0
             };
 
-            if GetGamepadAxisMovement(gamepad, axis as i32) != defaultMovement {
+            if GetGamepadAxisMovement(gamepad, axis) != defaultMovement {
                 let idx = gcurrentEventList.count as usize;
 
                 gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;

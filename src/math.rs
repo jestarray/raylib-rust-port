@@ -53,7 +53,7 @@ pub fn wrap(value: f32, min: f32, max: f32) -> f32 {
 /// Check whether two given floats are almost equal
 #[inline]
 pub fn float_equals(x: f32, y: f32) -> bool {
-    (x - y).abs() <= std::f32::EPSILON * x.abs().max(y.abs()).max(1.0)
+    (x - y).abs() <= f32::EPSILON * x.abs().max(y.abs()).max(1.0)
 }
 
 pub fn Vector3Transform(v: Vector3, mat: Matrix) -> Vector3 {

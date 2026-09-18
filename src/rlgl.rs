@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 #![allow(unsafe_op_in_unsafe_fn)]
 #![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(missing_safety_doc, unused_parens, non_snake_case, static_mut_refs)]
+#![allow(clippy::missing_safety_doc, unused_parens, non_snake_case, static_mut_refs)]
 #![allow(
     clippy::too_many_arguments,
     clippy::needless_return,
@@ -4236,7 +4236,7 @@ pub unsafe fn rlGetPixelDataSize(width: i32, height: i32, format: i32) -> i32
     if (format >= PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32) &&
         (format <= PixelFormat::PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 as i32)
     {
-        let dataSizeBytes = ((width as u64*height as u64*bpp as u64) >> 3) as u64;  // Get size in bytes (dividing by 8)
+        let dataSizeBytes = ((width as u64*height as u64*bpp as u64) >> 3);  // Get size in bytes (dividing by 8)
         if dataSizeBytes < i32::MAX as u64 { dataSize = dataSizeBytes as i32; }
     }
 

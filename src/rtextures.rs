@@ -2,7 +2,7 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 #![allow(non_snake_case, non_upper_case_globals)]
 #![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(missing_safety_doc, unused_parens, static_mut_refs)]
+#![allow(clippy::missing_safety_doc, unused_parens, static_mut_refs)]
 #![allow(
     clippy::too_many_arguments,
     clippy::needless_return,
@@ -14,7 +14,7 @@
     clippy::let_and_return,
     clippy::double_parens,
 )]
-use crate::rlgl::{RL_QUADS, rlBegin, rlColor4ub, rlEnd, rlGetPixelDataSize, rlLoadTexture, rlPopMatrix, rlPushMatrix, rlRotatef, rlSetTexture, rlTexCoord2f, rlTranslatef, rlUnloadTexture, rlVertex2f};
+use crate::rlgl::{RL_QUADS, rlBegin, rlColor4ub, rlEnd, rlLoadTexture, rlPopMatrix, rlPushMatrix, rlRotatef, rlSetTexture, rlTexCoord2f, rlTranslatef, rlUnloadTexture, rlVertex2f};
 use crate::types::{Color, Image, NPatchInfo, NPatchLayout, Rectangle, Texture, Vector2};
 use std::ffi::CString;
 use log::{warn};
