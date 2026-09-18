@@ -31,7 +31,6 @@ use raylib::types::*;
 use raylib::types::GamepadButton::*;
 use raylib::types::GamepadAxis::*;
 use raylib::types::MouseButton::*;
-const MAX_BUNNIES: usize = 80000; // 80K bunnies limit
 
 // This is the maximum amount of elements (quads) per batch
 // NOTE: This value is defined in [rlgl] module and can be changed there
@@ -53,8 +52,13 @@ pub struct Bunny {
 //------------------------------------------------------------------------------------
 
 pub fn main() {
+    run();
+}
+
+pub fn run() {
     unsafe { start(); }
 }
+
 unsafe fn start() {
     // Initialization
     //--------------------------------------------------------------------------------------
@@ -63,10 +67,13 @@ unsafe fn start() {
 
     InitWindow(screenWidth, screenHeight, "raylib [textures] example - bunnymark");
 
-    // Load bunny texture
+    // Load bunny texture (support both local desktop path and Android APK assets)
     let mut texBunny: Texture2D = LoadTexture("resources/raybunny.png");
+    if texBunny.id == 0 {
+        texBunny = LoadTexture("raybunny.png");
+    }
 
-    let mut bunnies: Vec<Bunny> = Vec::with_capacity(MAX_BUNNIES); // Bunnies array
+    let mut bunnies: Vec<Bunny> = Vec::new(); // Bunnies array
 
     let mut paused: bool = false;
 
@@ -78,25 +85,13 @@ unsafe fn start() {
     {
         // Update
         //----------------------------------------------------------------------------------
-        if IsMouseButtonDown(MOUSE_BUTTON_LEFT as i32) {
-            // Create more bunnies
-            for _ in 0..100 {
-                if bunnies.len() < MAX_BUNNIES {
-                    bunnies.push(Bunny {
-                        position: GetMousePosition(),
-                        speed: Vector2 {
-                            x: GetRandomValue(-250, 250) as f32,
-                            y: GetRandomValue(-250, 250) as f32,
-                        },
-                        color: Color {
-                            r: GetRandomValue(50, 240) as u8,
-                            g: GetRandomValue(80, 240) as u8,
-                            b: GetRandomValue(100, 240) as u8,
-                            a: 255,
-                        },
-                    });
-                }
-            }
+        let isTouching = GetTouchPointCount() > 0;
+        if IsMouseButtonDown(MOUSE_BUTTON_LEFT as i32) || isTouching {
+            let spawnPos = if isTouching {
+                GetTouchPosition(0)
+            } else {
+                GetMousePosition()
+            };
         }
 
         if IsKeyPressed(KEY_P) {
@@ -137,9 +132,9 @@ unsafe fn start() {
                 DrawTexture(&texBunny, bunny.position.x as i32, bunny.position.y as i32, bunny.color);
             }
 
-            DrawRectangle(0, 0, screenWidth, 40, Color::BLACK);
+            DrawRectangle(0, 0, GetScreenWidth(), 40, Color::BLACK);
             DrawText(&format!("bunnies: {}", bunnies.len() as i32), 120, 10, 20, Color::GREEN);
-            DrawText(&format!("batched draw calls: {}", 1 + bunnies.len() as i32 / MAX_BATCH_ELEMENTS), 320, 10, 20, Color::MAROON);
+            DrawText(&format!("batched draw calls!: {}", 1 + bunnies.len() as i32 / MAX_BATCH_ELEMENTS), 320, 10, 20, Color::MAROON);
 
             DrawFPS(10, 10);
 
