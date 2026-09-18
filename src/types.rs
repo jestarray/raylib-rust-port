@@ -855,18 +855,18 @@ pub type RenderTexture2D = RenderTexture;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub enum CameraProjection {
-    Perspective = 0,
-    Orthographic,
+    CAMERA_PERSPECTIVE = 0,
+    CAMERA_ORTHOGRAPHIC,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub enum CameraMode {
-    Custom = 0,
-    Free,
-    Orbital,
-    FirstPerson,
-    ThirdPerson,
+    CAMERA_CUSTOM = 0,
+    CAMERA_FREE,
+    CAMERA_ORBITAL,
+    CAMERA_FIRST_PERSON,
+    CAMERA_THIRD_PERSON,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -1,37 +1,73 @@
-use crate::types::{Camera, CameraProjection, Matrix, Vector3};
-use glam::Quat;
+#![allow(unused_variables)]
+#![allow(unsafe_op_in_unsafe_fn)]
+#![allow(non_snake_case, non_upper_case_globals)]
+#![cfg_attr(rustfmt, rustfmt_skip)]
+#![allow(clippy::missing_safety_doc, unused_parens, static_mut_refs)]
+#![allow(
+    clippy::too_many_arguments,
+    clippy::needless_return,
+    clippy::manual_range_contains,
+    clippy::field_reassign_with_default,
+    clippy::manual_map,
+    clippy::match_like_matches_macro,
+    clippy::upper_case_acronyms,
+    clippy::let_and_return,
+    clippy::double_parens,
+)]
+use std::f32::consts::FRAC_1_SQRT_2;
 
+use crate::{math::DEG2RAD, rcore::{GetFrameTime, GetGamepadAxisMovement, GetMouseDelta, GetMouseWheelMove, IsGamepadAvailable, IsKeyDown, IsKeyPressed, IsMouseButtonDown}, rlgl::{RL_CULL_DISTANCE_FAR, RL_CULL_DISTANCE_NEAR}, types::{Camera, GamepadAxis::{GAMEPAD_AXIS_LEFT_X, GAMEPAD_AXIS_LEFT_Y, GAMEPAD_AXIS_RIGHT_X, GAMEPAD_AXIS_RIGHT_Y}, Matrix, MouseButton::MOUSE_BUTTON_MIDDLE, Vector3}};
+use crate::types::KeyboardKey::*;
+use crate::types::CameraProjection::*;
+use crate::types::CameraMode::*;
+use glam::Quat;
+pub const CAMERA_CULL_DISTANCE_NEAR: f64 =   RL_CULL_DISTANCE_NEAR;
+pub const CAMERA_CULL_DISTANCE_FAR: f64 =   RL_CULL_DISTANCE_FAR;
+pub const CAMERA_MOVE_SPEED: f32 = 5.4;                     // Units per second
+pub const CAMERA_ROTATION_SPEED: f32 = 0.03;
+pub const CAMERA_PAN_SPEED: f32 = 2.0;
+
+// Camera mouse movement sensitivity
+pub const CAMERA_MOUSE_MOVE_SENSITIVITY: f32 = 0.003;
+
+// Camera orbital speed in CAMERA_ORBITAL mode
+pub const CAMERA_ORBITAL_SPEED: f32 = 0.5;                  // Radians per second
+//----------------------------------------------------------------------------------
+// Module Functions Definition
+//----------------------------------------------------------------------------------
 // Returns the cameras forward vector (normalized)
-pub fn get_camera_forward(camera: &Camera) -> Vector3 {
-    (camera.target - camera.position).normalize()
+pub unsafe fn  GetCameraForward(camera: &Camera) -> Vector3
+{
+    return (camera.target - camera.position).normalize();
 }
 
 // Returns the cameras up vector (normalized)
-pub fn get_camera_up(camera: &Camera) -> Vector3 {
-    camera.up.normalize()
+// Note: The up vector might not be perpendicular to the forward vector
+pub unsafe fn  GetCameraUp(camera: &Camera) -> Vector3
+{
+    return camera.up.normalize();
 }
 
 // Returns the cameras right vector (normalized)
-pub fn get_camera_right(camera: &Camera) -> Vector3 {
-    let forward = get_camera_forward(camera);
-    let up = get_camera_up(camera);
+pub unsafe fn  GetCameraRight(camera: &Camera) -> Vector3
+{
+    let forward = GetCameraForward(camera);
+    let up = GetCameraUp(camera);
 
-    forward.cross(up).normalize()
+    return forward.cross(up).normalize();
 }
 
 // Moves the camera in its forward direction
-pub fn camera_move_forward(camera: &mut Camera, distance: f32, move_in_world_plane: bool) {
-    let mut forward = get_camera_forward(camera);
+pub unsafe fn  CameraMoveForward(camera: &mut Camera, distance: f32, moveInWorldPlane: bool)
+{
+    let mut forward = GetCameraForward(camera);
 
-    if move_in_world_plane {
+    if moveInWorldPlane
+    {
         // Project vector onto world plane (the plane defined by the up vector)
-        if camera.up.z.abs() > 0.7071 {
-            forward.z = 0.0;
-        } else if camera.up.x.abs() > 0.7071 {
-            forward.x = 0.0;
-        } else {
-            forward.y = 0.0;
-        }
+        if camera.up.z.abs() > FRAC_1_SQRT_2 { forward.z = 0.0; }
+        else if camera.up.x.abs() > FRAC_1_SQRT_2 { forward.x = 0.0; }
+        else { forward.y = 0.0; }
 
         forward = forward.normalize();
     }
@@ -45,30 +81,29 @@ pub fn camera_move_forward(camera: &mut Camera, distance: f32, move_in_world_pla
 }
 
 // Moves the camera in its up direction
-pub fn camera_move_up(camera: &mut Camera, distance: f32) {
-    let up = get_camera_up(camera);
+pub unsafe fn  CameraMoveUp(camera: &mut Camera, distance: f32)
+{
+    let mut up = GetCameraUp(camera);
 
     // Scale by distance
-    let up_scaled = up * distance;
+    up *= distance;
 
     // Move position and target
-    camera.position += up_scaled;
-    camera.target += up_scaled;
+    camera.position += up;
+    camera.target += up;
 }
 
 // Moves the camera target in its current right direction
-pub fn camera_move_right(camera: &mut Camera, distance: f32, move_in_world_plane: bool) {
-    let mut right = get_camera_right(camera);
+pub unsafe fn  CameraMoveRight(camera: &mut Camera, distance: f32, moveInWorldPlane: bool)
+{
+    let mut right = GetCameraRight(camera);
 
-    if move_in_world_plane {
+    if moveInWorldPlane
+    {
         // Project vector onto world plane (the plane defined by the up vector)
-        if camera.up.z.abs() > 0.7071 {
-            right.z = 0.0;
-        } else if camera.up.x.abs() > 0.7071 {
-            right.x = 0.0;
-        } else {
-            right.y = 0.0;
-        }
+        if camera.up.z.abs() > FRAC_1_SQRT_2 { right.z = 0.0; }
+        else if camera.up.x.abs() > FRAC_1_SQRT_2 { right.x = 0.0; }
+        else { right.y = 0.0; }
 
         right = right.normalize();
     }
@@ -82,19 +117,18 @@ pub fn camera_move_right(camera: &mut Camera, distance: f32, move_in_world_plane
 }
 
 // Moves the camera position closer/farther to/from the camera target
-pub fn camera_move_to_target(camera: &mut Camera, delta: f32) {
+pub unsafe fn  CameraMoveToTarget(camera: &mut Camera, delta: f32)
+{
     let mut distance = camera.position.distance(camera.target);
 
     // Apply delta
     distance += delta;
 
     // Distance must be greater than 0
-    if distance <= 0.0 {
-        distance = 0.001;
-    }
+    if distance <= 0.0 { distance = 0.001; }
 
     // Set new distance by moving the position along the forward vector
-    let forward = get_camera_forward(camera);
+    let forward = GetCameraForward(camera);
     camera.position = camera.target + (forward * -distance);
 }
 
@@ -102,291 +136,234 @@ pub fn camera_move_to_target(camera: &mut Camera, delta: f32) {
 // Yaw is "looking left and right"
 // If rotateAroundTarget is false, the camera rotates around its position
 // Note: angle must be provided in radians
-pub fn camera_yaw(camera: &mut Camera, angle: f32, rotate_around_target: bool) {
+pub unsafe fn  CameraYaw(camera: &mut Camera, angle: f32, rotateAroundTarget: bool)
+{
     // Rotation axis
-    let up = get_camera_up(camera);
+    let up = GetCameraUp(camera);
 
     // View vector
-    let mut target_position = camera.target - camera.position;
+    let mut targetPosition = camera.target - camera.position;
 
-    // Rotate view vector around up axis
-    target_position = Quat::from_axis_angle(up, angle) * target_position;
+    // Rotate view vector around up axis (using glam's Quat operator overloading)
+    targetPosition = Quat::from_axis_angle(up, angle) * targetPosition;
 
-    if rotate_around_target {
+    if rotateAroundTarget
+    {
         // Move position relative to target
-        camera.position = camera.target - target_position;
-    } else {
+        camera.position = camera.target - targetPosition;
+    }
+    else // rotate around camera.position
+    {
         // Move target relative to position
-        camera.target = camera.position + target_position;
+        camera.target = camera.position + targetPosition;
     }
 }
 
 // Rotates the camera around its right vector, pitch is "looking up and down"
-pub fn camera_pitch(
-    camera: &mut Camera,
-    angle: f32,
-    lock_view: bool,
-    rotate_around_target: bool,
-    rotate_up: bool,
-) {
-    let up = get_camera_up(camera);
-    let mut target_position = camera.target - camera.position;
+//  - lockView prevents camera overrotation (aka "somersaults")
+//  - rotateAroundTarget defines if rotation is around target or around its position
+//  - rotateUp rotates the up direction as well (typically only useful in CAMERA_FREE)
+// NOTE: [angle] must be provided in radians
+pub unsafe fn  CameraPitch(camera: &mut Camera, mut angle: f32, lockView: bool, rotateAroundTarget: bool, rotateUp: bool)
+{
+    // Up direction
+    let up = GetCameraUp(camera);
 
-    let mut actual_angle = angle;
+    // View vector
+    let mut targetPosition = camera.target - camera.position;
 
-    if lock_view {
+    if lockView
+    {
+        // In these camera modes, clamp the Pitch angle
+        // to allow only viewing straight up or down
+
         // Clamp view up
-        let max_angle_up = up.angle_between(target_position);
-        let max_angle_up_clamped = max_angle_up - 0.001;
-        if actual_angle > max_angle_up_clamped {
-            actual_angle = max_angle_up_clamped;
-        }
+        let mut maxAngleUp = up.angle_between(targetPosition);
+        maxAngleUp -= 0.001; // avoid numerical errors
+        if angle > maxAngleUp { angle = maxAngleUp; }
 
         // Clamp view down
-        let max_angle_down = (-up).angle_between(target_position);
-        let max_angle_down_clamped = -max_angle_down + 0.001;
-        if actual_angle < max_angle_down_clamped {
-            actual_angle = max_angle_down_clamped;
-        }
+        let mut maxAngleDown = (-up).angle_between(targetPosition);
+        maxAngleDown *= -1.0; // downwards angle is negative
+        maxAngleDown += 0.001; // avoid numerical errors
+        if angle < maxAngleDown { angle = maxAngleDown; }
     }
 
     // Rotation axis
-    let right = get_camera_right(camera);
+    let right = GetCameraRight(camera);
 
     // Rotate view vector around right axis
-    target_position = Quat::from_axis_angle(right, actual_angle) * target_position;
+    targetPosition = Quat::from_axis_angle(right, angle) * targetPosition;
 
-    if rotate_around_target {
-        camera.position = camera.target - target_position;
-    } else {
-        camera.target = camera.position + target_position;
+    if rotateAroundTarget
+    {
+        // Move position relative to target
+        camera.position = camera.target - targetPosition;
+    }
+    else // Rotate around camera.position
+    {
+        // Move target relative to position
+        camera.target = camera.position + targetPosition;
     }
 
-    if rotate_up {
-        camera.up = Quat::from_axis_angle(right, actual_angle) * camera.up;
+    if rotateUp
+    {
+        // Rotate up direction around right axis
+        camera.up = Quat::from_axis_angle(right, angle) * camera.up;
     }
 }
 
 // Rotates the camera around its forward vector
-pub fn camera_roll(camera: &mut Camera, angle: f32) {
-    let forward = get_camera_forward(camera);
+// Roll is "turning your head sideways to the left or right"
+// Note: angle must be provided in radians
+pub unsafe fn  CameraRoll(camera: &mut Camera, angle: f32)
+{
+    // Rotation axis
+    let forward = GetCameraForward(camera);
+
+    // Rotate up direction around forward axis
     camera.up = Quat::from_axis_angle(forward, angle) * camera.up;
 }
 
 // Returns the camera view matrix
-pub fn get_camera_view_matrix(camera: &Camera) -> Matrix {
-    MatrixLookAt(camera.position, camera.target, camera.up)
+pub unsafe fn  GetCameraViewMatrix(camera: &Camera) -> Matrix
+{
+    return Matrix::look_at(camera.position, camera.target, camera.up);
 }
 
 // Returns the camera projection matrix
-pub fn get_camera_projection_matrix(camera: &Camera, aspect: f32) -> Matrix {
-    const CAMERA_CULL_DISTANCE_NEAR: f32 = 0.01; // Should match RL_CULL_DISTANCE_NEAR
-    const CAMERA_CULL_DISTANCE_FAR: f32 = 1000.0; // Should match RL_CULL_DISTANCE_FAR
-
-    if camera.projection == CameraProjection::Perspective as i32 {
-        MatrixPerspective(
-            camera.fovy.to_radians() as f64,
-            aspect as f64,
-            CAMERA_CULL_DISTANCE_NEAR as f64,
-            CAMERA_CULL_DISTANCE_FAR as f64,
-        )
-    } else {
-        let top = camera.fovy as f32 / 2.0;
-        let right = top * aspect;
-        MatrixOrtho(
-            -right as f64,
-            right as f64,
-            -top as f64,
-            top as f64,
-            CAMERA_CULL_DISTANCE_NEAR as f64,
-            CAMERA_CULL_DISTANCE_FAR as f64,
-        )
+pub unsafe fn  GetCameraProjectionMatrix(camera: &Camera, aspect: f32) -> Matrix
+{
+    if camera.projection == CAMERA_PERSPECTIVE as i32
+    {
+        return Matrix::perspective((camera.fovy*DEG2RAD) as f64, aspect as f64, CAMERA_CULL_DISTANCE_NEAR, CAMERA_CULL_DISTANCE_FAR);
     }
+    else if camera.projection == CAMERA_ORTHOGRAPHIC as i32
+    {
+        let top = (camera.fovy as f64)/2.0;
+        let right = top*(aspect as f64);
+
+        return Matrix::ortho(-right , right , -top , top , CAMERA_CULL_DISTANCE_NEAR, CAMERA_CULL_DISTANCE_FAR);
+    }
+
+    return Matrix::IDENTITY;
 }
 
-pub fn MatrixOrtho(
-    left: f64,
-    right: f64,
-    bottom: f64,
-    top: f64,
-    nearPlane: f64,
-    farPlane: f64,
-) -> Matrix {
-    let mut result = Matrix {
-        m0: 0.0,
-        m1: 0.0,
-        m2: 0.0,
-        m3: 0.0,
-        m4: 0.0,
-        m5: 0.0,
-        m6: 0.0,
-        m7: 0.0,
-        m8: 0.0,
-        m9: 0.0,
-        m10: 0.0,
-        m11: 0.0,
-        m12: 0.0,
-        m13: 0.0,
-        m14: 0.0,
-        m15: 0.0,
-    };
+// Update camera position for selected mode
+// Camera mode: CAMERA_FREE, CAMERA_FIRST_PERSON, CAMERA_THIRD_PERSON, CAMERA_ORBITAL or CUSTOM
+pub unsafe fn  UpdateCamera(camera: &mut Camera, mode: i32)
+{
+    let mousePositionDelta = GetMouseDelta();
 
-    let rl: f32 = (right - left) as f32;
-    let tb: f32 = (top - bottom) as f32;
-    let fn_ = (farPlane - nearPlane) as f32;
+    let moveInWorldPlane = ((mode == CAMERA_FIRST_PERSON as i32) || (mode == CAMERA_THIRD_PERSON as i32));
+    let rotateAroundTarget = ((mode == CAMERA_THIRD_PERSON as i32) || (mode == CAMERA_ORBITAL as i32));
+    let lockView = ((mode == CAMERA_FREE as i32) || (mode == CAMERA_FIRST_PERSON as i32) || (mode == CAMERA_THIRD_PERSON as i32) || (mode == CAMERA_ORBITAL as i32));
+    let rotateUp = false;
 
-    result.m0 = 2.0 / rl;
-    result.m1 = 0.0;
-    result.m2 = 0.0;
-    result.m3 = 0.0;
+    // Camera speeds based on frame time
+    let cameraMoveSpeed = CAMERA_MOVE_SPEED*GetFrameTime();
+    let cameraRotationSpeed = CAMERA_ROTATION_SPEED*GetFrameTime();
+    let cameraPanSpeed = CAMERA_PAN_SPEED*GetFrameTime();
+    let cameraOrbitalSpeed = CAMERA_ORBITAL_SPEED*GetFrameTime();
 
-    result.m4 = 0.0;
-    result.m5 = 2.0 / tb;
-    result.m6 = 0.0;
-    result.m7 = 0.0;
-
-    result.m8 = 0.0;
-    result.m9 = 0.0;
-    result.m10 = -2.0 / fn_;
-    result.m11 = 0.0;
-
-    result.m12 = -((left as f32 + right as f32) / rl);
-    result.m13 = -((top as f32 + bottom as f32) / tb);
-    result.m14 = -((farPlane as f32 + nearPlane as f32) / fn_);
-    result.m15 = 1.0;
-
-    result
-}
-
-pub fn MatrixPerspective(fovY: f64, aspect: f64, nearPlane: f64, farPlane: f64) -> Matrix {
-    let mut result = Matrix {
-        m0: 0.0,
-        m1: 0.0,
-        m2: 0.0,
-        m3: 0.0,
-        m4: 0.0,
-        m5: 0.0,
-        m6: 0.0,
-        m7: 0.0,
-        m8: 0.0,
-        m9: 0.0,
-        m10: 0.0,
-        m11: 0.0,
-        m12: 0.0,
-        m13: 0.0,
-        m14: 0.0,
-        m15: 0.0,
-    };
-
-    let top: f64 = nearPlane * (fovY * 0.5).tan();
-    let bottom: f64 = -top;
-    let right: f64 = top * aspect;
-    let left: f64 = -right;
-
-    // MatrixFrustum(-right, right, -top, top, near, far);
-    let rl: f32 = (right - left) as f32;
-    let tb: f32 = (top - bottom) as f32;
-    let fn_ = (farPlane - nearPlane) as f32;
-
-    result.m0 = ((nearPlane as f32) * 2.0) / rl;
-    result.m5 = ((nearPlane as f32) * 2.0) / tb;
-    result.m8 = ((right + left) as f32) / rl;
-    result.m9 = ((top + bottom) as f32) / tb;
-    result.m10 = -((farPlane + nearPlane) as f32) / fn_;
-    result.m11 = -1.0;
-    result.m14 = -((farPlane as f32 * nearPlane as f32 * 2.0) / fn_);
-
-    result
-}
-
-pub fn MatrixLookAt(eye: Vector3, target: Vector3, up: Vector3) -> Matrix {
-    let mut result = Matrix {
-        m0: 0.0,
-        m1: 0.0,
-        m2: 0.0,
-        m3: 0.0,
-        m4: 0.0,
-        m5: 0.0,
-        m6: 0.0,
-        m7: 0.0,
-        m8: 0.0,
-        m9: 0.0,
-        m10: 0.0,
-        m11: 0.0,
-        m12: 0.0,
-        m13: 0.0,
-        m14: 0.0,
-        m15: 0.0,
-    };
-
-    let mut length: f32 = 0.0;
-    let mut ilength: f32 = 0.0;
-
-    // Vector3Subtract(eye, target)
-    let mut vz = Vector3 {
-        x: eye.x - target.x,
-        y: eye.y - target.y,
-        z: eye.z - target.z,
-    };
-
-    // normalize vz
-    let mut v = vz;
-    length = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();
-    if length == 0.0 {
-        length = 1.0;
+    if mode == CAMERA_CUSTOM as i32 {}
+    else if mode == CAMERA_ORBITAL as i32
+    {
+        let rotation = Quat::from_axis_angle(GetCameraUp(camera), cameraOrbitalSpeed);
+        let mut view = camera.position - camera.target;
+        view = rotation * view;
+        camera.position = camera.target + view;
     }
-    ilength = 1.0 / length;
+    else
+    {
+        // Camera rotation
+        if IsKeyDown(KEY_DOWN) { CameraPitch(camera, -cameraRotationSpeed, lockView, rotateAroundTarget, rotateUp); }
+        if IsKeyDown(KEY_UP) { CameraPitch(camera, cameraRotationSpeed, lockView, rotateAroundTarget, rotateUp); }
+        if IsKeyDown(KEY_RIGHT) { CameraYaw(camera, -cameraRotationSpeed, rotateAroundTarget); }
+        if IsKeyDown(KEY_LEFT) { CameraYaw(camera, cameraRotationSpeed, rotateAroundTarget); }
+        if IsKeyDown(KEY_Q) { CameraRoll(camera, -cameraRotationSpeed); }
+        if IsKeyDown(KEY_E) { CameraRoll(camera, cameraRotationSpeed); }
 
-    vz.x *= ilength;
-    vz.y *= ilength;
-    vz.z *= ilength;
+        // Camera movement
+        // Camera pan (for CAMERA_FREE)
+        if (mode == CAMERA_FREE as i32) && IsMouseButtonDown(MOUSE_BUTTON_MIDDLE as i32)
+        {
+            let mouseDelta = GetMouseDelta();
+            if mouseDelta.x > 0.0 { CameraMoveRight(camera, cameraPanSpeed, moveInWorldPlane); }
+            if mouseDelta.x < 0.0 { CameraMoveRight(camera, -cameraPanSpeed, moveInWorldPlane); }
+            if mouseDelta.y > 0.0 { CameraMoveUp(camera, -cameraPanSpeed); }
+            if mouseDelta.y < 0.0 { CameraMoveUp(camera, cameraPanSpeed); }
+        }
+        else
+        {
+            // Mouse support
+            CameraYaw(camera, -mousePositionDelta.x*CAMERA_MOUSE_MOVE_SENSITIVITY, rotateAroundTarget);
+            CameraPitch(camera, -mousePositionDelta.y*CAMERA_MOUSE_MOVE_SENSITIVITY, lockView, rotateAroundTarget, rotateUp);
+        }
 
-    // cross(up, vz) -> vx
-    let mut vx = Vector3 {
-        x: up.y * vz.z - up.z * vz.y,
-        y: up.z * vz.x - up.x * vz.z,
-        z: up.x * vz.y - up.y * vz.x,
-    };
+        // Keyboard support
+        if IsKeyDown(KEY_W) { CameraMoveForward(camera, cameraMoveSpeed, moveInWorldPlane); }
+        if IsKeyDown(KEY_A) { CameraMoveRight(camera, -cameraMoveSpeed, moveInWorldPlane); }
+        if IsKeyDown(KEY_S) { CameraMoveForward(camera, -cameraMoveSpeed, moveInWorldPlane); }
+        if IsKeyDown(KEY_D) { CameraMoveRight(camera, cameraMoveSpeed, moveInWorldPlane); }
 
-    // normalize vx
-    v = vx;
-    length = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();
-    if length == 0.0 {
-        length = 1.0;
+        // Gamepad movement
+        if IsGamepadAvailable(0)
+        {
+            // Gamepad controller support
+            CameraYaw(camera, -(GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_X as i32)*2.0)*CAMERA_MOUSE_MOVE_SENSITIVITY, rotateAroundTarget);
+            CameraPitch(camera, -(GetGamepadAxisMovement(0, GAMEPAD_AXIS_RIGHT_Y as i32)*2.0)*CAMERA_MOUSE_MOVE_SENSITIVITY, lockView, rotateAroundTarget, rotateUp);
+
+            if GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y as i32) <= -0.25 { CameraMoveForward(camera, cameraMoveSpeed, moveInWorldPlane); }
+            if GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X as i32) <= -0.25 { CameraMoveRight(camera, -cameraMoveSpeed, moveInWorldPlane); }
+            if GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_Y as i32) >= 0.25 { CameraMoveForward(camera, -cameraMoveSpeed, moveInWorldPlane); }
+            if GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_X as i32) >= 0.25 { CameraMoveRight(camera, cameraMoveSpeed, moveInWorldPlane); }
+        }
+
+        if mode == CAMERA_FREE as i32
+        {
+            if IsKeyDown(KEY_SPACE) { CameraMoveUp(camera, cameraMoveSpeed); }
+            if IsKeyDown(KEY_LEFT_CONTROL) { CameraMoveUp(camera, -cameraMoveSpeed); }
+        }
     }
-    ilength = 1.0 / length;
 
-    vx.x *= ilength;
-    vx.y *= ilength;
-    vx.z *= ilength;
+    if (mode == CAMERA_THIRD_PERSON as i32) || (mode == CAMERA_ORBITAL as i32) || (mode == CAMERA_FREE as i32)
+    {
+        // Zoom target distance
+        CameraMoveToTarget(camera, -GetMouseWheelMove());
+        if IsKeyPressed(KEY_KP_SUBTRACT) { CameraMoveToTarget(camera, 2.0); }
+        if IsKeyPressed(KEY_KP_ADD) { CameraMoveToTarget(camera, -2.0); }
+    }
+}
+// #endif // !RCAMERA_STANDALONE
 
-    // cross(vz, vx) -> vy
-    let vy = Vector3 {
-        x: vz.y * vx.z - vz.z * vx.y,
-        y: vz.z * vx.x - vz.x * vx.z,
-        z: vz.x * vx.y - vz.y * vx.x,
-    };
+// Update camera movement, movement/rotation values should be provided by user
+pub unsafe fn  UpdateCameraPro(camera: &mut Camera, movement: Vector3, rotation: Vector3, zoom: f32)
+{
+    // Required values
+    // movement.x - Move forward/backward
+    // movement.y - Move right/left
+    // movement.z - Move up/down
+    // rotation.x - yaw
+    // rotation.y - pitch
+    // rotation.z - roll
+    // zoom - Move towards target
 
-    // fill matrix (column-major like raylib/OpenGL style)
-    result.m0 = vx.x;
-    result.m1 = vy.x;
-    result.m2 = vz.x;
-    result.m3 = 0.0;
+    let lockView = true;
+    let rotateAroundTarget = false;
+    let rotateUp = false;
+    let moveInWorldPlane = true;
 
-    result.m4 = vx.y;
-    result.m5 = vy.y;
-    result.m6 = vz.y;
-    result.m7 = 0.0;
+    // Camera rotation
+    CameraPitch(camera, -rotation.y*DEG2RAD, lockView, rotateAroundTarget, rotateUp);
+    CameraYaw(camera, -rotation.x*DEG2RAD, rotateAroundTarget);
+    CameraRoll(camera, rotation.z*DEG2RAD);
 
-    result.m8 = vx.z;
-    result.m9 = vy.z;
-    result.m10 = vz.z;
-    result.m11 = 0.0;
+    // Camera movement
+    CameraMoveForward(camera, movement.x, moveInWorldPlane);
+    CameraMoveRight(camera, movement.y, moveInWorldPlane);
+    CameraMoveUp(camera, movement.z);
 
-    result.m12 = -(vx.x * eye.x + vx.y * eye.y + vx.z * eye.z);
-    result.m13 = -(vy.x * eye.x + vy.y * eye.y + vy.z * eye.z);
-    result.m14 = -(vz.x * eye.x + vz.y * eye.y + vz.z * eye.z);
-    result.m15 = 1.0;
-
-    result
+    // Zoom target distance
+    CameraMoveToTarget(camera, zoom);
 }
