@@ -499,7 +499,7 @@ pub unsafe fn InitWindow(width: i32, height: i32, title: &str)
     CORE.Window.screen.y = height as f32;
 
     CORE.Window.eventWaiting = false;
-    CORE.Window.screenScale = Matrix::identity(); // No draw scaling required by default
+    CORE.Window.screenScale = Matrix::IDENTITY; // No draw scaling required by default
     if (!title.is_empty())
     {
         windowTitle = Some(CString::new(title).unwrap());
@@ -1316,7 +1316,7 @@ pub unsafe fn GetScreenToWorldRayEx(position: Vector2, camera: Camera, width: i3
     // Calculate view matrix from camera look at
     let matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
 
-    let mut matProj: Matrix = Matrix::identity();
+    let mut matProj: Matrix = Matrix::IDENTITY;
 
     if (camera.projection == CameraProjection::Perspective as i32)
     {
@@ -1403,7 +1403,7 @@ pub unsafe fn GetWorldToScreen(position: Vector3, camera: Camera) -> Vector2
 pub unsafe fn GetWorldToScreenEx(position: Vector3, camera: Camera, width: i32, height: i32) -> Vector2
 {
     // Calculate projection matrix (from perspective instead of frustum
-    let mut matProj: Matrix = Matrix::identity();
+    let mut matProj: Matrix = Matrix::IDENTITY;
 
     if (camera.projection == CameraProjection::Perspective as i32)
     {

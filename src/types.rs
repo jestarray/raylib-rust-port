@@ -36,28 +36,36 @@ pub struct Matrix {
     pub m11: f32,
     pub m15: f32,
 }
+impl Default for Matrix {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
 
 impl Matrix {
-    pub const ZERO: Self = Self {
-        m0: 0.0,
+    pub const ZERO: Self = Self::new(
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    );
+    pub const IDENTITY: Self = Self {
+        m0: 1.0,
         m4: 0.0,
         m8: 0.0,
         m12: 0.0,
 
         m1: 0.0,
-        m5: 0.0,
+        m5: 1.0,
         m9: 0.0,
         m13: 0.0,
 
         m2: 0.0,
         m6: 0.0,
-        m10: 0.0,
+        m10: 1.0,
         m14: 0.0,
 
         m3: 0.0,
         m7: 0.0,
         m11: 0.0,
-        m15: 0.0,
+        m15: 1.0,
     };
     #[allow(clippy::too_many_arguments)]
     pub const fn new(
@@ -97,30 +105,6 @@ impl Matrix {
             m15,
         }
     }
-    pub const IDENTITY: Self = Self::identity();
-    pub const fn identity() -> Self {
-        Self {
-            m0: 1.0,
-            m4: 0.0,
-            m8: 0.0,
-            m12: 0.0,
-
-            m1: 0.0,
-            m5: 1.0,
-            m9: 0.0,
-            m13: 0.0,
-
-            m2: 0.0,
-            m6: 0.0,
-            m10: 1.0,
-            m14: 0.0,
-
-            m3: 0.0,
-            m7: 0.0,
-            m11: 0.0,
-            m15: 1.0,
-        }
-    }
 
     /// Explicit conversion to column-major memory layout
     pub fn to_array(self) -> [f32; 16] {
@@ -129,7 +113,6 @@ impl Matrix {
             self.m9, self.m10, self.m11, self.m12, self.m13, self.m14, self.m15,
         ]
     }
-
     pub fn transpose(self) -> Self {
         Self {
             m0: self.m0,
@@ -734,12 +717,6 @@ impl Matrix {
             m11: 0.0,
             m15: 1.0,
         }
-    }
-}
-
-impl Default for Matrix {
-    fn default() -> Self {
-        Self::identity()
     }
 }
 
