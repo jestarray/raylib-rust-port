@@ -11,7 +11,8 @@
     clippy::match_like_matches_macro,
     clippy::upper_case_acronyms,
     clippy::let_and_return,
-    clippy::double_parens
+    clippy::double_parens,
+    clippy::missing_safety_doc
 )]
 use log::{info, warn};
 
@@ -498,8 +499,7 @@ static mut DEFAULT_FONT: Font = Font {
 
 
 // Load raylib default font.
-pub fn LoadFontDefault() {
-    unsafe {
+pub unsafe fn LoadFontDefault() {
         if !DEFAULT_FONT.glyphs.is_empty() {
             return;
         }
@@ -645,7 +645,6 @@ pub fn LoadFontDefault() {
 
         DEFAULT_FONT.baseSize = DEFAULT_FONT.recs[0].height as i32;
         info!("FONT: Default font loaded successfully ({} glyphs)", DEFAULT_FONT.glyphCount);
-    }
 }
 
 // Unload raylib default font

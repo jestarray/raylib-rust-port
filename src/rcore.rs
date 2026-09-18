@@ -67,7 +67,7 @@ pub struct WindowData {
     pub screenMax: Vector2,
     pub screenScale: Matrix,
 
-    pub dropFilepaths: *mut *mut c_char,
+    pub dropFilepaths: Vec<String>,
     pub dropFileCount: u32,
 }
 
@@ -236,7 +236,7 @@ pub static mut CORE: CoreData = CoreData {
             m11: 0.0,
             m15: 0.0,
         },
-        dropFilepaths: std::ptr::null_mut(),
+        dropFilepaths: Vec::new(),
         dropFileCount: 0,
     },
     Storage: StorageData {
@@ -819,7 +819,7 @@ pub unsafe fn BeginMode3D(camera: Camera)
     let aspect: f32 = CORE.Window.currentFbo.x/CORE.Window.currentFbo.y;
 
     // NOTE: zNear and zFar values are important when computing depth buffer values
-    if (camera.projection == CameraProjection::Perspective as i32)
+    if (camera.projection == CameraProjection::CAMERA_PERSPECTIVE as i32)
     {
         // Setup perspective projection
         let top: f64 = rlGetCullDistanceNear()*(camera.fovy as f64*0.5*DEG2RAD as f64).tan();
@@ -827,7 +827,7 @@ pub unsafe fn BeginMode3D(camera: Camera)
 
         rlFrustum(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
     }
-    else if (camera.projection == CameraProjection::Orthographic as i32)
+    else if (camera.projection == CameraProjection::CAMERA_ORTHOGRAPHIC as i32)
     {
         // Setup orthographic projection
         let top: f64 = camera.fovy as f64/2.0;
@@ -1318,12 +1318,12 @@ pub unsafe fn GetScreenToWorldRayEx(position: Vector2, camera: Camera, width: i3
 
     let mut matProj: Matrix = Matrix::IDENTITY;
 
-    if (camera.projection == CameraProjection::Perspective as i32)
+    if (camera.projection == CameraProjection::CAMERA_PERSPECTIVE as i32)
     {
         // Calculate projection matrix from perspective
         matProj = Matrix::perspective((camera.fovy*DEG2RAD) as f64, ((width as f64)/(height as f64)), rlGetCullDistanceNear(), rlGetCullDistanceFar());
     }
-    else if (camera.projection == CameraProjection::Orthographic as i32)
+    else if (camera.projection == CameraProjection::CAMERA_ORTHOGRAPHIC as i32)
     {
         let aspect: f64 = (width as f64)/(height as f64);
         let top: f64 = camera.fovy as f64/2.0;
@@ -1346,8 +1346,8 @@ pub unsafe fn GetScreenToWorldRayEx(position: Vector2, camera: Camera, width: i3
     // Calculate normalized direction vector
     let direction: Vector3 = (farPoint - nearPoint).normalize_or_zero();
 
-    if (camera.projection == CameraProjection::Perspective as i32) { ray.position = camera.position; }
-    else if (camera.projection == CameraProjection::Orthographic as i32) { ray.position = cameraPlanePointerPos; }
+    if (camera.projection == CameraProjection::CAMERA_PERSPECTIVE as i32) { ray.position = camera.position; }
+    else if (camera.projection == CameraProjection::CAMERA_ORTHOGRAPHIC as i32) { ray.position = cameraPlanePointerPos; }
 
     // Apply calculated vectors to ray
     ray.direction = direction;
@@ -1405,12 +1405,12 @@ pub unsafe fn GetWorldToScreenEx(position: Vector3, camera: Camera, width: i32, 
     // Calculate projection matrix (from perspective instead of frustum
     let mut matProj: Matrix = Matrix::IDENTITY;
 
-    if (camera.projection == CameraProjection::Perspective as i32)
+    if (camera.projection == CameraProjection::CAMERA_PERSPECTIVE as i32)
     {
         // Calculate projection matrix from perspective
         matProj = Matrix::perspective((camera.fovy*DEG2RAD) as f64, ((width as f64)/(height as f64)), rlGetCullDistanceNear(), rlGetCullDistanceFar());
     }
-    else if (camera.projection == CameraProjection::Orthographic as i32)
+    else if (camera.projection == CameraProjection::CAMERA_ORTHOGRAPHIC as i32)
     {
         let aspect: f64 = (width as f64)/(height as f64);
         let top: f64 = camera.fovy as f64/2.0;

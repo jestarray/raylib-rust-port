@@ -1318,33 +1318,15 @@ pub unsafe fn PollInputEvents()
             value if value == SDL_EventType::QUIT => { CORE.Window.shouldClose = true; },
             value if value == SDL_EventType::DROP_FILE => // Dropped file
             {
-                if (CORE.Window.dropFileCount == 0)
-                {
-                    // When a new file is dropped, reserve a fixed number of slots for all possible dropped files
-                    // at the moment limit the number of drops at once to 1024 files but this behaviour should probably be reviewed
-                    // TODO: Pointers should probably be reallocated for any new file added...
-                    //CORE.Window.dropFilepaths = (RL_CALLOC(1024, std::mem::size_of::<*mut std::ffi::c_char>()) as *mut *mut std::ffi::c_char);
-
-                    //(*CORE.Window.dropFilepaths.add(CORE.Window.dropFileCount as usize)) = (RL_CALLOC(MAX_FILEPATH_LENGTH, std::mem::size_of::<std::ffi::c_char>()) as *mut std::ffi::c_char);
-
-                    // const char *data;   // The text for SDL_EVENT_DROP_TEXT and the file name for SDL_EVENT_DROP_FILE, NULL for other events
-                    // Event memory is now managed by SDL, so it should not be freed in SDL_EVENT_DROP_FILE,
-                    // in case data needs to be hold onto the text in SDL_EVENT_TEXT_EDITING and SDL_EVENT_TEXT_INPUT events,
-                    // a copy is required, SDL_TEXTINPUTEVENT_TEXT_SIZE is no longer necessary and has been removed
-                    libc::snprintf((*CORE.Window.dropFilepaths.add(CORE.Window.dropFileCount as usize)), MAX_FILEPATH_LENGTH, c"%s".as_ptr(), event.drop.data);
-
-                    CORE.Window.dropFileCount += 1;
-                }
-                else if (CORE.Window.dropFileCount < 1024)
-                {
-                    //(*CORE.Window.dropFilepaths.add(CORE.Window.dropFileCount as usize)) = (RL_CALLOC(MAX_FILEPATH_LENGTH, std::mem::size_of::<std::ffi::c_char>()) as *mut std::ffi::c_char);
-
-                    libc::snprintf((*CORE.Window.dropFilepaths.add(CORE.Window.dropFileCount as usize)), MAX_FILEPATH_LENGTH, c"%s".as_ptr(), event.drop.data);
-
-                    CORE.Window.dropFileCount += 1;
-                }
-                else { warn!("FILE: Maximum drag and drop files at once is limited to 1024 files!"); }
-
+                    if !CORE.Window.dropFilepaths.is_empty() {
+                        // clear previous dropped files
+                        CORE.Window.dropFilepaths.clear();
+                        CORE.Window.dropFileCount = 0;
+                    } else {
+                        let to_string = CStr::from_ptr(event.drop.data).to_str().unwrap_or("ERROR! BAD DROPPED FILE TO WINDOW").to_string();
+                        CORE.Window.dropFilepaths.push(to_string);
+                        CORE.Window.dropFileCount += 1;
+                    }
             } 
 
             // Window events are also polled (minimized, maximized, close...)
