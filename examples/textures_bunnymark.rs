@@ -52,14 +52,11 @@ pub struct Bunny {
 //------------------------------------------------------------------------------------
 
 pub fn main() {
-    run();
-}
-
-pub fn run() {
-    unsafe { start(); }
+    unsafe { start();}
 }
 
 unsafe fn start() {
+    env_logger::init_from_env(env_logger::Env::default().filter_or("MY_LOG_LEVEL", "info"));
     // Initialization
     //--------------------------------------------------------------------------------------
     let screenWidth: i32 = 800;
@@ -92,6 +89,22 @@ unsafe fn start() {
             } else {
                 GetMousePosition()
             };
+            // Create more bunnies
+            for _ in 0..100 {
+                bunnies.push(Bunny {
+                    position: GetMousePosition(),
+                    speed: Vector2 {
+                        x: GetRandomValue(-250, 250) as f32,
+                        y: GetRandomValue(-250, 250) as f32,
+                    },
+                    color: Color {
+                        r: GetRandomValue(50, 240) as u8,
+                        g: GetRandomValue(80, 240) as u8,
+                        b: GetRandomValue(100, 240) as u8,
+                        a: 255,
+                    },
+                });
+            }
         }
 
         if IsKeyPressed(KEY_P) {
