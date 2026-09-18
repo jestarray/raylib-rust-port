@@ -3463,7 +3463,8 @@ pub unsafe fn rlLoadShaderProgramEx(vsId: u32, fsId: u32) -> u32
 // Load compute shader program
 pub unsafe fn rlLoadShaderProgramCompute(csId: u32) -> u32
 {
-    let programId = 0;
+    #[allow(unused_mut)]
+    let mut programId = 0;
 
     #[cfg(feature = "GRAPHICS_API_OPENGL_43")]
     {
@@ -3644,7 +3645,8 @@ pub unsafe fn rlComputeShaderDispatch(groupX: u32, groupY: u32, groupZ: u32)
 // Load shader storage buffer object (SSBO)
 pub unsafe fn rlLoadShaderBuffer(size: u32, data: *const c_void, usageHint: i32) -> u32
 {
-    let ssbo = 0;
+    #[allow(unused_mut)]
+    let mut ssbo = 0;
 
     #[cfg(feature = "GRAPHICS_API_OPENGL_43")]
     {
@@ -3682,7 +3684,8 @@ pub unsafe fn rlUpdateShaderBuffer(id: u32, data: *const c_void, dataSize: u32, 
 // Get SSBO buffer size
 pub unsafe fn rlGetShaderBufferSize(id: u32) -> u32
 {
-    let result = 0;
+    #[allow(unused_mut)]
+    let mut result = 0;
     #[cfg(feature = "GRAPHICS_API_OPENGL_43")]
     {
         let mut size = 0i64;
