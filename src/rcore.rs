@@ -2873,60 +2873,60 @@ pub unsafe fn SetupViewport(width: i32, height: i32)
 // NOTE: Recording is by default done at EndDrawing(), before PollInputEvents()
 pub unsafe fn RecordAutomationEvent() {
     let gcurrentEventList = &mut *currentEventList;
-    if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+    if gcurrentEventList.count == gcurrentEventList.capacity {
         return;
     }
 
     // Keyboard input events recording
     //-------------------------------------------------------------------------------------
     for key in 0..MAX_KEYBOARD_KEYS as i32 {
-        let idx = (*gcurrentEventList).count as usize;
+        let idx = gcurrentEventList.count as usize;
 
         // Event type: INPUT_KEY_UP (only saved once)
         if (CORE.Input.Keyboard.previousKeyState[key as usize] != 0)
             && (CORE.Input.Keyboard.currentKeyState[key as usize] == 0)
         {
-            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
-            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_KEY_UP as u32;
-            (*gcurrentEventList).events[idx].params[0] = key;
-            (*gcurrentEventList).events[idx].params[1] = 0;
-            (*gcurrentEventList).events[idx].params[2] = 0;
+            gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;
+            gcurrentEventList.events[idx].type_ = AutomationEventType::INPUT_KEY_UP as u32;
+            gcurrentEventList.events[idx].params[0] = key;
+            gcurrentEventList.events[idx].params[1] = 0;
+            gcurrentEventList.events[idx].params[2] = 0;
 
             info!(
                 "AUTOMATION: Frame: {} | Event type: INPUT_KEY_UP | Event parameters: {}, {}, {}",
-                (*gcurrentEventList).events[idx].frame,
-                (*gcurrentEventList).events[idx].params[0],
-                (*gcurrentEventList).events[idx].params[1],
-                (*gcurrentEventList).events[idx].params[2]
+                gcurrentEventList.events[idx].frame,
+                gcurrentEventList.events[idx].params[0],
+                gcurrentEventList.events[idx].params[1],
+                gcurrentEventList.events[idx].params[2]
             );
-            (*gcurrentEventList).count += 1;
+            gcurrentEventList.count += 1;
         }
 
-        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+        if gcurrentEventList.count == gcurrentEventList.capacity {
             return;
         } // Security check
 
-        let idx = (*gcurrentEventList).count as usize;
+        let idx = gcurrentEventList.count as usize;
 
         // Event type: INPUT_KEY_DOWN
         if CORE.Input.Keyboard.currentKeyState[key as usize] != 0 {
-            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
-            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_KEY_DOWN as u32;
-            (*gcurrentEventList).events[idx].params[0] = key;
-            (*gcurrentEventList).events[idx].params[1] = 0;
-            (*gcurrentEventList).events[idx].params[2] = 0;
+            gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;
+            gcurrentEventList.events[idx].type_ = AutomationEventType::INPUT_KEY_DOWN as u32;
+            gcurrentEventList.events[idx].params[0] = key;
+            gcurrentEventList.events[idx].params[1] = 0;
+            gcurrentEventList.events[idx].params[2] = 0;
 
             info!(
                 "AUTOMATION: Frame: {} | Event type: INPUT_KEY_DOWN | Event parameters: {}, {}, {}",
-                (*gcurrentEventList).events[idx].frame,
-                (*gcurrentEventList).events[idx].params[0],
-                (*gcurrentEventList).events[idx].params[1],
-                (*gcurrentEventList).events[idx].params[2]
+                gcurrentEventList.events[idx].frame,
+                gcurrentEventList.events[idx].params[0],
+                gcurrentEventList.events[idx].params[1],
+                gcurrentEventList.events[idx].params[2]
             );
-            (*gcurrentEventList).count += 1;
+            gcurrentEventList.count += 1;
         }
 
-        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+        if gcurrentEventList.count == gcurrentEventList.capacity {
             return;
         } // Security check
     }
@@ -2935,53 +2935,53 @@ pub unsafe fn RecordAutomationEvent() {
     // Mouse input currentEventList->events recording
     //-------------------------------------------------------------------------------------
     for button in 0..MAX_MOUSE_BUTTONS as i32 {
-        let idx = (*gcurrentEventList).count as usize;
+        let idx = gcurrentEventList.count as usize;
 
         // Event type: INPUT_MOUSE_BUTTON_UP
         if (CORE.Input.Mouse.previousButtonState[button as usize] != 0)
             && (CORE.Input.Mouse.currentButtonState[button as usize] == 0)
         {
-            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
-            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_MOUSE_BUTTON_UP as u32;
-            (*gcurrentEventList).events[idx].params[0] = button;
-            (*gcurrentEventList).events[idx].params[1] = 0;
-            (*gcurrentEventList).events[idx].params[2] = 0;
+            gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;
+            gcurrentEventList.events[idx].type_ = AutomationEventType::INPUT_MOUSE_BUTTON_UP as u32;
+            gcurrentEventList.events[idx].params[0] = button;
+            gcurrentEventList.events[idx].params[1] = 0;
+            gcurrentEventList.events[idx].params[2] = 0;
 
             info!(
                 "AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_BUTTON_UP | Event parameters: {}, {}, {}",
-                (*gcurrentEventList).events[idx].frame,
-                (*gcurrentEventList).events[idx].params[0],
-                (*gcurrentEventList).events[idx].params[1],
-                (*gcurrentEventList).events[idx].params[2]
+                gcurrentEventList.events[idx].frame,
+                gcurrentEventList.events[idx].params[0],
+                gcurrentEventList.events[idx].params[1],
+                gcurrentEventList.events[idx].params[2]
             );
-            (*gcurrentEventList).count += 1;
+            gcurrentEventList.count += 1;
         }
 
-        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+        if gcurrentEventList.count == gcurrentEventList.capacity {
             return;
         } // Security check
 
-        let idx = (*gcurrentEventList).count as usize;
+        let idx = gcurrentEventList.count as usize;
 
         // Event type: INPUT_MOUSE_BUTTON_DOWN
         if CORE.Input.Mouse.currentButtonState[button as usize] != 0 {
-            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
-            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_MOUSE_BUTTON_DOWN as u32;
-            (*gcurrentEventList).events[idx].params[0] = button;
-            (*gcurrentEventList).events[idx].params[1] = 0;
-            (*gcurrentEventList).events[idx].params[2] = 0;
+            gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;
+            gcurrentEventList.events[idx].type_ = AutomationEventType::INPUT_MOUSE_BUTTON_DOWN as u32;
+            gcurrentEventList.events[idx].params[0] = button;
+            gcurrentEventList.events[idx].params[1] = 0;
+            gcurrentEventList.events[idx].params[2] = 0;
 
             info!(
                 "AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_BUTTON_DOWN | Event parameters: {}, {}, {}",
-                (*gcurrentEventList).events[idx].frame,
-                (*gcurrentEventList).events[idx].params[0],
-                (*gcurrentEventList).events[idx].params[1],
-                (*gcurrentEventList).events[idx].params[2]
+                gcurrentEventList.events[idx].frame,
+                gcurrentEventList.events[idx].params[0],
+                gcurrentEventList.events[idx].params[1],
+                gcurrentEventList.events[idx].params[2]
             );
-            (*gcurrentEventList).count += 1;
+            gcurrentEventList.count += 1;
         }
 
-        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+        if gcurrentEventList.count == gcurrentEventList.capacity {
             return;
         } // Security check
     }
@@ -2990,24 +2990,24 @@ pub unsafe fn RecordAutomationEvent() {
     if ((CORE.Input.Mouse.currentPosition.x as i32) != (CORE.Input.Mouse.previousPosition.x as i32))
         || ((CORE.Input.Mouse.currentPosition.y as i32) != (CORE.Input.Mouse.previousPosition.y as i32))
     {
-        let idx = (*gcurrentEventList).count as usize;
+        let idx = gcurrentEventList.count as usize;
 
-        (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
-        (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_MOUSE_POSITION as u32;
-        (*gcurrentEventList).events[idx].params[0] = CORE.Input.Mouse.currentPosition.x as i32;
-        (*gcurrentEventList).events[idx].params[1] = CORE.Input.Mouse.currentPosition.y as i32;
-        (*gcurrentEventList).events[idx].params[2] = 0;
+        gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;
+        gcurrentEventList.events[idx].type_ = AutomationEventType::INPUT_MOUSE_POSITION as u32;
+        gcurrentEventList.events[idx].params[0] = CORE.Input.Mouse.currentPosition.x as i32;
+        gcurrentEventList.events[idx].params[1] = CORE.Input.Mouse.currentPosition.y as i32;
+        gcurrentEventList.events[idx].params[2] = 0;
 
         info!(
             "AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_POSITION | Event parameters: {}, {}, {}",
-            (*gcurrentEventList).events[idx].frame,
-            (*gcurrentEventList).events[idx].params[0],
-            (*gcurrentEventList).events[idx].params[1],
-            (*gcurrentEventList).events[idx].params[2]
+            gcurrentEventList.events[idx].frame,
+            gcurrentEventList.events[idx].params[0],
+            gcurrentEventList.events[idx].params[1],
+            gcurrentEventList.events[idx].params[2]
         );
-        (*gcurrentEventList).count += 1;
+        gcurrentEventList.count += 1;
 
-        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+        if gcurrentEventList.count == gcurrentEventList.capacity {
             return;
         } // Security check
     }
@@ -3016,24 +3016,24 @@ pub unsafe fn RecordAutomationEvent() {
     if ((CORE.Input.Mouse.currentWheelMove.x as i32) != (CORE.Input.Mouse.previousWheelMove.x as i32))
         || ((CORE.Input.Mouse.currentWheelMove.y as i32) != (CORE.Input.Mouse.previousWheelMove.y as i32))
     {
-        let idx = (*gcurrentEventList).count as usize;
+        let idx = gcurrentEventList.count as usize;
 
-        (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
-        (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_MOUSE_WHEEL_MOTION as u32;
-        (*gcurrentEventList).events[idx].params[0] = CORE.Input.Mouse.currentWheelMove.x as i32;
-        (*gcurrentEventList).events[idx].params[1] = CORE.Input.Mouse.currentWheelMove.y as i32;
-        (*gcurrentEventList).events[idx].params[2] = 0;
+        gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;
+        gcurrentEventList.events[idx].type_ = AutomationEventType::INPUT_MOUSE_WHEEL_MOTION as u32;
+        gcurrentEventList.events[idx].params[0] = CORE.Input.Mouse.currentWheelMove.x as i32;
+        gcurrentEventList.events[idx].params[1] = CORE.Input.Mouse.currentWheelMove.y as i32;
+        gcurrentEventList.events[idx].params[2] = 0;
 
         info!(
             "AUTOMATION: Frame: {} | Event type: INPUT_MOUSE_WHEEL_MOTION | Event parameters: {}, {}, {}",
-            (*gcurrentEventList).events[idx].frame,
-            (*gcurrentEventList).events[idx].params[0],
-            (*gcurrentEventList).events[idx].params[1],
-            (*gcurrentEventList).events[idx].params[2]
+            gcurrentEventList.events[idx].frame,
+            gcurrentEventList.events[idx].params[0],
+            gcurrentEventList.events[idx].params[1],
+            gcurrentEventList.events[idx].params[2]
         );
-        (*gcurrentEventList).count += 1;
+        gcurrentEventList.count += 1;
 
-        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+        if gcurrentEventList.count == gcurrentEventList.capacity {
             return;
         } // Security check
     }
@@ -3042,53 +3042,53 @@ pub unsafe fn RecordAutomationEvent() {
     // Touch input currentEventList->events recording
     //-------------------------------------------------------------------------------------
     for id in 0..MAX_TOUCH_POINTS as i32 {
-        let idx = (*gcurrentEventList).count as usize;
+        let idx = gcurrentEventList.count as usize;
 
         // Event type: INPUT_TOUCH_UP
         if (CORE.Input.Touch.previousTouchState[id as usize] != 0)
             && (CORE.Input.Touch.currentTouchState[id as usize] == 0)
         {
-            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
-            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_TOUCH_UP as u32;
-            (*gcurrentEventList).events[idx].params[0] = id;
-            (*gcurrentEventList).events[idx].params[1] = 0;
-            (*gcurrentEventList).events[idx].params[2] = 0;
+            gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;
+            gcurrentEventList.events[idx].type_ = AutomationEventType::INPUT_TOUCH_UP as u32;
+            gcurrentEventList.events[idx].params[0] = id;
+            gcurrentEventList.events[idx].params[1] = 0;
+            gcurrentEventList.events[idx].params[2] = 0;
 
             info!(
                 "AUTOMATION: Frame: {} | Event type: INPUT_TOUCH_UP | Event parameters: {}, {}, {}",
-                (*gcurrentEventList).events[idx].frame,
-                (*gcurrentEventList).events[idx].params[0],
-                (*gcurrentEventList).events[idx].params[1],
-                (*gcurrentEventList).events[idx].params[2]
+                gcurrentEventList.events[idx].frame,
+                gcurrentEventList.events[idx].params[0],
+                gcurrentEventList.events[idx].params[1],
+                gcurrentEventList.events[idx].params[2]
             );
-            (*gcurrentEventList).count += 1;
+            gcurrentEventList.count += 1;
         }
 
-        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+        if gcurrentEventList.count == gcurrentEventList.capacity {
             return;
         } // Security check
 
-        let idx = (*gcurrentEventList).count as usize;
+        let idx = gcurrentEventList.count as usize;
 
         // Event type: INPUT_TOUCH_DOWN
         if CORE.Input.Touch.currentTouchState[id as usize] != 0 {
-            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
-            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_TOUCH_DOWN as u32;
-            (*gcurrentEventList).events[idx].params[0] = id;
-            (*gcurrentEventList).events[idx].params[1] = 0;
-            (*gcurrentEventList).events[idx].params[2] = 0;
+            gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;
+            gcurrentEventList.events[idx].type_ = AutomationEventType::INPUT_TOUCH_DOWN as u32;
+            gcurrentEventList.events[idx].params[0] = id;
+            gcurrentEventList.events[idx].params[1] = 0;
+            gcurrentEventList.events[idx].params[2] = 0;
 
             info!(
                 "AUTOMATION: Frame: {} | Event type: INPUT_TOUCH_DOWN | Event parameters: {}, {}, {}",
-                (*gcurrentEventList).events[idx].frame,
-                (*gcurrentEventList).events[idx].params[0],
-                (*gcurrentEventList).events[idx].params[1],
-                (*gcurrentEventList).events[idx].params[2]
+                gcurrentEventList.events[idx].frame,
+                gcurrentEventList.events[idx].params[0],
+                gcurrentEventList.events[idx].params[1],
+                gcurrentEventList.events[idx].params[2]
             );
-            (*gcurrentEventList).count += 1;
+            gcurrentEventList.count += 1;
         }
 
-        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+        if gcurrentEventList.count == gcurrentEventList.capacity {
             return;
         } // Security check
 
@@ -3096,25 +3096,25 @@ pub unsafe fn RecordAutomationEvent() {
         if ((CORE.Input.Touch.position[id as usize].x as i32) != (CORE.Input.Touch.previousPosition[id as usize].x as i32))
             || ((CORE.Input.Touch.position[id as usize].y as i32) != (CORE.Input.Touch.previousPosition[id as usize].y as i32))
         {
-            let idx = (*gcurrentEventList).count as usize;
+            let idx = gcurrentEventList.count as usize;
 
-            (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
-            (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_TOUCH_POSITION as u32;
-            (*gcurrentEventList).events[idx].params[0] = id;
-            (*gcurrentEventList).events[idx].params[1] = CORE.Input.Touch.position[id as usize].x as i32;
-            (*gcurrentEventList).events[idx].params[2] = CORE.Input.Touch.position[id as usize].y as i32;
+            gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;
+            gcurrentEventList.events[idx].type_ = AutomationEventType::INPUT_TOUCH_POSITION as u32;
+            gcurrentEventList.events[idx].params[0] = id;
+            gcurrentEventList.events[idx].params[1] = CORE.Input.Touch.position[id as usize].x as i32;
+            gcurrentEventList.events[idx].params[2] = CORE.Input.Touch.position[id as usize].y as i32;
 
             info!(
                 "AUTOMATION: Frame: {} | Event type: INPUT_TOUCH_POSITION | Event parameters: {}, {}, {}",
-                (*gcurrentEventList).events[idx].frame,
-                (*gcurrentEventList).events[idx].params[0],
-                (*gcurrentEventList).events[idx].params[1],
-                (*gcurrentEventList).events[idx].params[2]
+                gcurrentEventList.events[idx].frame,
+                gcurrentEventList.events[idx].params[0],
+                gcurrentEventList.events[idx].params[1],
+                gcurrentEventList.events[idx].params[2]
             );
-            (*gcurrentEventList).count += 1;
+            gcurrentEventList.count += 1;
         }
 
-        if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+        if gcurrentEventList.count == gcurrentEventList.capacity {
             return;
         } // Security check
     }
@@ -3124,53 +3124,53 @@ pub unsafe fn RecordAutomationEvent() {
     //-------------------------------------------------------------------------------------
     for gamepad in 0..MAX_GAMEPADS as i32 {
         for button in 0..MAX_GAMEPAD_BUTTONS as i32 {
-            let idx = (*gcurrentEventList).count as usize;
+            let idx = gcurrentEventList.count as usize;
 
             // Event type: INPUT_GAMEPAD_BUTTON_UP
             if (CORE.Input.Gamepad.previousButtonState[gamepad as usize][button as usize] != 0)
                 && (CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] == 0)
             {
-                (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
-                (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_GAMEPAD_BUTTON_UP as u32;
-                (*gcurrentEventList).events[idx].params[0] = gamepad;
-                (*gcurrentEventList).events[idx].params[1] = button;
-                (*gcurrentEventList).events[idx].params[2] = 0;
+                gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;
+                gcurrentEventList.events[idx].type_ = AutomationEventType::INPUT_GAMEPAD_BUTTON_UP as u32;
+                gcurrentEventList.events[idx].params[0] = gamepad;
+                gcurrentEventList.events[idx].params[1] = button;
+                gcurrentEventList.events[idx].params[2] = 0;
 
                 info!(
                     "AUTOMATION: Frame: {} | Event type: INPUT_GAMEPAD_BUTTON_UP | Event parameters: {}, {}, {}",
-                    (*gcurrentEventList).events[idx].frame,
-                    (*gcurrentEventList).events[idx].params[0],
-                    (*gcurrentEventList).events[idx].params[1],
-                    (*gcurrentEventList).events[idx].params[2]
+                    gcurrentEventList.events[idx].frame,
+                    gcurrentEventList.events[idx].params[0],
+                    gcurrentEventList.events[idx].params[1],
+                    gcurrentEventList.events[idx].params[2]
                 );
-                (*gcurrentEventList).count += 1;
+                gcurrentEventList.count += 1;
             }
 
-            if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+            if gcurrentEventList.count == gcurrentEventList.capacity {
                 return;
             } // Security check
 
-            let idx = (*gcurrentEventList).count as usize;
+            let idx = gcurrentEventList.count as usize;
 
             // Event type: INPUT_GAMEPAD_BUTTON_DOWN
             if CORE.Input.Gamepad.currentButtonState[gamepad as usize][button as usize] != 0 {
-                (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
-                (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_GAMEPAD_BUTTON_DOWN as u32;
-                (*gcurrentEventList).events[idx].params[0] = gamepad;
-                (*gcurrentEventList).events[idx].params[1] = button;
-                (*gcurrentEventList).events[idx].params[2] = 0;
+                gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;
+                gcurrentEventList.events[idx].type_ = AutomationEventType::INPUT_GAMEPAD_BUTTON_DOWN as u32;
+                gcurrentEventList.events[idx].params[0] = gamepad;
+                gcurrentEventList.events[idx].params[1] = button;
+                gcurrentEventList.events[idx].params[2] = 0;
 
                 info!(
                     "AUTOMATION: Frame: {} | Event type: INPUT_GAMEPAD_BUTTON_DOWN | Event parameters: {}, {}, {}",
-                    (*gcurrentEventList).events[idx].frame,
-                    (*gcurrentEventList).events[idx].params[0],
-                    (*gcurrentEventList).events[idx].params[1],
-                    (*gcurrentEventList).events[idx].params[2]
+                    gcurrentEventList.events[idx].frame,
+                    gcurrentEventList.events[idx].params[0],
+                    gcurrentEventList.events[idx].params[1],
+                    gcurrentEventList.events[idx].params[2]
                 );
-                (*gcurrentEventList).count += 1;
+                gcurrentEventList.count += 1;
             }
 
-            if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+            if gcurrentEventList.count == gcurrentEventList.capacity {
                 return;
             } // Security check
         }
@@ -3185,25 +3185,25 @@ pub unsafe fn RecordAutomationEvent() {
             };
 
             if GetGamepadAxisMovement(gamepad, axis as i32) != defaultMovement {
-                let idx = (*gcurrentEventList).count as usize;
+                let idx = gcurrentEventList.count as usize;
 
-                (*gcurrentEventList).events[idx].frame = CORE.Time.frameCounter;
-                (*gcurrentEventList).events[idx].type_ = AutomationEventType::INPUT_GAMEPAD_AXIS_MOTION as u32;
-                (*gcurrentEventList).events[idx].params[0] = gamepad;
-                (*gcurrentEventList).events[idx].params[1] = axis;
-                (*gcurrentEventList).events[idx].params[2] = (CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize] * 32768.0) as i32;
+                gcurrentEventList.events[idx].frame = CORE.Time.frameCounter;
+                gcurrentEventList.events[idx].type_ = AutomationEventType::INPUT_GAMEPAD_AXIS_MOTION as u32;
+                gcurrentEventList.events[idx].params[0] = gamepad;
+                gcurrentEventList.events[idx].params[1] = axis;
+                gcurrentEventList.events[idx].params[2] = (CORE.Input.Gamepad.axisState[gamepad as usize][axis as usize] * 32768.0) as i32;
 
                 info!(
                     "AUTOMATION: Frame: {} | Event type: INPUT_GAMEPAD_AXIS_MOTION | Event parameters: {}, {}, {}",
-                    (*gcurrentEventList).events[idx].frame,
-                    (*gcurrentEventList).events[idx].params[0],
-                    (*gcurrentEventList).events[idx].params[1],
-                    (*gcurrentEventList).events[idx].params[2]
+                    gcurrentEventList.events[idx].frame,
+                    gcurrentEventList.events[idx].params[0],
+                    gcurrentEventList.events[idx].params[1],
+                    gcurrentEventList.events[idx].params[2]
                 );
-                (*gcurrentEventList).count += 1;
+                gcurrentEventList.count += 1;
             }
 
-            if (*gcurrentEventList).count == (*gcurrentEventList).capacity {
+            if gcurrentEventList.count == gcurrentEventList.capacity {
                 return;
             } // Security check
         }
