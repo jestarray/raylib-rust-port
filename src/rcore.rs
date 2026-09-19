@@ -768,9 +768,9 @@ pub unsafe fn EndDrawing()
 
 #[cfg(feature = "SUPPORT_SCREEN_CAPTURE")]
 {
-    if (IsKeyPressed(KeyboardKey::KEY_F12 as i32))
+    if (IsKeyPressed(KeyboardKey::KEY_F12))
     {
-        TakeScreenshot(&format!("screenshot{:03}.png", screenshotCounter));
+        TakeScreenshot(&format!("screenshot_{}.png", GetUTCString()));
         screenshotCounter += 1;
     }
 }
@@ -1604,7 +1604,7 @@ pub unsafe fn TakeScreenshot(fileName: &str)
     let mut scale: Vector2 = Vector2 { x: 1.0, y: 1.0 };
     if (((CORE.Window.flags & ConfigFlags::FLAG_WINDOW_HIGHDPI as u32) == ConfigFlags::FLAG_WINDOW_HIGHDPI as u32)) { scale = GetWindowScaleDPI(); }
 
-    let imgData = rlReadScreenPixels((((CORE.Window.render.x as f32)*scale.x) as i32), (((CORE.Window.render.y as f32)*scale.y) as i32));
+    let imgData = rlReadScreenPixels(((CORE.Window.render.x*scale.x) as i32), ((CORE.Window.render.y*scale.y) as i32));
     let image = Image { data: imgData, width: (CORE.Window.render.x*scale.x) as i32, height: (CORE.Window.render.y*scale.y) as i32, mipmaps: 1, format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 };
 
     let mut path = String::new();
@@ -3272,4 +3272,38 @@ pub fn TextFormat(text: std::fmt::Arguments<'_>) -> String
     }
 
     return currentBuffer;
+}
+
+fn GetUTCString() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // Time calculations
+    let sec = secs % 60;
+    let min = (secs / 60) % 60;
+    let hour = (secs / 3600) % 24;
+
+    // Date calculations (days since Jan 1, 1970)
+    let mut days = secs / 86400;
+
+    // Civil day algorithm (Howard Hinnant)
+    days += 719468;
+    let era = days / 146097;
+    let doe = days % 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if month <= 2 { y + 1 } else { y };
+
+    let yy = year % 100;
+
+    format!(
+        "{:02}-{:02}-{:02}_{:02}h-{:02}m-{:02}s",
+        yy, month, day, hour, min, sec
+    )
 }

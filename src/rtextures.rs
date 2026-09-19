@@ -293,7 +293,18 @@ pub fn UnloadImage(image: &mut Image) {
 }
 
 pub fn ExportImage(image: &Image, path: &str) {
-    todo!();
+    use image::*;
+    let width = image.width as u32;
+    let height= image.height as u32;
+    let try_buffer: Option<ImageBuffer<Rgba<u8>, &[u8]>> = 
+        ImageBuffer::from_raw(width, height, image.data.as_slice());
+    if try_buffer.is_none() {
+        warn!("Could not create buffer?");
+    }
+    let buffer = try_buffer.unwrap();
+    if let Err(err) = buffer.save(path) {
+        warn!("Could not write image {}", err);
+    }
 }
 
 pub fn LoadTexture(file_name: &str) -> Texture {
