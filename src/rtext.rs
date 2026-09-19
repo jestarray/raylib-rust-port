@@ -37,7 +37,7 @@ pub unsafe fn LoadFont(fileName: &str) -> Font {
         LoadFontEx(fileName, FONT_TTF_DEFAULT_SIZE, None)
     } else {
         let mut image = rtextures::load_image(fileName);
-        let font = if !image.data.is_null() {
+        let font = if !image.is_data_null() {
             LoadFontFromImage(&image, Color::MAGENTA, FONT_TTF_DEFAULT_FIRST_CHAR)
         } else {
             (&*GetFontDefault()).clone()
@@ -165,7 +165,7 @@ unsafe fn GenImageFontAtlas(glyphs: &[GlyphInfo], font_size: i32, padding: i32) 
     for glyph in glyphs {
         let width = usize::try_from(glyph.image.width).ok()?;
         let height = usize::try_from(glyph.image.height).ok()?;
-        if width > 0 && height > 0 && (glyph.image.data.is_null()
+        if width > 0 && height > 0 && (glyph.image.is_data_null()
             || glyph.image.format != PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32)
         {
             return None;
@@ -411,7 +411,7 @@ pub unsafe fn LoadFontData(
             FontType::FONT_SDF => std::ptr::null_mut(),
         };
 
-        if !glyph.image.data.is_null() {
+        if !glyph.image.is_data_null() {
             external::stbtt_GetCodepointHMetrics(&font_info, cp, &mut glyph.advance_x, std::ptr::null_mut());
             glyph.advance_x = (glyph.advance_x as f32 * scale_factor) as i32;
 
@@ -432,7 +432,7 @@ pub unsafe fn LoadFontData(
             glyph.advance_x = (glyph.advance_x as f32 * scale_factor) as i32;
 
             // Release any rendered bitmap before replacing it with a blank image.
-            if !glyph.image.data.is_null() {
+            if !glyph.image.is_data_null() {
                 if font_type == FontType::FONT_SDF {
                     external::stbtt_FreeSDF(glyph.image.data.cast(), font_info.userdata);
                 } else {
@@ -457,7 +457,7 @@ pub unsafe fn LoadFontData(
             };
         }
 
-        if font_type == FontType::FONT_BITMAP && !glyph.image.data.is_null() {
+        if font_type == FontType::FONT_BITMAP && !glyph.image.is_data_null() {
             // Use the final image dimensions, including any replacement space image.
             let pixel_count = glyph.image.width as usize * glyph.image.height as usize;
             let pixels = std::slice::from_raw_parts_mut(glyph.image.data.cast::<u8>(), pixel_count);

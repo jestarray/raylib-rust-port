@@ -94,7 +94,7 @@ pub unsafe fn ImageFromImage(image: Image, rec: Rectangle) -> Image
     };
 
     // Security check to avoid program crash
-    if (image.data.is_null() || (image.width == 0) || (image.height == 0)) { return result; }
+    if (image.is_data_null() || (image.width == 0) || (image.height == 0)) { return result; }
 
     if (image.format < PIXELFORMAT_COMPRESSED_DXT1_RGB as i32)
     {
@@ -135,7 +135,7 @@ pub unsafe fn ImageFromImage(image: Image, rec: Rectangle) -> Image
 /// `image.data` must point to readable storage for the specified dimensions and
 /// pixel format for the duration of this call.
 pub unsafe fn LoadImageColors(image: &Image) -> Vec<Color> {
-    if image.data.is_null() || image.width <= 0 || image.height <= 0 {
+    if image.is_data_null() || image.width <= 0 || image.height <= 0 {
         return Vec::new();
     }
 
@@ -300,7 +300,7 @@ pub fn load_image(file_name: &str) -> Image {
 
 pub fn UnloadImage(image: &mut Image) {
     unsafe {
-        if !image.data.is_null() {
+        if !image.is_data_null() {
             crate::external::stbi_image_free(image.data);
             image.data = std::ptr::null_mut();
         }
@@ -315,7 +315,7 @@ pub fn LoadTexture(file_name: &str) -> Texture {
 }
 
 pub fn LoadTextureFromImage(image: &Image) -> Texture {
-    if image.data.is_null() || image.width <= 0 || image.height <= 0 {
+    if image.is_data_null() || image.width <= 0 || image.height <= 0 {
         return Texture { id: 0, width: 0, height: 0, mipmaps: 0, format: 0 };
     }
     unsafe {

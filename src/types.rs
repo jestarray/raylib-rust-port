@@ -833,6 +833,13 @@ impl Default for Image {
     }
 }
 
+impl Image {
+    #[must_use]
+    pub fn is_data_null(&self) -> bool {
+        self.data.is_null()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub struct Texture {
