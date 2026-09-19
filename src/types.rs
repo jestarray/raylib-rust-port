@@ -68,6 +68,8 @@ impl Matrix {
         m15: 1.0,
     };
     #[allow(clippy::too_many_arguments)]
+    /// Matrix creation from array
+    /// Conversion from column-major to row-major memory order
     pub const fn new(
         m0: f32,
         m4: f32,
