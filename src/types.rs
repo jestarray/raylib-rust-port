@@ -1,5 +1,5 @@
 use glam::{Vec2, Vec3, Vec4};
-use std::ffi::c_void;
+use image::ColorType;
 
 pub type Vector2 = Vec2;
 pub type Vector3 = Vec3;
@@ -1248,6 +1248,39 @@ pub enum PixelFormat {
     PIXELFORMAT_COMPRESSED_PVRT_RGBA = 22,
     PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA = 23,
     PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA = 24,
+}
+impl PixelFormat {
+    #[must_use]
+    pub fn to_colortype(self) -> Option<ColorType> {
+        match self {
+            Self::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE => Some(ColorType::L8),
+            Self::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA => Some(ColorType::La8),
+            Self::PIXELFORMAT_UNCOMPRESSED_R8G8B8 => Some(ColorType::Rgb8),
+            Self::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 => Some(ColorType::Rgba8),
+            Self::PIXELFORMAT_UNCOMPRESSED_R16 => Some(ColorType::L16),
+            Self::PIXELFORMAT_UNCOMPRESSED_R16G16B16 => Some(ColorType::Rgb16),
+            Self::PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 => Some(ColorType::Rgba16),
+            Self::PIXELFORMAT_UNCOMPRESSED_R32G32B32 => Some(ColorType::Rgb32F),
+            Self::PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 => Some(ColorType::Rgba32F),
+
+            _ => None,
+        }
+    }
+    #[must_use]
+    pub fn from_color_type(color_type: ColorType) -> Option<PixelFormat> {
+        match color_type {
+            ColorType::L8 => Some(Self::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE),
+            ColorType::La8 => Some(Self::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA),
+            ColorType::Rgb8 => Some(Self::PIXELFORMAT_UNCOMPRESSED_R8G8B8),
+            ColorType::Rgba8 => Some(Self::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8),
+            ColorType::L16 => Some(Self::PIXELFORMAT_UNCOMPRESSED_R16),
+            ColorType::Rgb16 => Some(Self::PIXELFORMAT_UNCOMPRESSED_R16G16B16),
+            ColorType::Rgba16 => Some(Self::PIXELFORMAT_UNCOMPRESSED_R16G16B16A16),
+            ColorType::Rgb32F => Some(Self::PIXELFORMAT_UNCOMPRESSED_R32G32B32),
+            ColorType::Rgba32F => Some(Self::PIXELFORMAT_UNCOMPRESSED_R32G32B32A32),
+            _ => None,
+        }
+    }
 }
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]

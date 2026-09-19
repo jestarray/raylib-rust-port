@@ -14,9 +14,11 @@
     clippy::let_and_return,
     clippy::double_parens,
 )]
+use crate::rcore::LoadFileData;
 use crate::rlgl::{RL_QUADS, rlBegin, rlColor4ub, rlEnd, rlLoadTexture, rlPopMatrix, rlPushMatrix, rlRotatef, rlSetTexture, rlTexCoord2f, rlTranslatef, rlUnloadTexture, rlVertex2f};
-use crate::types::{Color, Image, NPatchInfo, NPatchLayout, Rectangle, Texture, Vector2};
-use std::ffi::CString;
+use crate::types::{Color, Image, NPatchInfo, NPatchLayout, PixelFormat, Rectangle, Texture, Vector2};
+use std::path::Path;
+use image::ImageReader;
 use log::{warn};
 use crate::types::PixelFormat::*;
 
@@ -223,80 +225,48 @@ pub unsafe fn LoadImageColors(image: &Image) -> Vec<Color> {
     colors
 }
 
-pub fn load_image(file_name: &str) -> Image {
-    unsafe {
-        let Ok(c_file_name) = CString::new(file_name) else {
-            log::error!("Image path contains a NUL byte");
-            return Image::default();
-        };
-        let mut width: i32 = 0;
-        let mut height: i32 = 0;
-        let mut channels: i32 = 0;
-        
-        #[cfg(not(target_os = "android"))]
-        let data = crate::external::stbi_load(
-            c_file_name.as_ptr(),
-            &mut width,
-            &mut height,
-            &mut channels,
-            0,
-        );
-        let mut bitmap_data = Vec::new();
-        if !data.is_null() {
-            let size = (width * height * channels) as usize;
-            // copy out of stb image and free since we made a copy
-            bitmap_data = std::slice::from_raw_parts(data, size).to_vec();
-            crate::external::stbi_image_free(data as *mut std::ffi::c_void);
-        }
-
-        #[cfg(target_os = "android")]
-        let data = {
-            // SDL resolves relative paths against internal storage and APK assets.
-            // stb's ordinary file loader cannot read an APK asset directly.
-            let mut size = 0;
-            let bytes = sdl3_sys::iostream::SDL_LoadFile(c_file_name.as_ptr(), &mut size);
-            let decoded = if !bytes.is_null() && size > 0 && size <= i32::MAX as usize {
-                crate::external::stbi_load_from_memory(
-                    bytes.cast(), size as i32, &mut width, &mut height, &mut channels, 0,
-                )
-            } else {
-                log::error!("SDL: Cannot read image {}: {}", file_name,
-                    std::ffi::CStr::from_ptr(sdl3_sys::error::SDL_GetError()).to_string_lossy());
-                std::ptr::null_mut()
-            };
-            sdl3_sys::stdinc::SDL_free(bytes);
-            decoded
-        };
-
-        if data.is_null() {
-            log::error!("Failed to load image: {}", file_name);
-            return Image::default();
-        }
-
-        let format = if channels == 1 {
-            1 // UNCOMPRESSED_GRAYSCALE
-        } else if channels == 2 {
-            2 // UNCOMPRESSED_GRAY_ALPHA
-        } else if channels == 3 {
-            4 // UNCOMPRESSED_R8G8B8
-        } else if channels == 4 {
-            7 // UNCOMPRESSED_R8G8B8A8
-        } else {
-            0
-        };
-
-        Image {
-            data: bitmap_data,
-            width,
-            height,
-            mipmaps: 1,
-            format,
-        }
-    }
+pub fn LoadImage<P: AsRef<Path>>(file_path: P) -> Image {
+    let path = file_path.as_ref();
+    let Some(ext) = path.extension() else {
+        warn!("Bad filename, could not parse extension");
+        return Image::default();
+    };
+    let try_file_data = LoadFileData(&file_path);
+    if let Err(err) = try_file_data {
+        warn!("Failed to load file with err {}! A dummy Image is provided", err);
+        return Image::default();
+    };
+    let file_data = try_file_data.unwrap();
+    let data_size = file_data.len() as i32;
+    let image = LoadImageFromMemory(ext.to_str().unwrap(), &file_data, data_size);
+    return image;
 }
 
-pub fn LoadImageFromMemory(file_ext: &str, file_data: *const std::ffi::c_void, data_size: i32) -> Image {
-    todo!()
+pub fn LoadImageFromMemory(_file_ext: &str, file_data: &[u8], data_size: i32) -> Image {
+    let mut res = Image::default();
+    use std::io::Cursor;
+
+    let reader = ImageReader::new(Cursor::new(file_data))
+    .with_guessed_format()
+    .expect("Cursor io never fails");
+    let try_decode = reader.decode();
+    if let Err(err) = try_decode {
+        warn!("Failed to decode image: {}", err);
+        return res;
+    }
+    let decode = try_decode.unwrap(); // safe because above
+    let width = decode.width() as i32;
+    let height = decode.height() as i32;
+    let color = decode.color();
+    let pixels = decode.into_bytes();
+    res.data = pixels;
+    res.width = width;
+    res.height = height;
+    res.mipmaps = 1;
+    if let Some(format) = PixelFormat::from_color_type(color) {
+        res.format = format as i32;
+    }
+    return res;
 }
 
 // Check if an image is ready
@@ -327,7 +297,7 @@ pub fn ExportImage(image: &Image, path: &str) {
 }
 
 pub fn LoadTexture(file_name: &str) -> Texture {
-    let mut image = load_image(file_name);
+    let mut image = LoadImage(file_name);
     let texture = LoadTextureFromImage(&image);
     UnloadImage(&mut image);
     texture

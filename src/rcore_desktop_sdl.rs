@@ -1032,31 +1032,23 @@ pub unsafe fn GetClipboardText() -> String {
     text
 }
 
-// Get clipboard image
-pub unsafe fn GetClipboardImage() -> Image
+/// Get clipboard image! 
+/// 
+/// Gets it from SDL and decodes it. Avoid calling this per frame.
+#[must_use]
+pub unsafe fn GetClipboardImage() -> Option<Image>
 {
+    let none = "No Image in clipboard";
     let mut image = Image::default();
 
-// It's nice to have support Bitmap on Linux as well, but not as necessary as Windows
-#[cfg(all(not(feature = "SUPPORT_FILEFORMAT_BMP"), target_os = "windows"))]
-{
-    warn!("WARNING: Enabling SUPPORT_CLIPBOARD_IMAGE requires SUPPORT_FILEFORMAT_BMP, specially on Windows");
-    return image;
-}
-
 // From what I've tested applications on Wayland saves images on clipboard as PNG
-#[cfg(all(any(not(feature = "SUPPORT_FILEFORMAT_PNG"), not(feature = "SUPPORT_FILEFORMAT_JPG")), not(target_os = "windows")))]
-{
-    warn!("WARNING: Getting image from the clipboard might not work without SUPPORT_FILEFORMAT_PNG or SUPPORT_FILEFORMAT_JPG");
-}
-    // Let's hope compiler put these arrays in static memory
-    let imageFormats: [&str; 4] = [
-        "image/bmp",
-        "image/png",
-        "image/jpg",
-        "image/tiff",
+    let imageFormats  = [
+        c"image/bmp",
+        c"image/png",
+        c"image/jpg",
+        c"image/tiff",
     ];
-    let imageExtensions: [&str; 4] = [
+    let imageExtensions  = [
         ".bmp",
         ".png",
         ".jpg",
@@ -1064,29 +1056,30 @@ pub unsafe fn GetClipboardImage() -> Image
     ];
 
     let mut dataSize: usize = 0;
-    let mut fileData: *mut std::ffi::c_void = std::ptr::null_mut();
+    let mut fileData = std::ptr::null_mut();
 
-    for i in (0) as usize..(imageFormats.len()) as usize
+    for i in 0..imageFormats.len()
     {
-        fileData = SDL_GetClipboardData(CString::new(imageFormats[i]).unwrap().as_ptr(), &mut dataSize);
+        fileData = SDL_GetClipboardData(imageFormats[i].as_ptr(), &mut dataSize);
+        if fileData.is_null() {
+            return None;
+        }
 
-        if (!fileData.is_null())
+        let to_slice= std::slice::from_raw_parts(fileData as *const u8, dataSize);
+        image = crate::rtextures::LoadImageFromMemory(imageExtensions[i], to_slice, dataSize as i32);
+
+        SDL_free(fileData);
+
+        if (IsImageValid(&image))
         {
-            image = crate::rtextures::LoadImageFromMemory(imageExtensions[i], fileData, (dataSize as i32));
-
-            SDL_free(fileData.cast());
-
-            if (IsImageValid(&image))
-            {
-                info!("Clipboard: Got image from clipboard successfully: {}", imageExtensions[i]);
-                return image;
-            }
+            info!("Clipboard: Got image from clipboard successfully: {} | width: {} | height: {}", imageExtensions[i], image.width, image.height);
+            return Some(image);
         }
     }
 
     if (!IsImageValid(&image)) { warn!("Clipboard: Couldn't get clipboard data. ERROR: {}", CStr::from_ptr(SDL_GetError()).to_string_lossy()); }
 
-    return image;
+    return None;
 }
 
 // Show mouse cursor
@@ -1990,4 +1983,17 @@ pub unsafe fn UpdateTouchPointsSDL(event: SDL_TouchFingerEvent)
 
 
     for i in (CORE.Input.Touch.pointCount) as usize..(MAX_TOUCH_POINTS) { CORE.Input.Touch.currentTouchState[i] = 0; }
+}
+
+pub fn CopySDLError() -> String {
+    unsafe {
+        let err_ptr = sdl3_sys::error::SDL_GetError();
+        if err_ptr.is_null() {
+            return "ERROR: Unknown SDL error".to_string();
+        }
+        CStr::from_ptr(err_ptr)
+            .to_str()
+            .unwrap_or("ERROR: Invalid UTF-8 in SDL error message")
+            .to_owned()
+    }
 }

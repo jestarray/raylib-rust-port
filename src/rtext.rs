@@ -36,7 +36,7 @@ pub unsafe fn LoadFont(fileName: &str) -> Font {
     {
         LoadFontEx(fileName, FONT_TTF_DEFAULT_SIZE, None)
     } else {
-        let mut image = rtextures::load_image(fileName);
+        let mut image = rtextures::LoadImage(fileName);
         let font = if !image.is_data_null() {
             LoadFontFromImage(&image, Color::MAGENTA, FONT_TTF_DEFAULT_FIRST_CHAR)
         } else {
@@ -84,7 +84,7 @@ pub unsafe fn LoadFontEx(fileName: &str, fontSize: i32, codepoints: Option<&[i32
     let file_data = LoadFileData(fileName).unwrap();
     let data_size = file_data.len();
     if data_size > 0 {
-        let data = std::slice::from_raw_parts(file_data.as_ptr(), data_size as usize);
+        let data = std::slice::from_raw_parts(file_data.as_ptr(), data_size);
         let extension = crate::rcore::GetFileExtension(fileName).unwrap_or("");
             font = LoadFontFromMemory(extension, data, fontSize, codepoints);
     }

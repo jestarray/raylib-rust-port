@@ -15,14 +15,28 @@ log = { version = "0.4" }
 env_logger = { version = "0.11" }
 strum = "0.28"
 strum_macros = "0.28"
+image = { version = "0.25.10", default-features = false } # todo: re-export more configurable feature flags
 
 [features]
 default = ["DESKTOP_DEFAULTS"]
 
 # look in raylib config.h and make sure they match for reasonably good defaults
-DESKTOP_DEFAULTS = ["GRAPHICS_API_OPENGL_33", "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT", "SUPPORT_PARTIALBUSY_WAIT_LOOP", "SUPPORT_MODULE_RTEXT", "SUPPORT_WINMM_HIGHRES_TIMER"]
+DESKTOP_DEFAULTS = [
+    "GRAPHICS_API_OPENGL_33", 
+    "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT", 
+    "SUPPORT_PARTIALBUSY_WAIT_LOOP", 
+    "SUPPORT_MODULE_RTEXT", 
+    "SUPPORT_WINMM_HIGHRES_TIMER", 
+    "SUPPORT_FILEFORMAT_BMP", 
+    "SUPPORT_FILEFORMAT_PNG", 
+    "SUPPORT_FILEFORMAT_JPG"]
 
-ANDROID_DEFAULTS = ["GRAPHICS_API_OPENGL_ES3", "PLATFORM_ANDROID"]
+ANDROID_DEFAULTS = [
+    "GRAPHICS_API_OPENGL_ES3", 
+    "PLATFORM_ANDROID",
+    "SUPPORT_FILEFORMAT_BMP", 
+    "SUPPORT_FILEFORMAT_PNG", 
+    "SUPPORT_FILEFORMAT_JPG"]
 
 GRAPHICS_API_OPENGL_33 = []
 GRAPHICS_API_OPENGL_43 = ["GRAPHICS_API_OPENGL_33"]
@@ -58,12 +72,14 @@ SUPPORT_SCREEN_CAPTURE = []
 SUPPORT_TRACELOG = []
 SUPPORT_WINMM_HIGHRES_TIMER = []
 SUPPORT_CLIPBOARD_IMAGE = []
-SUPPORT_FILEFORMAT_BMP = []
-SUPPORT_FILEFORMAT_PNG = []
-SUPPORT_FILEFORMAT_JPG = []
+SUPPORT_FILEFORMAT_BMP = ["image/bmp"]
+SUPPORT_FILEFORMAT_PNG = ["image/png"]
+SUPPORT_FILEFORMAT_JPG = ["image/jpeg"]
 SUPPORT_SPLINE_MITERS = []
 SUPPORT_SPLINE_SEGMENT_CAPS = []
 
+ # multithreading but image recommends library crates optionally enable this
+IMAGE_RAYON = ["image/rayon"]
 [build-dependencies]
 cc = "1.4"
 bindgen = "0.73"

@@ -1704,16 +1704,63 @@ pub unsafe fn SetTraceLogCallback(callback: Option<TraceLogCallback>)
 //----------------------------------------------------------------------------------
 // Module Functions Definition: File System management
 //----------------------------------------------------------------------------------
-/// Reads an entire file into a byte vector (`Vec<u8>`).
-/// Automatically handles file opening, sizing, allocation, reading, and closing.
-pub fn LoadFileData<P: AsRef<std::path::Path>>(file_name: P) -> std::io::Result<Vec<u8>> {
-    std::fs::read(file_name)
+/// Uses SDL IO instead of rust std::fs for Android support
+pub fn LoadFileData<P: AsRef<Path>>(file_name: P) -> Result<Vec<u8>, String> {
+    let path = file_name.as_ref();
+    let c_file_name = path
+        .to_str()
+        .and_then(|s| CString::new(s).ok())
+        .ok_or_else(|| "ERROR: Invalid path encoding".to_string())?;
+
+    let mode = CString::new("rb").unwrap();
+
+    unsafe {
+        // 1. Open the file via SDL3 cross-platform stream abstraction
+        let stream = sdl3_sys::iostream::SDL_IOFromFile(c_file_name.as_ptr(), mode.as_ptr());
+        if stream.is_null() {
+            return Err(CopySDLError());
+        }
+
+        // 2. Query total file size
+        let file_size = sdl3_sys::iostream::SDL_GetIOSize(stream);
+        if file_size <= 0 {
+            let _ = sdl3_sys::iostream::SDL_CloseIO(stream);
+            return Err(if file_size == 0 {
+                "ERROR: File is empty".to_string()
+            } else {
+                CopySDLError()
+            });
+        }
+
+        let size = file_size as usize;
+
+        // 3. Allocate destination buffer directly using Rust's std allocator
+        let mut buffer = Vec::with_capacity(size);
+
+        // 4. Read directly into the uninitialized Vec memory
+        let bytes_read = sdl3_sys::iostream::SDL_ReadIO(
+            stream,
+            buffer.as_mut_ptr() as *mut _,
+            size,
+        );
+
+        // 5. Clean up stream handles promptly
+        let close_result = sdl3_sys::iostream::SDL_CloseIO(stream);
+
+        if bytes_read != size || !close_result {
+            return Err(CopySDLError());
+        }
+
+        // 6. Set the Vec length safely since all bytes were successfully written
+        buffer.set_len(size);
+        Ok(buffer)
+    }
 }
 
 // Unload file data allocated by LoadFileData()
 pub unsafe fn UnloadFileData(data: *mut u8)
 {
-    // LoadFileData replaced with rust standard lib stuff
+    // LoadFileData replaced with custom owned data, so no longer valid
 }
 
 // Save data to file from buffer
