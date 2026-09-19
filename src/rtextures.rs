@@ -83,15 +83,9 @@ pub fn GetPixelDataSize(width: i32, height: i32, format: i32) -> i32
 /// For a supported format, `image.data` must point to readable pixel storage
 /// covering `image.width * image.height` pixels for the duration of this call.
 #[allow(non_snake_case, unused_parens)]
-pub unsafe fn ImageFromImage(image: Image, rec: Rectangle) -> Image
+pub unsafe fn ImageFromImage(image: &Image, rec: Rectangle) -> Image
 {
-    let mut result = Image {
-        data: std::ptr::null_mut(),
-        width: 0,
-        height: 0,
-        mipmaps: 0,
-        format: 0,
-    };
+    let mut result = Image::default();
 
     // Security check to avoid program crash
     if (image.is_data_null() || (image.width == 0) || (image.height == 0)) { return result; }
@@ -107,16 +101,18 @@ pub unsafe fn ImageFromImage(image: Image, rec: Rectangle) -> Image
 
             result.width = rec.width as i32;
             result.height = rec.height as i32;
-            result.data = unsafe { libc::calloc((rec.width *rec.height *bytesPerPixel as f32) as usize, 1) };
+            result.data = vec![0; (rec.width *rec.height *bytesPerPixel as f32) as usize];
             result.format = image.format;
             result.mipmaps = 1;
 
             for y in 0..rec.height as i32
             {
                 unsafe {
+                    let src = &image.data[((y + rec.y as i32)*image.width + rec.x as i32) as usize*bytesPerPixel];
+                    let res = &mut result.data[(y*rec.width as i32) as usize*bytesPerPixel];
                     std::ptr::copy_nonoverlapping(
-                        (image.data as *const u8).add(((y + rec.y as i32)*image.width + rec.x as i32) as usize*bytesPerPixel),
-                        (result.data as *mut u8).add((y*rec.width as i32) as usize*bytesPerPixel),
+                        src,
+                        res,
                         rec.width as i32 as usize*bytesPerPixel);
                 }
             }
@@ -183,7 +179,7 @@ pub unsafe fn LoadImageColors(image: &Image) -> Vec<Color> {
         }
     };
 
-    let bytes = std::slice::from_raw_parts(image.data.cast::<u8>(), byte_count);
+    let bytes = std::slice::from_raw_parts(image.data.as_ptr(), byte_count);
     let mut colors = Vec::with_capacity(pixel_count);
     for pixel in bytes.chunks_exact(stride) {
         let color = match image.format {
@@ -231,7 +227,7 @@ pub fn load_image(file_name: &str) -> Image {
     unsafe {
         let Ok(c_file_name) = CString::new(file_name) else {
             log::error!("Image path contains a NUL byte");
-            return Image { data: std::ptr::null_mut(), width: 0, height: 0, mipmaps: 0, format: 0 };
+            return Image::default();
         };
         let mut width: i32 = 0;
         let mut height: i32 = 0;
@@ -245,6 +241,13 @@ pub fn load_image(file_name: &str) -> Image {
             &mut channels,
             0,
         );
+        let mut bitmap_data = Vec::new();
+        if !data.is_null() {
+            let size = (width * height * channels) as usize;
+            // copy out of stb image and free since we made a copy
+            bitmap_data = std::slice::from_raw_parts(data, size).to_vec();
+            crate::external::stbi_image_free(data as *mut std::ffi::c_void);
+        }
 
         #[cfg(target_os = "android")]
         let data = {
@@ -267,13 +270,7 @@ pub fn load_image(file_name: &str) -> Image {
 
         if data.is_null() {
             log::error!("Failed to load image: {}", file_name);
-            return Image {
-                data: std::ptr::null_mut(),
-                width: 0,
-                height: 0,
-                mipmaps: 0,
-                format: 0,
-            };
+            return Image::default();
         }
 
         let format = if channels == 1 {
@@ -289,7 +286,7 @@ pub fn load_image(file_name: &str) -> Image {
         };
 
         Image {
-            data: data as *mut std::ffi::c_void,
+            data: bitmap_data,
             width,
             height,
             mipmaps: 1,
@@ -301,8 +298,7 @@ pub fn load_image(file_name: &str) -> Image {
 pub fn UnloadImage(image: &mut Image) {
     unsafe {
         if !image.is_data_null() {
-            crate::external::stbi_image_free(image.data);
-            image.data = std::ptr::null_mut();
+            image.data = Vec::new();
         }
     }
 }
@@ -320,7 +316,7 @@ pub fn LoadTextureFromImage(image: &Image) -> Texture {
     }
     unsafe {
         let id = rlLoadTexture(
-            image.data,
+            &image.data,
             image.width,
             image.height,
             image.format,

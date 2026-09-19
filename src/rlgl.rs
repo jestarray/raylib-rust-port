@@ -1578,7 +1578,7 @@ pub unsafe fn rlglInit(width: i32, height: i32)
 
     // Init default white texture
     let pixels: [u8; 4] = [ 255, 255, 255, 255 ];   // 1 pixel RGBA (4 bytes)
-    RLGL.State.defaultTextureId = rlLoadTexture(pixels.as_ptr() as *const c_void, 1, 1, PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32, 1);
+    RLGL.State.defaultTextureId = rlLoadTexture(&pixels, 1, 1, PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32, 1);
     RLGL.State.currentTextureId = RLGL.State.defaultTextureId;
 
     if RLGL.State.defaultTextureId != 0 { info!("TEXTURE: [ID {}] Default texture loaded successfully", RLGL.State.defaultTextureId); }
@@ -2404,7 +2404,7 @@ pub unsafe fn rlCheckRenderBatchLimit(vCount: i32) -> bool
 // Textures data management
 //-----------------------------------------------------------------------------------------
 // Convert image data to OpenGL texture (returns OpenGL valid Id)
-pub unsafe fn rlLoadTexture(data: *const c_void, width: i32, height: i32, format: i32, mipmapCount: i32) -> u32
+pub unsafe fn rlLoadTexture(data: &[u8], width: i32, height: i32, format: i32, mipmapCount: i32) -> u32
 {
     let mut id = 0;
     if !IS_GPU_READY { warn!("GL: GPU is not ready to load data, trying to load before InitWindow()?"); return id; }
@@ -2453,8 +2453,7 @@ pub unsafe fn rlLoadTexture(data: *const c_void, width: i32, height: i32, format
     let mut mipOffset = 0;          // Mipmap data offset, only used for tracelog
 
     // NOTE: Added pointer math separately from function to avoid UBSAN complaining
-    let mut dataPtr = null();
-    if !data.is_null() { dataPtr = data as *const u8; }
+    let mut dataPtr = data;
 
     // Load the different mipmap levels
     for i in 0..mipmapCount
@@ -2470,8 +2469,8 @@ pub unsafe fn rlLoadTexture(data: *const c_void, width: i32, height: i32, format
 
         if glInternalFormat != 0
         {
-            if format < PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32 { gl::TexImage2D(gl::TEXTURE_2D, i, glInternalFormat as i32, mipWidth, mipHeight, 0, glFormat, glType, dataPtr as *const c_void); }
-            else { gl::CompressedTexImage2D(gl::TEXTURE_2D, i, glInternalFormat, mipWidth, mipHeight, 0, mipSize as i32, dataPtr as *const c_void); }
+            if format < PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32 { gl::TexImage2D(gl::TEXTURE_2D, i, glInternalFormat as i32, mipWidth, mipHeight, 0, glFormat, glType, dataPtr.as_ptr() as *const c_void); }
+            else { gl::CompressedTexImage2D(gl::TEXTURE_2D, i, glInternalFormat, mipWidth, mipHeight, 0, mipSize as i32, dataPtr.as_ptr() as *const c_void); }
 
             #[cfg(feature = "GRAPHICS_API_OPENGL_33")]
             {
@@ -2491,7 +2490,7 @@ pub unsafe fn rlLoadTexture(data: *const c_void, width: i32, height: i32, format
         mipWidth /= 2;
         mipHeight /= 2;
         mipOffset += mipSize; // Increment offset position to next mipmap
-        if !data.is_null() { dataPtr = dataPtr.add(mipSize as usize); } // Increment data pointer to next mipmap
+        dataPtr = &dataPtr[mipSize as usize..]; // Increment data pointer to next mipmap
 
         // Security check for NPOT textures
         if mipWidth < 1 { mipWidth = 1; }

@@ -134,7 +134,7 @@ pub unsafe fn LoadFontFromMemory(
     // Replace grayscale glyph images with gray-alpha copies for image text drawing.
     for (glyph, &rec) in glyphs.iter_mut().zip(&recs) {
         rtextures::UnloadImage(&mut glyph.image);
-        glyph.image = ImageFromImage(atlas, rec);
+        glyph.image = ImageFromImage(&atlas, rec);
     }
     rtextures::UnloadImage(&mut atlas);
 
@@ -162,7 +162,7 @@ unsafe fn GenImageFontAtlas(glyphs: &[GlyphInfo], font_size: i32, padding: i32) 
     let padded_font_size = (font_size as usize).checked_add(double_padding)?;
     let mut total_width = 0usize;
     let mut max_glyph_width = 0usize;
-    for glyph in glyphs {
+    for glyph in glyphs.iter() {
         let width = usize::try_from(glyph.image.width).ok()?;
         let height = usize::try_from(glyph.image.height).ok()?;
         if width > 0 && height > 0 && (glyph.image.is_data_null()
@@ -199,7 +199,7 @@ unsafe fn GenImageFontAtlas(glyphs: &[GlyphInfo], font_size: i32, padding: i32) 
     let mut offset_y = padding;
     let mut row_height = font_size as usize;
 
-    for glyph in glyphs {
+    for glyph in glyphs.iter() {
         let glyph_width = glyph.image.width as usize;
         let glyph_height = glyph.image.height as usize;
         if offset_x >= width - glyph_width - double_padding {
@@ -217,7 +217,7 @@ unsafe fn GenImageFontAtlas(glyphs: &[GlyphInfo], font_size: i32, padding: i32) 
         if glyph_width > 0 && glyph_height > 0 {
             let glyph_size = glyph_width.checked_mul(glyph_height)?;
             if glyph_size > isize::MAX as usize { return None; }
-            let source = std::slice::from_raw_parts(glyph.image.data.cast::<u8>(), glyph_size);
+            let source = std::slice::from_raw_parts(glyph.image.data.as_ptr(), glyph_size);
             for y in 0..glyph_height {
                 for x in 0..glyph_width {
                     pixels[((offset_y + y) * width + offset_x + x) * 2 + 1] = source[y * glyph_width + x];
@@ -241,9 +241,9 @@ unsafe fn GenImageFontAtlas(glyphs: &[GlyphInfo], font_size: i32, padding: i32) 
         }
     }
 
-    let data = libc::malloc(pixels.len());
-    if data.is_null() { return None; }
-    std::ptr::copy_nonoverlapping(pixels.as_ptr(), data.cast::<u8>(), pixels.len());
+    let mut data = vec![0; pixels.len()];
+
+    std::ptr::copy_nonoverlapping(pixels.as_ptr(), data.as_mut_ptr(), pixels.len());
     Some((Image {
         data,
         width: width as i32,
@@ -309,8 +309,12 @@ pub unsafe fn LoadFontFromImage(image: &Image, key: Color, firstChar: i32) -> Fo
             *pixel = Color::BLANK;
         }
     }
+    // zero copy
+    let (ptr, len, cap) = pixels.into_raw_parts();
+    let elem_size = std::mem::size_of::<Color>(); // 4 bytes
+    let data = Vec::from_raw_parts(ptr as *mut u8,len * elem_size,cap * elem_size);
     let font_clear = Image {
-        data: pixels.as_mut_ptr().cast(),
+        data,
         width: image.width,
         height: image.height,
         mipmaps: 1,
@@ -323,7 +327,7 @@ pub unsafe fn LoadFontFromImage(image: &Image, key: Color, firstChar: i32) -> Fo
         offset_x: 0,
         offset_y: 0,
         advance_x: 0,
-        image: ImageFromImage(font_clear, rec),
+        image: ImageFromImage(&font_clear, rec),
     }).collect();
 
     // `pixels` owns font_clear.data and is dropped after uploading and copying.
@@ -396,19 +400,37 @@ pub unsafe fn LoadFontData(
 
         glyph.image.data = match font_type {
             FontType::FONT_DEFAULT | FontType::FONT_BITMAP => {
-                external::stbtt_GetCodepointBitmap(
+                let stb_data = external::stbtt_GetCodepointBitmap(
                     &font_info, scale_factor, scale_factor, cp,
                     &mut cp_width, &mut cp_height, &mut glyph.offset_x, &mut glyph.offset_y,
-                ).cast()
+                );
+                // copy out of stb and free immediately so we dont have to worry about cleanup
+                let size = (cp_width * cp_height) as usize;
+                if !stb_data.is_null() {
+                    let res = std::slice::from_raw_parts(stb_data, size).to_vec();
+                    external::stbtt_FreeBitmap(stb_data, font_info.userdata);
+                    res
+                } else {
+                    Vec::new()
+                }
             }
             FontType::FONT_SDF if cp != 32 => {
-                external::stbtt_GetCodepointSDF(
+                let stb_data = external::stbtt_GetCodepointSDF(
                     &font_info, scale_factor, cp,
                     FONT_SDF_CHAR_PADDING, FONT_SDF_ON_EDGE_VALUE, FONT_SDF_PIXEL_DIST_SCALE,
                     &mut cp_width, &mut cp_height, &mut glyph.offset_x, &mut glyph.offset_y,
-                ).cast()
+                );
+                // copy out of stb and free immediately so we dont have to worry about cleanup
+                let size = (cp_width * cp_height) as usize;
+                if !stb_data.is_null() {
+                    let res = std::slice::from_raw_parts(stb_data, size).to_vec();
+                    external::stbtt_FreeSDF(stb_data, font_info.userdata);
+                    res
+                } else {
+                    Vec::new()
+                }
             }
-            FontType::FONT_SDF => std::ptr::null_mut(),
+            FontType::FONT_SDF => Vec::new(),
         };
 
         if !glyph.image.is_data_null() {
@@ -433,20 +455,16 @@ pub unsafe fn LoadFontData(
 
             // Release any rendered bitmap before replacing it with a blank image.
             if !glyph.image.is_data_null() {
-                if font_type == FontType::FONT_SDF {
-                    external::stbtt_FreeSDF(glyph.image.data.cast(), font_info.userdata);
-                } else {
-                    external::stbtt_FreeBitmap(glyph.image.data.cast(), font_info.userdata);
-                }
+                // release is done above on same line as stb allocation
             }
 
             let width = glyph.advance_x;
             let data = if width > 0 {
                 // calloc checks the multiplication for allocation-size overflow.
-                libc::calloc(width as usize, fontSize as usize)
+                vec![0; (width * fontSize) as usize]
             } else {
                 glyph.advance_x = 0;
-                std::ptr::null_mut()
+                Vec::new()
             };
             glyph.image = Image {
                 data,
@@ -460,7 +478,7 @@ pub unsafe fn LoadFontData(
         if font_type == FontType::FONT_BITMAP && !glyph.image.is_data_null() {
             // Use the final image dimensions, including any replacement space image.
             let pixel_count = glyph.image.width as usize * glyph.image.height as usize;
-            let pixels = std::slice::from_raw_parts_mut(glyph.image.data.cast::<u8>(), pixel_count);
+            let pixels = std::slice::from_raw_parts_mut(glyph.image.data.as_mut_ptr(), pixel_count);
             for pixel in pixels {
                 *pixel = if *pixel < FONT_BITMAP_ALPHA_THRESHOLD { 0 } else { 255 };
             }
@@ -569,8 +587,8 @@ pub unsafe fn LoadFontDefault() {
         ];
 
         // Keep the Vec alive while the Image borrows its gray/alpha pixels.
-        let imFont = Image {
-            data: libc::calloc(128 * 128, 2),
+        let mut imFont = Image {
+            data: vec![0; 128 * 128 * 2],
             width: 128,
             height: 128,
             mipmaps: 1,
@@ -588,18 +606,16 @@ pub unsafe fn LoadFontDefault() {
         {
             for j in (0..32).rev()
             {
-                unsafe {
-                    if (defaultFontData[counter] & (1u32 << j)) != 0
-                    {
-                        // NOTE: Unreferencing data as short, so,
-                        // considering data as little-endian (alpha + gray)
-                        *(imFont.data as *mut u16).add(i + j) = 0xffff;
-                    }
-                    else
-                    {
-                        *(imFont.data as *mut u8).add((i + j)*std::mem::size_of::<u16>()) = 0xff;
-                        *(imFont.data as *mut u8).add((i + j)*std::mem::size_of::<u16>() + 1) = 0x00;
-                    }
+                if (defaultFontData[counter] & (1u32 << j)) != 0
+                {
+                    // NOTE: Unreferencing data as short, so,
+                    // considering data as little-endian (alpha + gray)
+                    *(imFont.data.as_mut_ptr() as *mut u16).add(i + j) = 0xffff;
+                }
+                else
+                {
+                    *(imFont.data.as_mut_ptr()).add((i + j)*std::mem::size_of::<u16>()) = 0xff;
+                    *(imFont.data.as_mut_ptr()).add((i + j)*std::mem::size_of::<u16>() + 1) = 0x00;
                 }
             }
         }
@@ -640,7 +656,7 @@ pub unsafe fn LoadFontDefault() {
             DEFAULT_FONT.glyphs[i].advance_x = 0;
         
             // Fill character image data from fontClear data
-            DEFAULT_FONT.glyphs[i].image = unsafe { ImageFromImage(imFont, DEFAULT_FONT.recs[i]) };
+            DEFAULT_FONT.glyphs[i].image = ImageFromImage(&imFont, DEFAULT_FONT.recs[i]);
         }
 
         DEFAULT_FONT.baseSize = DEFAULT_FONT.recs[0].height as i32;
@@ -728,8 +744,8 @@ pub fn GetGlyphIndex(font: &Font, codepoint: i32) -> usize {
 }
 
 // Get glyph info for a codepoint, falling back to '?' or index zero.
-pub fn GetGlyphInfo(font: &Font, codepoint: i32) -> GlyphInfo {
-    font.glyphs[GetGlyphIndex(font, codepoint)]
+pub fn GetGlyphInfo(font: &Font, codepoint: i32) -> &GlyphInfo {
+    &font.glyphs[GetGlyphIndex(font, codepoint)]
 }
 
 // Get a glyph's atlas rectangle, falling back to '?' or index zero.

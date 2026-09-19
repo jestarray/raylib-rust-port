@@ -811,10 +811,10 @@ impl Rectangle {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct Image {
-    pub data: *mut c_void,
+    pub data: Vec<u8>,
     pub width: i32,
     pub height: i32,
     pub mipmaps: i32,
@@ -824,7 +824,7 @@ pub struct Image {
 impl Default for Image {
     fn default() -> Self {
         Self {
-            data: std::ptr::null_mut(),
+            data: Vec::new(),
             width: 0,
             height: 0,
             mipmaps: 1,
@@ -836,7 +836,7 @@ impl Default for Image {
 impl Image {
     #[must_use]
     pub fn is_data_null(&self) -> bool {
-        self.data.is_null()
+        self.data.is_empty()
     }
 }
 
@@ -918,7 +918,7 @@ pub struct NPatchInfo {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct GlyphInfo {
     pub value: i32,
     pub offset_x: i32,

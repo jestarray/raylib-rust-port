@@ -38,7 +38,7 @@ use crate::types::*;
 use crate::types::{ConfigFlags::*, KeyboardKey::*, GamepadButton::*, GamepadAxis::*, PixelFormat::*};
 use crate::rlgl::{rlGetVersion, rlLoadExtensions, rlGlVersion::*};
 use log::{info, warn, error};
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use sdl3_sys::{clipboard::*, events::*, gamepad::*, hints::*, init::*, joystick::*, keyboard::*, keycode::*, mouse::*, pixels::*, properties::*, error::*, filesystem::*, misc::*, rect::*, scancode::*, stdinc::*, surface::*, timer::*, touch::*, video::*};
 
 // Size of the clipboard buffer used on GetClipboardText()
@@ -610,7 +610,7 @@ pub unsafe fn ClearWindowState(flags: u32)
 }
 
 // Set icon for window
-pub unsafe fn SetWindowIcon(image: Image)
+pub unsafe fn SetWindowIcon(image: &mut Image)
 {
     let mut iconSurface: *mut SDL_Surface = std::ptr::null_mut();
 
@@ -689,7 +689,7 @@ pub unsafe fn SetWindowIcon(image: Image)
         _ => { return; }, // Compressed formats are not supported
     }
 
-    iconSurface = SDL_CreateRGBSurfaceFrom(image.data, image.width, image.height, depth, pitch, rmask, gmask, bmask, amask);
+    iconSurface = SDL_CreateRGBSurfaceFrom(image.data.as_mut_ptr() as *mut c_void, image.width, image.height, depth, pitch, rmask, gmask, bmask, amask);
 
     if (!iconSurface.is_null())
     {
