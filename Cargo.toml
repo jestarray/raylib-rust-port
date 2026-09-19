@@ -10,7 +10,6 @@ crate-type = ["rlib", "cdylib"]
 [dependencies]
 glam = "0.33"
 sdl3-sys = { version = "0.7.1", features = ["build-from-source"]}
-libc = "0.2"
 gl = "0.14.0"
 log = { version = "0.4" }
 env_logger = { version = "0.11" }
@@ -52,7 +51,6 @@ SUPPORT_MODULE_RAUDIO = []
 SUPPORT_MODULE_RMODELS = []
 SUPPORT_MODULE_RSHAPES = []
 SUPPORT_MODULE_RTEXT = []
-SUPPORT_MODULE_RTEXTURES = []
 SUPPORT_MOUSE_GESTURES = []
 SUPPORT_PARTIALBUSY_WAIT_LOOP = []
 SUPPORT_RPRAND_GENERATOR = []

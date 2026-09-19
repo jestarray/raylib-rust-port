@@ -34,6 +34,7 @@ pub struct PlatformData {
 }
 
 use crate::rcore::*;
+use crate::rtextures::IsImageValid;
 use crate::types::*;
 use crate::types::{ConfigFlags::*, KeyboardKey::*, GamepadButton::*, GamepadAxis::*, PixelFormat::*};
 use crate::rlgl::{rlGetVersion, rlLoadExtensions, rlGlVersion::*};
@@ -1034,15 +1035,7 @@ pub unsafe fn GetClipboardText() -> String {
 // Get clipboard image
 pub unsafe fn GetClipboardImage() -> Image
 {
-    let image: Image = std::mem::zeroed();
-
-#[cfg(feature = "SUPPORT_CLIPBOARD_IMAGE")]
-{
-#[cfg(not(feature = "SUPPORT_MODULE_RTEXTURES"))]
-{
-    warn!("Enabling SUPPORT_CLIPBOARD_IMAGE requires SUPPORT_MODULE_RTEXTURES to work properly");
-    return image;
-}
+    let mut image = Image::default();
 
 // It's nice to have support Bitmap on Linux as well, but not as necessary as Windows
 #[cfg(all(not(feature = "SUPPORT_FILEFORMAT_BMP"), target_os = "windows"))]
@@ -1057,13 +1050,13 @@ pub unsafe fn GetClipboardImage() -> Image
     warn!("WARNING: Getting image from the clipboard might not work without SUPPORT_FILEFORMAT_PNG or SUPPORT_FILEFORMAT_JPG");
 }
     // Let's hope compiler put these arrays in static memory
-    let mut imageFormats: [&str; 4] = [
+    let imageFormats: [&str; 4] = [
         "image/bmp",
         "image/png",
         "image/jpg",
         "image/tiff",
     ];
-    let mut imageExtensions: [&str; 4] = [
+    let imageExtensions: [&str; 4] = [
         ".bmp",
         ".png",
         ".jpg",
@@ -1079,11 +1072,11 @@ pub unsafe fn GetClipboardImage() -> Image
 
         if (!fileData.is_null())
         {
-            image = LoadImageFromMemory(imageExtensions[i], fileData, (dataSize as i32));
+            image = crate::rtextures::LoadImageFromMemory(imageExtensions[i], fileData, (dataSize as i32));
 
             SDL_free(fileData.cast());
 
-            if (IsImageValid(image))
+            if (IsImageValid(&image))
             {
                 info!("Clipboard: Got image from clipboard successfully: {}", imageExtensions[i]);
                 return image;
@@ -1091,8 +1084,7 @@ pub unsafe fn GetClipboardImage() -> Image
         }
     }
 
-    if (!IsImageValid(image)) { warn!("Clipboard: Couldn't get clipboard data. ERROR: {}", CStr::from_ptr(SDL_GetError()).to_string_lossy()); }
-} // SUPPORT_CLIPBOARD_IMAGE
+    if (!IsImageValid(&image)) { warn!("Clipboard: Couldn't get clipboard data. ERROR: {}", CStr::from_ptr(SDL_GetError()).to_string_lossy()); }
 
     return image;
 }

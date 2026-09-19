@@ -2875,9 +2875,9 @@ pub unsafe fn rlGenTextureMipmaps(id: u32, width: i32, height: i32, format: i32,
 }
 
 // Read texture pixel data
-pub unsafe fn rlReadTexturePixels(id: u32, width: i32, height: i32, format: i32) -> *mut c_void
+pub unsafe fn rlReadTexturePixels(id: u32, width: i32, height: i32, format: i32) -> Vec<u8>
 {
-    let mut pixels = null_mut();
+    let mut pixels = Vec::new();
 
     #[cfg(feature = "GRAPHICS_API_OPENGL_33")]
     {
@@ -2904,8 +2904,8 @@ pub unsafe fn rlReadTexturePixels(id: u32, width: i32, height: i32, format: i32)
 
         if (glInternalFormat != 0) && (format < PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32)
         {
-            pixels = libc::calloc(size, 1);
-            gl::GetTexImage(gl::TEXTURE_2D, 0, glFormat, glType, pixels);
+            pixels = vec![0; size];
+            gl::GetTexImage(gl::TEXTURE_2D, 0, glFormat, glType, pixels.as_mut_ptr() as *mut c_void);
         }
         else { warn!("TEXTURE: [ID {}] Data retrieval not suported for pixel format ({})", id, format); }
 
@@ -2924,12 +2924,12 @@ pub unsafe fn rlReadTexturePixels(id: u32, width: i32, height: i32, format: i32)
         // Attach our texture to FBO
         gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, id, 0);
 
-        pixels = libc::malloc(rlGetPixelDataSize(width, height, format) as usize);
+        pixels = vec![0; rlGetPixelDataSize(width, height, format) as usize];
         let mut glInternalFormat = 0;
         let mut glFormat = 0;
         let mut glType = 0;
         rlGetGlTextureFormats(format, &mut glInternalFormat, &mut glFormat, &mut glType);
-        gl::ReadPixels(0, 0, width, height, glFormat, glType, pixels);
+        gl::ReadPixels(0, 0, width, height, glFormat, glType, pixels.as_mut_ptr() as *mut c_void);
 
         gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
 

@@ -17,7 +17,7 @@
 use std::{ffi::{CString, c_char}, path::Path};
 
 use crate::{
-    math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{rlGetVersion, rlGlVersion}, types::{Color, Matrix, RAYLIB_VERSION, Texture2D, Vector2},
+    math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{rlGetVersion, rlGlVersion}, rtextures::ExportImage, types::{Color, Image, Matrix, RAYLIB_VERSION, Texture2D, Vector2},
 };
 use crate::rcore_desktop_sdl::*;
 
@@ -460,14 +460,6 @@ pub unsafe fn InitWindow(width: i32, height: i32, title: &str)
 #[cfg(not(any(feature = "SUPPORT_MODULE_RSHAPES")))]
 {
     info!("    > rshapes:... not loaded (optional)");
-}
-#[cfg(feature = "SUPPORT_MODULE_RTEXTURES")]
-{
-    info!("    > rtextures:. loaded (optional)");
-}
-#[cfg(not(any(feature = "SUPPORT_MODULE_RTEXTURES")))]
-{
-    info!("    > rtextures:. not loaded (optional)");
 }
 #[cfg(feature = "SUPPORT_MODULE_RTEXT")]
 {
@@ -1603,9 +1595,7 @@ pub fn GetRandomValue(min: i32, max: i32) -> i32 {
 // Set the seed for the random number generator
 
 // Takes a screenshot of current screen
-pub fn TakeScreenshot(fileName: &str)
-{
-#[cfg(feature = "SUPPORT_MODULE_RTEXTURES")]
+pub unsafe fn TakeScreenshot(fileName: &str)
 {
     // Security check to (partially) avoid malicious code
     if (fileName.contains('\'')) { warn!("SYSTEM: Provided fileName could be potentially malicious, avoid [\'] character"); return; }
@@ -1615,22 +1605,16 @@ pub fn TakeScreenshot(fileName: &str)
     if (((CORE.Window.flags & ConfigFlags::FLAG_WINDOW_HIGHDPI as u32) == ConfigFlags::FLAG_WINDOW_HIGHDPI as u32)) { scale = GetWindowScaleDPI(); }
 
     let imgData = rlReadScreenPixels((((CORE.Window.render.x as f32)*scale.x) as i32), (((CORE.Window.render.y as f32)*scale.y) as i32));
-    let image = Image { data: imgData.cast(), width: (CORE.Window.render.x*scale.x) as i32, height: (CORE.Window.render.y*scale.y) as i32, mipmaps: 1, format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 };
+    let image = Image { data: imgData, width: (CORE.Window.render.x*scale.x) as i32, height: (CORE.Window.render.y*scale.y) as i32, mipmaps: 1, format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 };
 
     let mut path = String::new();
     if (!IsPathAbsolute(fileName)) { path = format!("{}/{}", CStr::from_ptr(CORE.Storage.basePath).to_string_lossy(), fileName); }
     else { path = fileName.to_owned(); }
 
-    ExportImage(image, &path); // WARNING: Module required: rtextures
-    libc::free(imgData.cast());
+    ExportImage(&image, &path); // WARNING: Module required: rtextures
 
     if (FileExists(&path)) { info!("SYSTEM: [{}] Screenshot taken successfully", path); }
     else { warn!("SYSTEM: [{}] Screenshot could not be saved", path); }
-}
-#[cfg(not(any(feature = "SUPPORT_MODULE_RTEXTURES")))]
-{
-    warn!("IMAGE: ExportImage() requires module: rtextures");
-}
 }
 
 // Set up window configuration flags (view FLAGS)

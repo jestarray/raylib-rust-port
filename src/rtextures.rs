@@ -295,12 +295,35 @@ pub fn load_image(file_name: &str) -> Image {
     }
 }
 
+pub fn LoadImageFromMemory(file_ext: &str, file_data: *const std::ffi::c_void, data_size: i32) -> Image {
+    todo!()
+}
+
+// Check if an image is ready
+pub fn IsImageValid(image: &Image) -> bool
+{
+    let mut result = false;
+
+    result =
+        ((!image.is_data_null()) &&     // Validate pixel data available
+        (image.width > 0) &&        // Validate image width
+        (image.height > 0) &&       // Validate image height
+        (image.format > 0) &&       // Validate image format
+        (image.mipmaps > 0)); // Validate image mipmaps (at least 1 for basic mipmap level)
+
+    return result;
+}
+
 pub fn UnloadImage(image: &mut Image) {
     unsafe {
         if !image.is_data_null() {
             image.data = Vec::new();
         }
     }
+}
+
+pub fn ExportImage(image: &Image, path: &str) {
+    todo!();
 }
 
 pub fn LoadTexture(file_name: &str) -> Texture {

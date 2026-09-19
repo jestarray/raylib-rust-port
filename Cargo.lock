@@ -348,7 +348,6 @@ dependencies = [
  "env_logger",
  "gl",
  "glam",
- "libc",
  "log",
  "sdl3-sys",
  "strum",
