@@ -1354,7 +1354,7 @@ pub unsafe fn DrawCircleGradient(center: Vector2, radius: f32, inner: Color, out
 pub unsafe fn DrawCircleSector(center: Vector2, mut radius: f32, mut startAngle: f32, mut endAngle: f32, mut segments: i32, color: Color)
 {
     if startAngle == endAngle { return; }
-    if radius <= 0.0 { radius = 0.1; }  // Avoid div by zero
+    if radius <= 0.0 { return; }  // Avoid div by zero
 
     // Function expects (endAngle > startAngle)
     if endAngle < startAngle
@@ -1432,7 +1432,7 @@ pub unsafe fn DrawCircleSector(center: Vector2, mut radius: f32, mut startAngle:
 pub unsafe fn DrawCircleSectorLines(center: Vector2, mut radius: f32, mut startAngle: f32, mut endAngle: f32, mut segments: i32, color: Color)
 {
     if startAngle == endAngle { return; }
-    if radius <= 0.0 { radius = 0.1; }  // Avoid div by zero issue
+    if radius <= 0.0 { return; }  // Avoid div by zero issue
 
     // Function expects (endAngle > startAngle)
     if endAngle < startAngle
@@ -1494,7 +1494,7 @@ pub unsafe fn DrawCircleSectorLines(center: Vector2, mut radius: f32, mut startA
 pub unsafe fn DrawCircleSectorLinesEx(center: Vector2, mut radius: f32, mut startAngle: f32, mut endAngle: f32, mut segments: i32, thick: f32, color: Color)
 {
     if startAngle == endAngle { return; }
-    if radius <= 0.0 { radius = 0.1; }  // Avoid div by zero issue
+    if radius <= 0.0 { return; }  // Avoid div by zero issue
 
     // Function expects (endAngle > startAngle)
     if endAngle < startAngle
@@ -2230,7 +2230,7 @@ pub unsafe fn DrawRing(center: Vector2, mut innerRadius: f32, mut outerRadius: f
     {
         std::mem::swap(&mut outerRadius, &mut innerRadius);
 
-        if outerRadius <= 0.0 { outerRadius = 0.1; }
+        if outerRadius <= 0.0 { return; }
     }
 
     // Function expects (endAngle > startAngle)
@@ -2301,7 +2301,7 @@ pub unsafe fn DrawRingLines(center: Vector2, mut innerRadius: f32, mut outerRadi
     {
         std::mem::swap(&mut outerRadius, &mut innerRadius);
 
-        if outerRadius <= 0.0 { outerRadius = 0.1; }
+        if outerRadius <= 0.0 { return; }
     }
 
     // Function expects (endAngle > startAngle)
@@ -2379,7 +2379,7 @@ pub unsafe fn DrawRingLinesEx(center: Vector2, mut innerRadius: f32, mut outerRa
     {
         std::mem::swap(&mut outerRadius, &mut innerRadius);
 
-        if outerRadius <= 0.0 { outerRadius = 0.1; }
+        if outerRadius <= 0.0 { return; }
     }
 
     // Function expects (endAngle > startAngle)
