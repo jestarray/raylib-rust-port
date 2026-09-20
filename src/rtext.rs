@@ -20,6 +20,9 @@ use crate::rcore::LoadFileData;
 use crate::rlgl::{self, rlPopMatrix, rlPushMatrix, rlRotatef, rlTranslatef};
 use crate::rtextures::{self, DrawTexturePro, ImageFromImage};
 use crate::types::{Color, Font, FontType, GlyphInfo, Image, PixelFormat, Rectangle, Texture, Vector2};
+use swash::FontRef;
+use swash::scale::{ScaleContext, Render, Source, StrikeWith};
+use swash::scale::image::Content;
 /// Load a font into GPU memory. TTF/OTF fonts use a 32-pixel height and the
 /// default 95 codepoints; image fonts use magenta borders and start at codepoint 32.
 ///
@@ -38,7 +41,7 @@ pub unsafe fn LoadFont(fileName: &str) -> Font {
     } else {
         let mut image = rtextures::LoadImage(fileName);
         let font = if !image.is_data_null() {
-            LoadFontFromImage(&image, Color::MAGENTA, FONT_TTF_DEFAULT_FIRST_CHAR)
+            LoadFontFromImage(&image, Color::new(255, 0, 255, 255), FONT_TTF_DEFAULT_FIRST_CHAR) //magenta color
         } else {
             (&*GetFontDefault()).clone()
         };
@@ -306,7 +309,7 @@ pub unsafe fn LoadFontFromImage(image: &Image, key: Color, firstChar: i32) -> Fo
     // Clear the key color to prevent borders bleeding into scaled glyphs.
     for pixel in &mut pixels {
         if *pixel == key {
-            *pixel = Color::BLANK;
+            *pixel = Color::TRANS;
         }
     }
     // zero copy
@@ -349,14 +352,12 @@ pub unsafe fn LoadFontFromImage(image: &Image, key: Color, firstChar: i32) -> Fo
 /// # Safety
 /// `fileData` must contain a complete, valid font at offset zero. stb_truetype
 /// does not bounds-check font data against the slice length.
-pub unsafe fn LoadFontData(
+pub fn LoadFontData(
     fileData: &[u8],
     fontSize: i32,
     codepoints: Option<&[i32]>,
     font_type: FontType,
 ) -> Vec<GlyphInfo> {
-    use crate::external;
-
     const FONT_SDF_CHAR_PADDING: i32 = 4;
     const FONT_SDF_ON_EDGE_VALUE: u8 = 128;
     const FONT_SDF_PIXEL_DIST_SCALE: f32 = 64.0;
@@ -372,114 +373,160 @@ pub unsafe fn LoadFontData(
         return Vec::new();
     }
 
-    let mut font_info: external::stbtt_fontinfo = std::mem::zeroed();
-    if external::stbtt_InitFont(&mut font_info, fileData.as_ptr(), 0) == 0 {
+    let Some(font_info) = FontRef::from_index(fileData, 0) else {
         warn!("FONT: Failed to process TTF font data");
+        return Vec::new();
+    };
+
+    let metrics = font_info.metrics(&[]);
+
+    // Match stbtt_ScaleForPixelHeight(), rather than treating
+    // fontSize as pixels per em.
+    let font_height = metrics.ascent + metrics.descent;
+
+    if font_height <= 0.0 {
+        warn!("FONT: Invalid font vertical metrics");
         return Vec::new();
     }
 
-    let scale_factor = external::stbtt_ScaleForPixelHeight(&font_info, fontSize as f32);
-    let mut ascent = 0;
-    let mut descent = 0;
-    let mut line_gap = 0;
-    external::stbtt_GetFontVMetrics(&font_info, &mut ascent, &mut descent, &mut line_gap);
+    let scale_factor = fontSize as f32 / font_height;
+    let pixel_size = metrics.units_per_em as f32 * scale_factor;
+    let ascent = (metrics.ascent * scale_factor) as i32;
 
-    let glyph_count = required_codepoints.iter().filter(|&&cp| {
-        external::stbtt_FindGlyphIndex(&font_info, cp) > 0
-    }).count();
-    let mut glyphs = Vec::with_capacity(glyph_count);
+    let glyph_metrics = font_info.glyph_metrics(&[]).linear_scale(scale_factor);
+    let charmap = font_info.charmap();
+
+    let mut scale_context = ScaleContext::new();
+    let mut scaler = scale_context.builder(font_info)
+        .size(pixel_size)
+        .hint(true)
+        .build();
+
+    // Render grayscale outlines, falling back to embedded alpha bitmaps.
+    let sources = [
+        Source::Outline,
+        Source::Bitmap(StrikeWith::ExactSize),
+    ];
+    let renderer = Render::new(&sources);
+
+    let mut glyphs = Vec::with_capacity(required_codepoints.len());
 
     for &cp in required_codepoints {
-        if external::stbtt_FindGlyphIndex(&font_info, cp) == 0 {
+        if char::from_u32(cp as u32).is_none() {
             continue;
         }
 
-        let mut glyph = GlyphInfo { value: cp, ..GlyphInfo::default() };
-        let mut cp_width = 0;
-        let mut cp_height = 0;
-
-        glyph.image.data = match font_type {
-            FontType::FONT_DEFAULT | FontType::FONT_BITMAP => {
-                let stb_data = external::stbtt_GetCodepointBitmap(
-                    &font_info, scale_factor, scale_factor, cp,
-                    &mut cp_width, &mut cp_height, &mut glyph.offset_x, &mut glyph.offset_y,
-                );
-                // copy out of stb and free immediately so we dont have to worry about cleanup
-                let size = (cp_width * cp_height) as usize;
-                if !stb_data.is_null() {
-                    let res = std::slice::from_raw_parts(stb_data, size).to_vec();
-                    external::stbtt_FreeBitmap(stb_data, font_info.userdata);
-                    res
-                } else {
-                    Vec::new()
-                }
-            }
-            FontType::FONT_SDF if cp != 32 => {
-                let stb_data = external::stbtt_GetCodepointSDF(
-                    &font_info, scale_factor, cp,
-                    FONT_SDF_CHAR_PADDING, FONT_SDF_ON_EDGE_VALUE, FONT_SDF_PIXEL_DIST_SCALE,
-                    &mut cp_width, &mut cp_height, &mut glyph.offset_x, &mut glyph.offset_y,
-                );
-                // copy out of stb and free immediately so we dont have to worry about cleanup
-                let size = (cp_width * cp_height) as usize;
-                if !stb_data.is_null() {
-                    let res = std::slice::from_raw_parts(stb_data, size).to_vec();
-                    external::stbtt_FreeSDF(stb_data, font_info.userdata);
-                    res
-                } else {
-                    Vec::new()
-                }
-            }
-            FontType::FONT_SDF => Vec::new(),
-        };
-
-        if !glyph.image.is_data_null() {
-            external::stbtt_GetCodepointHMetrics(&font_info, cp, &mut glyph.advance_x, std::ptr::null_mut());
-            glyph.advance_x = (glyph.advance_x as f32 * scale_factor) as i32;
-
-            if font_type != FontType::FONT_SDF && cp_height > fontSize {
-                warn!("FONT: [0x{:04x}] Glyph height is bigger than requested font size: {} > {}", cp, cp_height, fontSize);
-            }
-
-            glyph.image.width = cp_width;
-            glyph.image.height = cp_height;
-            glyph.image.mipmaps = 1;
-            glyph.image.format = PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32;
-            glyph.offset_y += (ascent as f32 * scale_factor) as i32;
+        let glyph_id = charmap.map(cp as u32);
+        if glyph_id == 0 {
+            continue;
         }
+
+        let mut glyph = GlyphInfo {
+            value: cp,
+            advance_x: glyph_metrics.advance_width(glyph_id) as i32,
+            ..GlyphInfo::default()
+        };
 
         // Spaces need a blank image with their advance width for atlas generation.
         if cp == 0x20 || cp == 0x3000 {
-            external::stbtt_GetCodepointHMetrics(&font_info, cp, &mut glyph.advance_x, std::ptr::null_mut());
-            glyph.advance_x = (glyph.advance_x as f32 * scale_factor) as i32;
+            let width = glyph.advance_x.max(0);
 
-            // Release any rendered bitmap before replacing it with a blank image.
-            if !glyph.image.is_data_null() {
-                // release is done above on same line as stb allocation
-            }
-
-            let width = glyph.advance_x;
-            let data = if width > 0 {
-                // calloc checks the multiplication for allocation-size overflow.
-                vec![0; (width * fontSize) as usize]
-            } else {
-                glyph.advance_x = 0;
-                Vec::new()
-            };
+            glyph.advance_x = width;
             glyph.image = Image {
-                data,
+                data: vec![0; width as usize * fontSize as usize],
                 width,
                 height: fontSize,
                 mipmaps: 1,
                 format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32,
             };
         }
+        else if let Some(image) = renderer.render(&mut scaler, glyph_id) {
+            if image.content != Content::Mask {
+                warn!("FONT: [0x{:04x}] Unsupported glyph image format", cp);
+                glyphs.push(glyph);
+                continue;
+            }
+
+            let Ok(mut cp_width) = i32::try_from(image.placement.width) else {
+                warn!("FONT: [0x{:04x}] Invalid glyph width", cp);
+                glyphs.push(glyph);
+                continue;
+            };
+
+            let Ok(mut cp_height) = i32::try_from(image.placement.height) else {
+                warn!("FONT: [0x{:04x}] Invalid glyph height", cp);
+                glyphs.push(glyph);
+                continue;
+            };
+
+            glyph.offset_x = image.placement.left;
+            glyph.offset_y = ascent - image.placement.top;
+
+            let mut data = image.data;
+
+            if !data.is_empty() {
+                if font_type == FontType::FONT_SDF {
+                    // Add padding before calculating the distance field.
+                    let padding = FONT_SDF_CHAR_PADDING;
+
+                    let Some(width) = cp_width.checked_add(padding * 2) else {
+                        glyphs.push(glyph);
+                        continue;
+                    };
+
+                    let Some(height) = cp_height.checked_add(padding * 2) else {
+                        glyphs.push(glyph);
+                        continue;
+                    };
+
+                    let Some(size) = (width as usize).checked_mul(height as usize) else {
+                        glyphs.push(glyph);
+                        continue;
+                    };
+
+                    let mut padded = vec![0; size];
+
+                    for y in 0..cp_height as usize {
+                        let src = y * cp_width as usize;
+                        let dst = (y + padding as usize) * width as usize + padding as usize;
+
+                        padded[dst..dst + cp_width as usize]
+                            .copy_from_slice(&data[src..src + cp_width as usize]);
+                    }
+
+                    data = GenerateFontSDF(
+                        &padded,
+                        width as usize,
+                        height as usize,
+                        padding as usize,
+                        FONT_SDF_ON_EDGE_VALUE,
+                        FONT_SDF_PIXEL_DIST_SCALE,
+                    );
+
+                    cp_width = width;
+                    cp_height = height;
+
+                    glyph.offset_x -= padding;
+                    glyph.offset_y -= padding;
+                }
+
+                if font_type != FontType::FONT_SDF && cp_height > fontSize {
+                    warn!("FONT: [0x{:04x}] Glyph height is bigger than requested font size: {} > {}", cp, cp_height, fontSize);
+                }
+
+                glyph.image = Image {
+                    data,
+                    width: cp_width,
+                    height: cp_height,
+                    mipmaps: 1,
+                    format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE as i32,
+                };
+            }
+        }
 
         if font_type == FontType::FONT_BITMAP && !glyph.image.is_data_null() {
             // Use the final image dimensions, including any replacement space image.
-            let pixel_count = glyph.image.width as usize * glyph.image.height as usize;
-            let pixels = std::slice::from_raw_parts_mut(glyph.image.data.as_mut_ptr(), pixel_count);
-            for pixel in pixels {
+            for pixel in glyph.image.data.iter_mut() {
                 *pixel = if *pixel < FONT_BITMAP_ALPHA_THRESHOLD { 0 } else { 255 };
             }
         }
@@ -685,11 +732,11 @@ pub fn GetFontDefault() -> *mut Font {
 }
 pub fn DrawFPS(posX: i32, posY: i32)
 {
-    let mut color = Color::LIME;                         // Good FPS
+    let mut color = Color::new(0, 255, 0 ,255);                         // Good FPS
     let fps = unsafe { crate::rcore::GetFPS() };
 
-    if ((fps < 30) && (fps >= 15)) { color = Color::ORANGE; }  // Warning FPS
-    else if (fps < 15) { color = Color::RED; }             // Low FPS
+    if ((fps < 30) && (fps >= 15)) { color = Color::new(255, 109, 194, 255); }  // Warning FPS
+    else if (fps < 15) { color = Color::new(230, 41, 55, 255); }             // Low FPS
 
     DrawText(&format!("{} FPS", fps), posX, posY, 20, color);
 }
@@ -978,4 +1025,97 @@ pub fn DrawTextEx(font: &Font, text: &str, position: Vector2, fontSize: f32, spa
             text_offset_x += advance * scale_factor + spacing;
         }
     }
+}
+
+// Generate an approximate signed distance field from a grayscale bitmap.
+// NOTE: Padding must already be applied to the source bitmap.
+/// https://chatgpt.com/c/6aaee255-e08c-83e8-88c4-629685db17d5
+fn GenerateFontSDF(
+    data: &[u8],
+    width: usize,
+    height: usize,
+    _padding: usize,
+    on_edge_value: u8,
+    pixel_dist_scale: f32,
+) -> Vec<u8> {
+    let Some(pixel_count) = width.checked_mul(height) else {
+        return Vec::new();
+    };
+
+    if width == 0 || height == 0 || data.len() != pixel_count {
+        return Vec::new();
+    }
+
+    if !pixel_dist_scale.is_finite() || pixel_dist_scale <= 0.0 {
+        return Vec::new();
+    }
+
+    let mut result = vec![0; pixel_count];
+
+    // Search only as far as necessary before the SDF saturates.
+    let max_distance = on_edge_value.max(255 - on_edge_value) as f32 / pixel_dist_scale;
+    let search_radius = max_distance.ceil() as usize + 2;
+
+    for y in 0..height {
+        for x in 0..width {
+            let index = y * width + x;
+
+            let alpha = data[index];
+            let inside = alpha >= 128;
+
+            let mut nearest_distance_squared = usize::MAX;
+
+            let min_x = x.saturating_sub(search_radius);
+            let min_y = y.saturating_sub(search_radius);
+            let max_x = x.saturating_add(search_radius).min(width - 1);
+            let max_y = y.saturating_add(search_radius).min(height - 1);
+
+            // Find the nearest pixel on the opposite side of the boundary.
+            'search: for sy in min_y..=max_y {
+                for sx in min_x..=max_x {
+                    let sample_inside = data[sy * width + sx] >= 128;
+
+                    if sample_inside == inside {
+                        continue;
+                    }
+
+                    let dx = x.abs_diff(sx);
+                    let dy = y.abs_diff(sy);
+                    let distance_squared = dx * dx + dy * dy;
+
+                    nearest_distance_squared = nearest_distance_squared.min(distance_squared);
+
+                    // The nearest opposite pixel cannot be closer than 1.
+                    if nearest_distance_squared == 1 {
+                        break 'search;
+                    }
+                }
+            }
+
+            // No opposite pixel within the search range means saturation.
+            if nearest_distance_squared == usize::MAX {
+                result[index] = if inside { 255 } else { 0 };
+                continue;
+            }
+
+            // Approximate the distance from pixel centers to the boundary.
+            let distance = (nearest_distance_squared as f32).sqrt() - 0.5;
+
+            // Use the original grayscale coverage to improve subpixel accuracy.
+            let coverage = alpha as f32 / 255.0;
+
+            let signed_distance = if inside {
+                distance - (1.0 - coverage)
+            } else {
+                -distance + coverage
+            };
+
+            // Encode signed distance in the range [0, 255].
+            let value = on_edge_value as f32 + signed_distance * pixel_dist_scale;
+
+            result[index] = value.clamp(0.0, 255.0) as u8;
+        }
+    }
+
+    result
 }

@@ -1604,8 +1604,9 @@ pub unsafe fn TakeScreenshot(fileName: &str)
     let mut scale: Vector2 = Vector2 { x: 1.0, y: 1.0 };
     if (((CORE.Window.flags & ConfigFlags::FLAG_WINDOW_HIGHDPI as u32) == ConfigFlags::FLAG_WINDOW_HIGHDPI as u32)) { scale = GetWindowScaleDPI(); }
 
-    let imgData = rlReadScreenPixels(((CORE.Window.render.x*scale.x) as i32), ((CORE.Window.render.y*scale.y) as i32));
-    let image = Image { data: imgData, width: (CORE.Window.render.x*scale.x) as i32, height: (CORE.Window.render.y*scale.y) as i32, mipmaps: 1, format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 };
+    let imageSize= (CORE.Window.render * scale).ceil().as_ivec2();
+    let imgData = rlReadScreenPixels(imageSize.x, imageSize.y);
+    let image = Image { data: imgData, width: imageSize.x, height: imageSize.y, mipmaps: 1, format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 };
 
     let mut path = String::new();
     if (!IsPathAbsolute(fileName)) { path = format!("{}/{}", CStr::from_ptr(CORE.Storage.basePath).to_string_lossy(), fileName); }
@@ -2840,10 +2841,6 @@ pub unsafe fn InitTimer()
     // However, it can also reduce overall system performance, because the thread scheduler switches tasks more often
     // High resolutions can also prevent the CPU power management system from entering power-saving modes
     // Setting a higher resolution does not improve the accuracy of the high-resolution performance counter
-#[cfg(all(target_os = "windows", feature = "SUPPORT_WINMM_HIGHRES_TIMER", not(feature = "SUPPORT_BUSY_WAIT_LOOP"), not(feature = "PLATFORM_DESKTOP_SDL")))]
-{
-    timeBeginPeriod(1); // Setup high-resolution timer to 1ms (granularity of 1-2 ms)
-}   
     CORE.Time.previous = GetTime(); // Get time as double
 }
 

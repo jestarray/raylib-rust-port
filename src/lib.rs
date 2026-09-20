@@ -15,12 +15,9 @@ compile_error!(
     "Desktop OpenGL and OpenGL ES cannot be enabled together; use --no-default-features for ES builds"
 );
 
-pub mod external {
-    include!(concat!(env!("OUT_DIR"), "/external_bindings.rs"));
-}
-
 pub mod math;
 pub mod rcamera;
+pub mod rcolors;
 pub mod rcore;
 pub mod rcore_desktop_sdl;
 pub mod rlgl;

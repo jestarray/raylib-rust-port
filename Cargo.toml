@@ -16,6 +16,7 @@ env_logger = { version = "0.11" }
 strum = "0.28"
 strum_macros = "0.28"
 image = { version = "0.25.10", default-features = false } # todo: re-export more configurable feature flags
+swash = { version = "0.2.10"}
 
 [features]
 default = ["DESKTOP_DEFAULTS"]
@@ -83,5 +84,3 @@ SUPPORT_SPLINE_SEGMENT_CAPS = []
  # multithreading but image recommends library crates optionally enable this
 IMAGE_RAYON = ["image/rayon"]
 [build-dependencies]
-cc = "1.4"
-bindgen = "0.73"
