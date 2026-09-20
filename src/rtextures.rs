@@ -231,18 +231,19 @@ pub fn LoadImage<P: AsRef<Path>>(file_path: P) -> Image {
         warn!("Bad filename, could not parse extension");
         return Image::default();
     };
-    let try_file_data = LoadFileData(&file_path);
-    if let Err(err) = try_file_data {
-        warn!("Failed to load file with err {}! A dummy Image is provided", err);
+    let try_load = LoadFileData(&file_path);
+    let Ok(file_data) = try_load else { 
+        if let Err(err) = try_load {
+            warn!("{}! Producing placeholder red X", err);
+        }
         return Image::default();
     };
-    let file_data = try_file_data.unwrap();
     let data_size = file_data.len() as i32;
     let image = LoadImageFromMemory(ext.to_str().unwrap(), &file_data, data_size);
     return image;
 }
 
-pub fn LoadImageFromMemory(_file_ext: &str, file_data: &[u8], data_size: i32) -> Image {
+pub fn LoadImageFromMemory(file_ext: &str, file_data: &[u8], data_size: i32) -> Image {
     let mut res = Image::default();
     use std::io::Cursor;
 
@@ -265,6 +266,8 @@ pub fn LoadImageFromMemory(_file_ext: &str, file_data: &[u8], data_size: i32) ->
     res.mipmaps = 1;
     if let Some(format) = PixelFormat::from_color_type(color) {
         res.format = format as i32;
+    } else {
+        warn!("Could not map PixelFormat for {}!", file_ext);
     }
     return res;
 }
@@ -316,6 +319,7 @@ pub fn LoadTexture(file_name: &str) -> Texture {
 
 pub fn LoadTextureFromImage(image: &Image) -> Texture {
     if image.is_data_null() || image.width <= 0 || image.height <= 0 {
+        warn!("IMAGE: Data is not valid to load texture");
         return Texture { id: 0, width: 0, height: 0, mipmaps: 0, format: 0 };
     }
     unsafe {

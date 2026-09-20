@@ -812,6 +812,16 @@ impl Default for Image {
 
 impl Image {
     #[must_use]
+    pub fn new(data: Vec<u8>, width: i32, height: i32, mipmaps: i32, format: i32) -> Self {
+        Self {
+            data,
+            width,
+            height,
+            mipmaps,
+            format,
+        }
+    }
+    #[must_use]
     pub fn is_data_null(&self) -> bool {
         self.data.is_empty()
     }
@@ -1228,7 +1238,7 @@ pub enum PixelFormat {
 }
 impl PixelFormat {
     #[must_use]
-    pub fn to_colortype(self) -> Option<ColorType> {
+    pub fn to_color_type(self) -> Option<ColorType> {
         match self {
             Self::PIXELFORMAT_UNCOMPRESSED_GRAYSCALE => Some(ColorType::L8),
             Self::PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA => Some(ColorType::La8),
