@@ -333,6 +333,7 @@ pub fn draw_ring_lines(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_ring_lines_ex(
     center: Vector2,
     inner_radius: f32,

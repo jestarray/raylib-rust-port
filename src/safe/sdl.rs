@@ -53,6 +53,7 @@ pub fn sdl_get_current_display_mode_adapter(display_id: SDL_DisplayID, mode: &mu
 }
 
 /// Returns the opaque SDL surface handle unchanged; free it with `SDL_DestroySurface`.
+#[allow(clippy::too_many_arguments)]
 pub fn sdl_create_rgb_surface(
     flags: u32,
     width: i32,
@@ -89,6 +90,7 @@ pub fn sdl_create_rgb_surface_with_format(
 
 /// The caller keeps ownership of `pixels`, which must stay alive for as long as the returned
 /// surface is used. Returns the opaque SDL surface handle unchanged.
+#[allow(clippy::too_many_arguments)]
 pub fn sdl_create_rgb_surface_from(
     pixels: &mut [u8],
     width: i32,

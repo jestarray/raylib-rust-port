@@ -487,14 +487,14 @@ pub fn directory_exists<P: AsRef<Path>>(dir_path: P) -> bool {
     }
 }
 
-pub fn get_file_extension<'a, P: AsRef<Path> + ?Sized>(file_name: &'a P) -> Option<&'a str> {
+pub fn get_file_extension<P: AsRef<Path> + ?Sized>(file_name: &P) -> Option<&str> {
     match path_to_str(file_name.as_ref()) {
         Some(file_name) => GetFileExtension(file_name),
         None => None,
     }
 }
 
-pub fn get_file_name<'a, P: AsRef<Path> + ?Sized>(file_path: &'a P) -> &'a str {
+pub fn get_file_name<P: AsRef<Path> + ?Sized>(file_path: &P) -> &str {
     match path_to_str(file_path.as_ref()) {
         Some(file_path) => GetFileName(file_path),
         None => "",

@@ -132,6 +132,7 @@ pub unsafe fn ImageFromImage(image: &Image, rec: Rectangle) -> Image
 /// # Safety
 /// `image.data` must point to readable storage for the specified dimensions and
 /// pixel format for the duration of this call.
+#[allow(clippy::chunks_exact_to_as_chunks)]
 pub unsafe fn LoadImageColors(image: &Image) -> Vec<Color> {
     if image.is_data_null() || image.width <= 0 || image.height <= 0 {
         return Vec::new();

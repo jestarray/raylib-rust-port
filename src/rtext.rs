@@ -672,7 +672,7 @@ pub unsafe fn LoadFontDefault() {
         let mut currentLine = 0;
         let mut currentPosX = charsDivisor;
         let mut testPosX = charsDivisor;
-
+        #[allow(clippy::needless_range_loop)]
         for i in 0..DEFAULT_FONT.glyphCount as usize
         {
             DEFAULT_FONT.glyphs[i].value = 32 + i as i32;  // First char is 32
