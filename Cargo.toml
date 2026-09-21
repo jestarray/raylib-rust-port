@@ -9,7 +9,7 @@ crate-type = ["rlib", "cdylib"]
 
 [dependencies]
 glam = "0.33"
-sdl3-sys = { version = "0.7.1", features = ["build-from-source"]}
+sdl3-sys = { version = "0.7.1", features = []}
 gl = "0.14.0"
 log = { version = "0.4" }
 env_logger = { version = "0.11" }
@@ -25,21 +25,27 @@ default = ["DESKTOP_DEFAULTS"]
 DESKTOP_DEFAULTS = [
     "GRAPHICS_API_OPENGL_33", 
     "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT", 
-    "SUPPORT_PARTIALBUSY_WAIT_LOOP", 
-    "SUPPORT_MODULE_RTEXT", 
     "SUPPORT_WINMM_HIGHRES_TIMER", 
+    "SUPPORT_PARTIALBUSY_WAIT_LOOP", 
+    "SUPPORT_MODULE_RTEXT",
+    "SUPPORT_MODULE_RSHAPES",
     "SUPPORT_FILEFORMAT_BMP", 
     "SUPPORT_FILEFORMAT_PNG", 
     "SUPPORT_FILEFORMAT_JPG",
-    "SUPPORT_SCREEN_CAPTURE"]
+    "SUPPORT_SCREEN_CAPTURE"
+]
 
 ANDROID_DEFAULTS = [
     "GRAPHICS_API_OPENGL_ES3", 
     "PLATFORM_ANDROID",
+    "SUPPORT_PARTIALBUSY_WAIT_LOOP", 
+    "SUPPORT_MODULE_RTEXT",
+    "SUPPORT_MODULE_RSHAPES",
     "SUPPORT_FILEFORMAT_BMP", 
     "SUPPORT_FILEFORMAT_PNG", 
     "SUPPORT_FILEFORMAT_JPG",
-    "SUPPORT_SCREEN_CAPTURE"]
+    "SUPPORT_SCREEN_CAPTURE",
+]
 
 GRAPHICS_API_OPENGL_33 = []
 GRAPHICS_API_OPENGL_43 = ["GRAPHICS_API_OPENGL_33"]
@@ -73,13 +79,15 @@ SUPPORT_PARTIALBUSY_WAIT_LOOP = []
 SUPPORT_RPRAND_GENERATOR = []
 SUPPORT_SCREEN_CAPTURE = [] # bound to f12 by default
 SUPPORT_TRACELOG = []
-SUPPORT_WINMM_HIGHRES_TIMER = []
+SUPPORT_WINMM_HIGHRES_TIMER = [] # use high res timer on windows, on other platforms it has no effect
 SUPPORT_CLIPBOARD_IMAGE = []
 SUPPORT_FILEFORMAT_BMP = ["image/bmp"]
 SUPPORT_FILEFORMAT_PNG = ["image/png"]
 SUPPORT_FILEFORMAT_JPG = ["image/jpeg"]
 SUPPORT_SPLINE_MITERS = []
 SUPPORT_SPLINE_SEGMENT_CAPS = []
+NO_DL_SDL = []
+BUILD_SDL_FROM_SOURCE = ["sdl3-sys/build-from-source"]
 
  # multithreading but image recommends library crates optionally enable this
 IMAGE_RAYON = ["image/rayon"]

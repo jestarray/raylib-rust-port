@@ -17,7 +17,7 @@
 use std::{ffi::{CString, c_char}, path::Path};
 
 use crate::{
-    math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{rlGetVersion, rlGlVersion}, rtextures::ExportImage, types::{Color, Image, Matrix, RAYLIB_VERSION, Texture2D, Vector2},
+    math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{rlGetVersion, rlGlVersion}, rtextures::{ExportImage, initialize_missing_texture}, types::{Color, Image, Matrix, RAYLIB_VERSION, Texture2D, Vector2},
 };
 use crate::rcore_desktop_sdl::*;
 
@@ -532,6 +532,7 @@ pub unsafe fn InitWindow(width: i32, height: i32, title: &str)
 
     // Setup default viewport
     SetupViewport(CORE.Window.render.x as i32, CORE.Window.render.y as i32);
+    initialize_missing_texture();
 
 #[cfg(feature = "SUPPORT_MODULE_RTEXT")]
 {
@@ -540,18 +541,22 @@ pub unsafe fn InitWindow(width: i32, height: i32, title: &str)
     LoadFontDefault();
     #[cfg(feature = "SUPPORT_MODULE_RSHAPES")]
     {
+    use crate::rtext::GetFontDefault;
+    use crate::rshapes::SetShapesTexture;
+    use crate::types::Rectangle;
+    let default_font = &mut (*GetFontDefault());
     // Set font white rectangle for shapes drawing, so shapes and text can be batched together
     // WARNING: rshapes module is required, if not available, default internal white rectangle is used
-    let mut rec: Rectangle = *GetFontDefault().recs.add(95);
+    let rec: Rectangle = default_font.recs[95];
     if (((CORE.Window.flags & ConfigFlags::FLAG_MSAA_4X_HINT as u32) == ConfigFlags::FLAG_MSAA_4X_HINT as u32))
     {
         // NOTE: Try to maximize rec padding to avoid pixel bleeding on MSAA filtering
-        SetShapesTexture(GetFontDefault().texture, Rectangle { x: rec.x + 2.0, y: rec.y + 2.0, width: 1.0, height: 1.0 });
+        SetShapesTexture(default_font.texture, Rectangle { x: rec.x + 2.0, y: rec.y + 2.0, width: 1.0, height: 1.0 });
     }
     else
     {
         // NOTE: Set up a 1px padding on char rectangle to avoid pixel bleeding
-        SetShapesTexture(GetFontDefault().texture, Rectangle { x: rec.x + 1.0, y: rec.y + 1.0, width: rec.width - 2.0, height: rec.height - 2.0 });
+        SetShapesTexture(default_font.texture, Rectangle { x: rec.x + 1.0, y: rec.y + 1.0, width: rec.width - 2.0, height: rec.height - 2.0 });
     }
     }
 }

@@ -234,7 +234,7 @@ pub fn LoadImage<P: AsRef<Path>>(file_path: P) -> Image {
     let try_load = LoadFileData(&file_path);
     let Ok(file_data) = try_load else { 
         if let Err(err) = try_load {
-            warn!("{}! Producing placeholder red X", err);
+            warn!("{}! Could not LoadImage", err);
         }
         return Image::default();
     };
@@ -320,7 +320,9 @@ pub fn LoadTexture(file_name: &str) -> Texture {
 pub fn LoadTextureFromImage(image: &Image) -> Texture {
     if image.is_data_null() || image.width <= 0 || image.height <= 0 {
         warn!("IMAGE: Data is not valid to load texture");
-        return Texture { id: 0, width: 0, height: 0, mipmaps: 0, format: 0 };
+        let width = if image.width > 0 { image.width } else { unsafe { MISSING_TEXTURE.width } };
+        let height = if image.height > 0 { image.width } else { unsafe { MISSING_TEXTURE.height } };
+        return unsafe { Texture { id: MISSING_TEXTURE.id, width, height, mipmaps: 1, format: 0 } };
     }
     unsafe {
         let id = rlLoadTexture(
@@ -675,4 +677,53 @@ pub fn Fade(color: Color, alpha: f32) -> Color {
     result.a = (255.0 * alpha) as u8;
 
     result
+}
+
+pub static mut MISSING_TEXTURE: Texture = Texture { id: 0, width: 0, height: 0, mipmaps: 0, format: 0 };
+/// Creates a 2x2 magenta/black checkerboard fallback texture.
+/// 
+/// # Safety
+/// Calls unsafe OpenGL FFI functions. An active OpenGL context must be bound on the calling thread.
+pub unsafe fn initialize_missing_texture() {
+    let magenta: [u8; 4] = [255, 0, 255, 255];
+    let black: [u8; 4]   = [0, 0, 0, 255];
+
+    // 2x2 pixel grid (RGBA):
+    // [ Magenta, Black   ]
+    // [ Black,   Magenta ]
+    let mut pixels = [0u8; 2 * 2 * 4];
+    pixels[0..4].copy_from_slice(&magenta);
+    pixels[4..8].copy_from_slice(&black);
+    pixels[8..12].copy_from_slice(&black);
+    pixels[12..16].copy_from_slice(&magenta);
+
+    let mut texture_id: gl::types::GLuint = 0;
+    gl::GenTextures(1, &mut texture_id);
+    gl::BindTexture(gl::TEXTURE_2D, texture_id);
+
+    // Upload 2x2 RGBA8 pixel data to GPU
+    gl::TexImage2D(
+        gl::TEXTURE_2D,
+        0, // Base mipmap level
+        gl::RGBA8 as gl::types::GLint,
+        2, // Width
+        2, // Height
+        0, // Border (must be 0)
+        gl::RGBA,
+        gl::UNSIGNED_BYTE,
+        pixels.as_ptr() as *const std::ffi::c_void,
+    );
+
+    // GL_NEAREST keeps the checkerboard grid edges crisp without blur
+    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
+    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+
+    // GL_REPEAT lets UVs scale and tile the pattern seamlessly
+    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32);
+    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
+
+    // Unbind texture
+    gl::BindTexture(gl::TEXTURE_2D, 0);
+
+    MISSING_TEXTURE = Texture { id: texture_id, width: 32, height: 32, format: 0, mipmaps: 1 };
 }
