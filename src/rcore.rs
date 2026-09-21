@@ -1535,7 +1535,7 @@ pub fn WaitTime(seconds: f64) {
     #[cfg(not(feature = "SUPPORT_BUSY_WAIT_LOOP"))]
     {
         #[cfg(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP")]
-        let mut sleepSeconds: f64 = seconds - seconds*0.05;  // NOTE: Reserve a percentage of the time for busy waiting
+        let sleepSeconds: f64 = seconds - seconds*0.05;  // NOTE: Reserve a percentage of the time for busy waiting
         #[cfg(not(feature = "SUPPORT_PARTIALBUSY_WAIT_LOOP"))]
         let sleepSeconds: f64 = seconds;
 
@@ -1786,12 +1786,12 @@ pub fn ExportDataAsCode(data: &[u8], dataSize: i32, fileName: &str) -> bool
 
     // Get file name from path
     let mut varFileName = GetFileNameWithoutExt(fileName).into_bytes();
-    for i in 0..varFileName.len()
+    for varFile in  varFileName.iter_mut()
     {
         // Convert variable name to uppercase
-        if ((varFileName[i] >= b'a') && (varFileName[i] <= b'z')) { varFileName[i] -= 32; }
+        if ((*varFile >= b'a') && (*varFile <= b'z')) { *varFile -= 32; }
         // Replace non valid character for C identifier with '_'
-        else if (varFileName[i] == b'.' || varFileName[i] == b'-' || varFileName[i] == b'?' || varFileName[i] == b'!' || varFileName[i] == b'+') { varFileName[i] = b'_'; }
+        else if (*varFile == b'.' || *varFile == b'-' || *varFile == b'?' || *varFile == b'!' || *varFile == b'+') { *varFile = b'_'; }
     }
     let varFileName = String::from_utf8(varFileName).unwrap();
 
@@ -1864,6 +1864,7 @@ pub fn FileExists(fileName: &str) -> bool
 }
 
 // Check file extension
+#[allow(clippy::needless_range_loop)]
 pub fn IsFileExtension(fileName: &str, ext: &str) -> bool
 {
     const MAX_FILE_EXTENSIONS: usize = 32;
@@ -2137,6 +2138,7 @@ pub unsafe fn IsFileDropped() -> bool
 
 // Load automation events list from file, NULL for empty list, capacity = MAX_AUTOMATION_EVENTS
 pub fn LoadAutomationEventList<P: AsRef<Path>>(file_name: Option<P>) -> AutomationEventList {
+    #[allow(unused_mut)]
     let mut list = AutomationEventList {
         capacity: 0,
         count: 0,
@@ -2606,7 +2608,6 @@ pub unsafe fn GetGamepadAxisCount(gamepad: i32) -> i32
 // Get axis movement vector for a gamepad
 pub unsafe fn GetGamepadAxisMovement(gamepad: i32, axis: i32) -> f32
 {
-    let axis = axis;
     let mut value: f32 = if ((axis == GamepadAxis::GAMEPAD_AXIS_LEFT_TRIGGER as i32) || (axis == GamepadAxis::GAMEPAD_AXIS_RIGHT_TRIGGER as i32)) { -1.0 } else { 0.0 };
 
     if ((gamepad >= 0) && (gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[(gamepad) as usize] && (axis < MAX_GAMEPAD_AXES as i32))

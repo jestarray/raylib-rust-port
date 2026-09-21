@@ -801,8 +801,7 @@ pub unsafe fn SetWindowSize(width: i32, height: i32)
 // Set window opacity, value opacity is between 0.0 and 1.0
 pub unsafe fn SetWindowOpacity(mut opacity: f32)
 {
-    if (opacity >= 1.0) { opacity = 1.0; }
-    else if (opacity <= 0.0) { opacity = 0.0; }
+    opacity = opacity.clamp(0.0, 1.0);
 
     SDL_SetWindowOpacity(platform.window, opacity);
 }
@@ -838,7 +837,7 @@ pub unsafe fn GetWindowHandle() -> *mut std::ffi::c_void
     {
         // Wayland, get display surface pointer
         // NOTE: Alternative SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER
-        handle = (SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, std::ptr::null_mut()) as *mut std::ffi::c_void); // Type: struct wl_surface*
+        handle = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, std::ptr::null_mut()); // Type: struct wl_surface*
     }
     }
     #[cfg(target_vendor = "apple")]
@@ -1189,10 +1188,8 @@ pub unsafe fn SetGamepadVibration(gamepad: i32, mut leftMotor: f32, mut rightMot
 {
     if ((gamepad < MAX_GAMEPADS as i32) && CORE.Input.Gamepad.ready[gamepad as usize] && (duration > 0.0))
     {
-        if (leftMotor < 0.0) { leftMotor = 0.0; }
-        if (leftMotor > 1.0) { leftMotor = 1.0; }
-        if (rightMotor < 0.0) { rightMotor = 0.0; }
-        if (rightMotor > 1.0) { rightMotor = 1.0; }
+        leftMotor = leftMotor.clamp(0.0, 1.0);
+        rightMotor = rightMotor.clamp(0.0, 1.0);
         if (duration > MAX_GAMEPAD_VIBRATION_TIME) { duration = MAX_GAMEPAD_VIBRATION_TIME; }
 
         SDL_RumbleGamepad(platform.gamepad[gamepad as usize], ((leftMotor*65535.0) as u16), ((rightMotor*65535.0) as u16), ((duration*1000.0) as u32));

@@ -1351,7 +1351,7 @@ pub unsafe fn DrawCircleGradient(center: Vector2, radius: f32, inner: Color, out
 }
 
 // Draw a piece of a circle
-pub unsafe fn DrawCircleSector(center: Vector2, mut radius: f32, mut startAngle: f32, mut endAngle: f32, mut segments: i32, color: Color)
+pub unsafe fn DrawCircleSector(center: Vector2, radius: f32, mut startAngle: f32, mut endAngle: f32, mut segments: i32, color: Color)
 {
     if startAngle == endAngle { return; }
     if radius <= 0.0 { return; }  // Avoid div by zero
@@ -1429,7 +1429,7 @@ pub unsafe fn DrawCircleSector(center: Vector2, mut radius: f32, mut startAngle:
 }
 
 // Draw a piece of a circle outlines
-pub unsafe fn DrawCircleSectorLines(center: Vector2, mut radius: f32, mut startAngle: f32, mut endAngle: f32, mut segments: i32, color: Color)
+pub unsafe fn DrawCircleSectorLines(center: Vector2, radius: f32, mut startAngle: f32, mut endAngle: f32, mut segments: i32, color: Color)
 {
     if startAngle == endAngle { return; }
     if radius <= 0.0 { return; }  // Avoid div by zero issue
@@ -1491,7 +1491,7 @@ pub unsafe fn DrawCircleSectorLines(center: Vector2, mut radius: f32, mut startA
 }
 
 // Draw a piece of a circle outlines with thickness
-pub unsafe fn DrawCircleSectorLinesEx(center: Vector2, mut radius: f32, mut startAngle: f32, mut endAngle: f32, mut segments: i32, thick: f32, color: Color)
+pub unsafe fn DrawCircleSectorLinesEx(center: Vector2, radius: f32, mut startAngle: f32, mut endAngle: f32, mut segments: i32, thick: f32, color: Color)
 {
     if startAngle == endAngle { return; }
     if radius <= 0.0 { return; }  // Avoid div by zero issue
@@ -3710,8 +3710,7 @@ pub fn CheckCollisionCircleRec(center: Vector2, radius: f32, rec: Rectangle) -> 
 
     if (dx <= (rec.width/2.0 + radius)) && (dy <= (rec.height/2.0 + radius))
     {
-        if dx <= (rec.width/2.0) { collision = true; }
-        else if dy <= (rec.height/2.0) { collision = true; }
+        if dx <= (rec.width/2.0) || dy <= (rec.height/2.0) { collision = true; }
         else
         {
             let cornerDistanceSq: f32 = (dx - rec.width/2.0)*(dx - rec.width/2.0) +
@@ -3797,8 +3796,7 @@ pub fn CheckCollisionCircleLine(center: Vector2, radius: f32, p1: Vector2, p2: V
         let lengthSQ: f32 = ((dx*dx) + (dy*dy));
         let mut dotProduct: f32 = (((center.x - p1.x)*(p2.x - p1.x)) + ((center.y - p1.y)*(p2.y - p1.y)))/(lengthSQ);
 
-        if dotProduct > 1.0 { dotProduct = 1.0; }
-        else if dotProduct < 0.0 { dotProduct = 0.0; }
+        dotProduct = dotProduct.clamp(0.0, 1.0);
 
         let dx2: f32 = (p1.x - (dotProduct*(dx))) - center.x;
         let dy2: f32 = (p1.y - (dotProduct*(dy))) - center.y;

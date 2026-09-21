@@ -541,10 +541,8 @@ pub fn LoadFontData(
 }
 
 pub fn UnloadFont(font: &mut Font) {
-    unsafe {
-        rtextures::UnloadTexture(&mut font.texture);
-        font.glyphs.clear()
-    }
+    rtextures::UnloadTexture(&mut font.texture);
+    font.glyphs.clear()
 }
 
 static mut DEFAULT_FONT: Font = Font {

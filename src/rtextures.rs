@@ -288,10 +288,8 @@ pub fn IsImageValid(image: &Image) -> bool
 }
 
 pub fn UnloadImage(image: &mut Image) {
-    unsafe {
-        if !image.is_data_null() {
-            image.data = Vec::new();
-        }
+    if !image.is_data_null() {
+        image.data = Vec::new();
     }
 }
 

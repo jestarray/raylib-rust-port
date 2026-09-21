@@ -1915,11 +1915,10 @@ pub unsafe fn rlLoadRenderBatch(numBuffers: i32, bufferElements: i32) -> rlRende
         #[cfg(all(feature = "GRAPHICS_API_OPENGL_ES2", not(feature = "GRAPHICS_API_OPENGL_33")))]
         { vertexBuffer.indices = vec![0; (bufferElements*6) as usize]; }      // 6 int by quad (indices)
 
-        let mut k = 0;
 
         // Indices can be initialized right now
         #[cfg(any(feature = "GRAPHICS_API_OPENGL_33", feature = "GRAPHICS_API_OPENGL_ES2"))]
-        for j in (0..(6*bufferElements)).step_by(6)
+        for (k, j) in (0..(6*bufferElements)).step_by(6).enumerate()
         {
             vertexBuffer.indices[j as usize] = (4*k) as _;
             vertexBuffer.indices[(j + 1) as usize] = (4*k + 1) as _;
@@ -1928,7 +1927,6 @@ pub unsafe fn rlLoadRenderBatch(numBuffers: i32, bufferElements: i32) -> rlRende
             vertexBuffer.indices[(j + 4) as usize] = (4*k + 2) as _;
             vertexBuffer.indices[(j + 5) as usize] = (4*k + 3) as _;
 
-            k += 1;
         }
 
         batch.vertexBuffer.push(vertexBuffer);
