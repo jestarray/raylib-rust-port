@@ -407,43 +407,7 @@ pub unsafe fn InitWindow(width: i32, height: i32, title: &str)
 {
     info!("Initializing raylib {}", RAYLIB_VERSION);
 
-#[cfg(feature = "PLATFORM_DESKTOP_GLFW")]
-{
-    info!("Platform backend: DESKTOP (GLFW)");
-}
-#[cfg(all(not(any(feature = "PLATFORM_DESKTOP_GLFW")), feature = "PLATFORM_DESKTOP_SDL"))]
-{
-    info!("Platform backend: DESKTOP (SDL)");
-}
-#[cfg(all(not(any(feature = "PLATFORM_DESKTOP_GLFW", feature = "PLATFORM_DESKTOP_SDL")), feature = "PLATFORM_DESKTOP_RGFW"))]
-{
-    info!("Platform backend: DESKTOP (RGFW)");
-}
-#[cfg(all(not(any(feature = "PLATFORM_DESKTOP_GLFW", feature = "PLATFORM_DESKTOP_SDL", feature = "PLATFORM_DESKTOP_RGFW")), feature = "PLATFORM_DESKTOP_WIN32"))]
-{
-    info!("Platform backend: DESKTOP (WIN32)");
-}
-#[cfg(all(not(any(feature = "PLATFORM_DESKTOP_GLFW", feature = "PLATFORM_DESKTOP_SDL", feature = "PLATFORM_DESKTOP_RGFW", feature = "PLATFORM_DESKTOP_WIN32")), feature = "PLATFORM_WEB_RGFW"))]
-{
-    info!("Platform backend: WEB (RGFW) (HTML5)");
-}
-#[cfg(all(not(any(feature = "PLATFORM_DESKTOP_GLFW", feature = "PLATFORM_DESKTOP_SDL", feature = "PLATFORM_DESKTOP_RGFW", feature = "PLATFORM_DESKTOP_WIN32", feature = "PLATFORM_WEB_RGFW")), feature = "PLATFORM_WEB"))]
-{
-    info!("Platform backend: WEB (HTML5)");
-}
-#[cfg(all(not(any(feature = "PLATFORM_DESKTOP_GLFW", feature = "PLATFORM_DESKTOP_SDL", feature = "PLATFORM_DESKTOP_RGFW", feature = "PLATFORM_DESKTOP_WIN32", feature = "PLATFORM_WEB_RGFW", feature = "PLATFORM_WEB")), feature = "PLATFORM_DRM"))]
-{
-    info!("Platform backend: NATIVE DRM");
-}
-#[cfg(all(not(any(feature = "PLATFORM_DESKTOP_GLFW", feature = "PLATFORM_DESKTOP_SDL", feature = "PLATFORM_DESKTOP_RGFW", feature = "PLATFORM_DESKTOP_WIN32", feature = "PLATFORM_WEB_RGFW", feature = "PLATFORM_WEB", feature = "PLATFORM_DRM")), feature = "PLATFORM_ANDROID"))]
-{
-    info!("Platform backend: ANDROID");
-}
-#[cfg(all(not(any(feature = "PLATFORM_DESKTOP_GLFW", feature = "PLATFORM_DESKTOP_SDL", feature = "PLATFORM_DESKTOP_RGFW", feature = "PLATFORM_DESKTOP_WIN32", feature = "PLATFORM_WEB_RGFW", feature = "PLATFORM_WEB", feature = "PLATFORM_DRM", feature = "PLATFORM_ANDROID")), feature = "PLATFORM_MEMORY"))]
-{
-    info!("Platform backend: MEMORY (No OS)");
-}
-#[cfg(not(any(feature = "PLATFORM_DESKTOP_GLFW", feature = "PLATFORM_DESKTOP_SDL", feature = "PLATFORM_DESKTOP_RGFW", feature = "PLATFORM_DESKTOP_WIN32", feature = "PLATFORM_WEB_RGFW", feature = "PLATFORM_WEB", feature = "PLATFORM_DRM", feature = "PLATFORM_ANDROID", feature = "PLATFORM_MEMORY")))]
+#[cfg(not(any(feature = "PLATFORM_DESKTOP_SDL", feature = "PLATFORM_ANDROID")))]
 {
     // TODO: Include your custom platform backend!
     // i.e software rendering backend or console backend!
