@@ -15,6 +15,10 @@
     clippy::missing_safety_doc
 )]
 use std::{ffi::{CString, c_char}, path::Path};
+use glam::camera::rh::{
+    proj::opengl::{orthographic, perspective},
+    view::look_at_mat4,
+};
 
 use crate::{
     math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{rlGetVersion, rlGlVersion}, rtextures::{ExportImage, init_missing_texture}, types::{Color, Image, Matrix, RAYLIB_VERSION, Texture2D, Vector2},
@@ -45,7 +49,7 @@ pub const MAX_AUTOMATION_EVENTS: usize = 16384;
 // --- Component Structs (Converted from anonymous nested structs) ---
 #[allow(non_snake_case)]
 #[repr(C)]
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct WindowData {
     pub title: *mut c_char,
     pub flags: u32,
@@ -69,6 +73,33 @@ pub struct WindowData {
 
     pub dropFilepaths: Vec<String>,
     pub dropFileCount: u32,
+}
+
+impl Default for WindowData {
+    fn default() -> Self {
+        Self {
+            title: std::ptr::null_mut(),
+            flags: 0,
+            ready: false,
+            shouldClose: false,
+            resizedLastFrame: false,
+            eventWaiting: false,
+            usingFbo: false,
+            display: Vector2::ZERO,
+            screen: Vector2::ZERO,
+            position: Vector2::ZERO,
+            previousScreen: Vector2::ZERO,
+            previousPosition: Vector2::ZERO,
+            render: Vector2::ZERO,
+            renderOffset: Vector2::ZERO,
+            currentFbo: Vector2::ZERO,
+            screenMin: Vector2::ZERO,
+            screenMax: Vector2::ZERO,
+            screenScale: Matrix::ZERO,
+            dropFilepaths: Vec::new(),
+            dropFileCount: 0,
+        }
+    }
 }
 
 #[allow(non_snake_case)]
@@ -218,24 +249,7 @@ pub static mut CORE: CoreData = CoreData {
         currentFbo: Vector2::ZERO,
         screenMin: Vector2::ZERO,
         screenMax: Vector2::ZERO,
-        screenScale: Matrix {
-            m0: 0.0,
-            m4: 0.0,
-            m8: 0.0,
-            m12: 0.0,
-            m1: 0.0,
-            m5: 0.0,
-            m9: 0.0,
-            m13: 0.0,
-            m2: 0.0,
-            m6: 0.0,
-            m10: 0.0,
-            m14: 0.0,
-            m3: 0.0,
-            m7: 0.0,
-            m11: 0.0,
-            m15: 0.0,
-        },
+        screenScale: Matrix::ZERO,
         dropFilepaths: Vec::new(),
         dropFileCount: 0,
     },
@@ -693,7 +707,7 @@ pub unsafe fn BeginDrawing()
     CORE.Time.previous = CORE.Time.current;
 
     rlLoadIdentity();                   // Reset current matrix (modelview)
-    rlMultMatrixf(CORE.Window.screenScale.to_array().as_ptr()); // Apply screen scaling
+    rlMultMatrixf(CORE.Window.screenScale.to_cols_array().as_ptr()); // Apply screen scaling
 
     //rlTranslatef(0.375, 0.375, 0);    // HACK to have 2D pixel-perfect drawing on OpenGL 1.1
                                         // NOTE: Not required with OpenGL 3.3+
@@ -755,7 +769,7 @@ pub unsafe fn BeginMode2D(camera: Camera2D)
     rlLoadIdentity();               // Reset current matrix (modelview)
 
     // Apply 2d camera transformation to modelview
-    rlMultMatrixf(GetCameraMatrix2D(camera).to_array().as_ptr());
+    rlMultMatrixf(GetCameraMatrix2D(camera).to_cols_array().as_ptr());
 }
 
 // End 2D mode with custom camera
@@ -765,7 +779,7 @@ pub unsafe fn EndMode2D()
 
     rlLoadIdentity();               // Reset current matrix (modelview)
 
-    if (rlGetActiveFramebuffer() == 0) { rlMultMatrixf(CORE.Window.screenScale.to_array().as_ptr()); } // Apply screen scaling if required
+    if (rlGetActiveFramebuffer() == 0) { rlMultMatrixf(CORE.Window.screenScale.to_cols_array().as_ptr()); } // Apply screen scaling if required
 }
 
 // Initializes 3D mode with custom camera (3D)
@@ -801,8 +815,8 @@ pub unsafe fn BeginMode3D(camera: Camera)
     rlLoadIdentity();               // Reset current matrix (modelview)
 
     // Setup Camera view
-    let matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
-    rlMultMatrixf(matView.to_array().as_ptr());      // Multiply modelview matrix by view matrix (camera)
+    let matView: Matrix = look_at_mat4(camera.position, camera.target, camera.up);
+    rlMultMatrixf(matView.to_cols_array().as_ptr());      // Multiply modelview matrix by view matrix (camera)
 
     rlEnableDepthTest();            // Enable DEPTH_TEST for 3D
 }
@@ -818,7 +832,7 @@ pub unsafe fn EndMode3D()
     rlMatrixMode(RL_MODELVIEW);     // Switch back to modelview matrix
     rlLoadIdentity();               // Reset current matrix (modelview)
 
-    if (rlGetActiveFramebuffer() == 0) { rlMultMatrixf(CORE.Window.screenScale.to_array().as_ptr()); } // Apply screen scaling if required
+    if (rlGetActiveFramebuffer() == 0) { rlMultMatrixf(CORE.Window.screenScale.to_cols_array().as_ptr()); } // Apply screen scaling if required
 
     rlDisableDepthTest();           // Disable DEPTH_TEST for 2D
 }
@@ -867,7 +881,7 @@ pub unsafe fn EndTextureMode()
     // Go back to the modelview state from BeginDrawing, back to the main framebuffer
     rlMatrixMode(RL_MODELVIEW);     // Switch back to modelview matrix
     rlLoadIdentity();               // Reset current matrix (modelview)
-    rlMultMatrixf(CORE.Window.screenScale.to_array().as_ptr()); // Apply screen scaling if required
+    rlMultMatrixf(CORE.Window.screenScale.to_cols_array().as_ptr()); // Apply screen scaling if required
 
     // Reset current fbo to screen size
     CORE.Window.currentFbo.x = CORE.Window.render.x;
@@ -1001,17 +1015,18 @@ pub unsafe fn LoadVrStereoConfig(device: VrDeviceInfo) -> VrStereoConfig
 
         // Compute camera projection matrices
         let projOffset: f32 = 4.0*lensShift;      // Scaled to projection space coordinates [-1..1]
-        let proj: Matrix = Matrix::perspective(fovy as f64, aspect as f64, rlGetCullDistanceNear(), rlGetCullDistanceFar());
+        let proj: Matrix = perspective(fovy, aspect, rlGetCullDistanceNear() as f32, rlGetCullDistanceFar() as f32);
 
-        config.projection[0] = Matrix::multiply(proj, Matrix::translate(projOffset, 0.0, 0.0));
-        config.projection[1] = Matrix::multiply(proj, Matrix::translate(-projOffset, 0.0, 0.0));
+        // raymath's MatrixMultiply(left, right) evaluates to right * left.
+        config.projection[0] = Matrix::from_translation(Vector3::new(projOffset, 0.0, 0.0)) * proj;
+        config.projection[1] = Matrix::from_translation(Vector3::new(-projOffset, 0.0, 0.0)) * proj;
 
         // Compute camera transformation matrices
         // NOTE: Camera movement might seem more natural if modelling the head
         // Axis of rotation is the base of the head, so adding some y (base of head to eye level
         // and -z (center of head to eye protrusion) to the camera positions
-        config.viewOffset[0] = Matrix::translate(device.interpupillaryDistance*0.5, 0.075, 0.045);
-        config.viewOffset[1] = Matrix::translate(-device.interpupillaryDistance*0.5, 0.075, 0.045);
+        config.viewOffset[0] = Matrix::from_translation(Vector3::new(device.interpupillaryDistance*0.5, 0.075, 0.045));
+        config.viewOffset[1] = Matrix::from_translation(Vector3::new(-device.interpupillaryDistance*0.5, 0.075, 0.045));
 
         // Compute eyes Viewports
         /*
@@ -1275,14 +1290,14 @@ pub unsafe fn GetScreenToWorldRayEx(position: Vector2, camera: Camera, width: i3
     let deviceCoords: Vector3 = Vector3 { x, y, z };
 
     // Calculate view matrix from camera look at
-    let matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
+    let matView: Matrix = look_at_mat4(camera.position, camera.target, camera.up);
 
     let mut matProj: Matrix = Matrix::IDENTITY;
 
     if (camera.projection == CameraProjection::CAMERA_PERSPECTIVE as i32)
     {
         // Calculate projection matrix from perspective
-        matProj = Matrix::perspective((camera.fovy*DEG2RAD) as f64, ((width as f64)/(height as f64)), rlGetCullDistanceNear(), rlGetCullDistanceFar());
+        matProj = perspective(camera.fovy*DEG2RAD, (width as f32)/(height as f32), rlGetCullDistanceNear() as f32, rlGetCullDistanceFar() as f32);
     }
     else if (camera.projection == CameraProjection::CAMERA_ORTHOGRAPHIC as i32)
     {
@@ -1291,7 +1306,7 @@ pub unsafe fn GetScreenToWorldRayEx(position: Vector2, camera: Camera, width: i3
         let right: f64 = top*aspect;
 
         // Calculate projection matrix from orthographic
-        matProj = Matrix::ortho(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
+        matProj = orthographic(-right as f32, right as f32, -top as f32, top as f32, rlGetCullDistanceNear() as f32, rlGetCullDistanceFar() as f32);
     }
 
     // Unproject far/near points
@@ -1319,7 +1334,7 @@ pub unsafe fn GetScreenToWorldRayEx(position: Vector2, camera: Camera, width: i3
 // Get transform matrix for camera
 pub fn GetCameraMatrix(camera: Camera) -> Matrix
 {
-    let mat: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
+    let mat: Matrix = look_at_mat4(camera.position, camera.target, camera.up);
 
     return mat;
 }
@@ -1327,7 +1342,6 @@ pub fn GetCameraMatrix(camera: Camera) -> Matrix
 // Get camera 2d transform matrix
 pub fn GetCameraMatrix2D(camera: Camera2D) -> Matrix
 {
-    let mut matTransform: Matrix = Matrix::ZERO;
     // The camera in world-space is set by
     //   1. Move it to target
     //   2. Rotate by -rotation and scale by (1/zoom)
@@ -1342,12 +1356,12 @@ pub fn GetCameraMatrix2D(camera: Camera2D) -> Matrix
     //   1. Move to offset
     //   2. Rotate and Scale
     //   3. Move by -target
-    let matOrigin: Matrix = Matrix::translate(-camera.target.x, -camera.target.y, 0.0);
-    let matRotation: Matrix = Matrix::rotate(Vector3 { x: 0.0, y: 0.0, z: 1.0 }, camera.rotation*DEG2RAD);
-    let matScale: Matrix = Matrix::scale(camera.zoom, camera.zoom, 1.0);
-    let matTranslation: Matrix = Matrix::translate(camera.offset.x, camera.offset.y, 0.0);
+    let matOrigin = Matrix::from_translation(Vector3::new(-camera.target.x, -camera.target.y, 0.0));
+    let matRotation = Matrix::from_rotation_z(camera.rotation*DEG2RAD);
+    let matScale = Matrix::from_scale(Vector3::new(camera.zoom, camera.zoom, 1.0));
+    let matTranslation = Matrix::from_translation(camera.offset.extend(0.0));
 
-    matTransform = Matrix::multiply(Matrix::multiply(matOrigin, Matrix::multiply(matScale, matRotation)), matTranslation);
+    let matTransform = matTranslation * matRotation * matScale * matOrigin;
 
     return matTransform;
 }
@@ -1369,7 +1383,7 @@ pub unsafe fn GetWorldToScreenEx(position: Vector3, camera: Camera, width: i32, 
     if (camera.projection == CameraProjection::CAMERA_PERSPECTIVE as i32)
     {
         // Calculate projection matrix from perspective
-        matProj = Matrix::perspective((camera.fovy*DEG2RAD) as f64, ((width as f64)/(height as f64)), rlGetCullDistanceNear(), rlGetCullDistanceFar());
+        matProj = perspective(camera.fovy*DEG2RAD, (width as f32)/(height as f32), rlGetCullDistanceNear() as f32, rlGetCullDistanceFar() as f32);
     }
     else if (camera.projection == CameraProjection::CAMERA_ORTHOGRAPHIC as i32)
     {
@@ -1378,11 +1392,11 @@ pub unsafe fn GetWorldToScreenEx(position: Vector3, camera: Camera, width: i32, 
         let right: f64 = top*aspect;
 
         // Calculate projection matrix from orthographic
-        matProj = Matrix::ortho(-right, right, -top, top, rlGetCullDistanceNear(), rlGetCullDistanceFar());
+        matProj = orthographic(-right as f32, right as f32, -top as f32, top as f32, rlGetCullDistanceNear() as f32, rlGetCullDistanceFar() as f32);
     }
 
     // Calculate view matrix from camera look at (and transpose it)
-    let matView: Matrix = Matrix::look_at(camera.position, camera.target, camera.up);
+    let matView: Matrix = look_at_mat4(camera.position, camera.target, camera.up);
 
     // Convert world position vector to quaternion
     let mut worldPos: Quaternion = Quaternion::new(position.x, position.y, position.z, 1.0);
@@ -1414,7 +1428,7 @@ pub fn GetWorldToScreen2D(position: Vector2, camera: Camera2D) -> Vector2
 // Get world space position for a 2d camera screen space position
 pub fn GetScreenToWorld2D(position: Vector2, camera: Camera2D) -> Vector2
 {
-    let invMatCamera: Matrix = Matrix::invert(GetCameraMatrix2D(camera));
+    let invMatCamera: Matrix = GetCameraMatrix2D(camera).inverse();
     let transform: Vector3 = Vector3Transform(Vector3 { x: position.x, y: position.y, z: 0.0 }, invMatCamera);
 
     return Vector2 { x: transform.x, y: transform.y };

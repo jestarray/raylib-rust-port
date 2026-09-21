@@ -228,7 +228,7 @@ pub fn CameraRoll(camera: &mut Camera, angle: f32)
 // Returns the camera view matrix
 pub fn GetCameraViewMatrix(camera: &Camera) -> Matrix
 {
-    return Matrix::look_at(camera.position, camera.target, camera.up);
+    return glam::camera::rh::view::look_at_mat4(camera.position, camera.target, camera.up);
 }
 
 // Returns the camera projection matrix
@@ -236,14 +236,26 @@ pub fn GetCameraProjectionMatrix(camera: &Camera, aspect: f32) -> Matrix
 {
     if camera.projection == CAMERA_PERSPECTIVE as i32
     {
-        return Matrix::perspective((camera.fovy*DEG2RAD) as f64, aspect as f64, CAMERA_CULL_DISTANCE_NEAR, CAMERA_CULL_DISTANCE_FAR);
+        return glam::camera::rh::proj::opengl::perspective(
+            camera.fovy*DEG2RAD,
+            aspect,
+            CAMERA_CULL_DISTANCE_NEAR as f32,
+            CAMERA_CULL_DISTANCE_FAR as f32,
+        );
     }
     else if camera.projection == CAMERA_ORTHOGRAPHIC as i32
     {
         let top = (camera.fovy as f64)/2.0;
         let right = top*(aspect as f64);
 
-        return Matrix::ortho(-right , right , -top , top , CAMERA_CULL_DISTANCE_NEAR, CAMERA_CULL_DISTANCE_FAR);
+        return glam::camera::rh::proj::opengl::orthographic(
+            -right as f32,
+            right as f32,
+            -top as f32,
+            top as f32,
+            CAMERA_CULL_DISTANCE_NEAR as f32,
+            CAMERA_CULL_DISTANCE_FAR as f32,
+        );
     }
 
     return Matrix::IDENTITY;

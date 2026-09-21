@@ -615,8 +615,8 @@ pub unsafe fn DrawRectangleGradientEx(rec: Rectangle, col1: Color, col2: Color, 
 pub unsafe fn DrawRectangleLines(posX: i32, posY: i32, width: i32, height: i32, color: Color)
 {
     let mat: crate::types::Matrix = rlGetMatrixTransform();
-    let xOffset: f32 = 0.5/mat.m0;
-    let yOffset: f32 = 0.5/mat.m5;
+    let xOffset: f32 = 0.5/mat.x_axis.x;
+    let yOffset: f32 = 0.5/mat.y_axis.y;
 
     rlBegin(RL_LINES);
         rlColor4ub(color.r, color.g, color.b, color.a);
@@ -3854,4 +3854,3 @@ fn EaseCubicInOut(mut t: f32, b: f32, c: f32, d: f32) -> f32
 
     return result;
 }
-
