@@ -1,33 +1,21 @@
-#![allow(unused_variables)]
-#![allow(unsafe_op_in_unsafe_fn)]
-#![allow(non_snake_case, non_upper_case_globals)]
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(missing_safety_doc, unused_parens, non_snake_case, static_mut_refs)]
-#![allow(
-    clippy::too_many_arguments,
-    clippy::needless_return,
-    clippy::manual_range_contains,
-    clippy::field_reassign_with_default,
-    clippy::manual_map,
-    clippy::match_like_matches_macro,
-    clippy::upper_case_acronyms,
-    clippy::let_and_return,
-    clippy::double_parens,
-)]
-use std::os::raw::c_void;
-
 use log::info;
-use raylib::{
-    rcore::{
-        BeginDrawing, BeginShaderMode, ClearBackground, CloseWindow, EndDrawing, EndShaderMode, GetFrameTime, GetScreenHeight, GetScreenWidth, GetShaderLocation, InitWindow, LoadShader, SetShaderValue, SetTargetFPS, UnloadShader,
-    }, rcore_desktop_sdl::WindowShouldClose, rtextures::{DrawTexture, LoadTexture, UnloadTexture}, types::{RAYWHITE, ShaderUniformDataType::*, WHITE},
+use raylib::core::{
+    begin_drawing, begin_mode_2d, clear_background, close_window, end_drawing, end_mode_2d,
+    export_automation_event_list, get_mouse_wheel_move, get_world_to_screen_2d, init_window,
+    is_file_dropped, is_key_down, is_key_pressed, load_automation_event_list,
+    play_automation_event, set_automation_event_base_frame, set_automation_event_list,
+    set_target_fps, start_automation_event_recording, stop_automation_event_recording,
 };
-use raylib::types::*;
-use raylib::rcore::*;
-use raylib::rtext::*;
-use raylib::rshapes::*;
-use raylib::rtextures::*;
-use raylib::types::KeyboardKey::*;
+use raylib::rcolors::{
+    BLACK, BLUE, DARKGRAY, DARKGREEN, GRAY, LIGHTGRAY, LIME, MAROON, RED, SKYBLUE,
+};
+use raylib::sdl::window_should_close;
+use raylib::shapes::{
+    draw_circle, draw_rectangle, draw_rectangle_lines, draw_rectangle_rec, draw_triangle,
+};
+use raylib::text::draw_text;
+use raylib::textures::fade;
+use raylib::types::{Camera2D, Color, KeyboardKey, Rectangle, Vector2};
 
 const GRAVITY: f32 = 400.0;
 const PLAYER_JUMP_SPD: f32 = 350.0;
@@ -35,193 +23,214 @@ const PLAYER_HOR_SPD: f32 = 200.0;
 
 const MAX_ENVIRONMENT_ELEMENTS: usize = 5;
 
-//----------------------------------------------------------------------------------
-// Types and Structures Definition
-//----------------------------------------------------------------------------------
-#[repr(C)]
 #[derive(Clone, Copy, Default)]
-pub struct Player {
-    pub position: Vector2,
-    pub speed: f32,
-    pub canJump: bool,
+struct Player {
+    position: Vector2,
+    speed: f32,
+    can_jump: bool,
 }
 
-#[repr(C)]
 #[derive(Clone, Copy)]
-pub struct EnvElement {
-    pub rect: Rectangle,
-    pub blocking: i32,
-    pub color: Color,
+struct EnvElement {
+    rect: Rectangle,
+    blocking: i32,
+    color: Color,
 }
 
-//------------------------------------------------------------------------------------
-// Program main entry point
-//------------------------------------------------------------------------------------
 fn main() {
-    unsafe { start(); }
+    env_logger::init_from_env(env_logger::Env::default().filter_or("MY_LOG_LEVEL", "info"));
+    start();
 }
-unsafe fn start() {
-    // Initialization
-    //--------------------------------------------------------------------------------------
-    let screenWidth: i32 = 800;
-    let screenHeight: i32 = 450;
 
-    InitWindow(screenWidth, screenHeight, "raylib [core] example - automation events");
+fn start() {
+    // Initialization
+    let screen_width: i32 = 800;
+    let screen_height: i32 = 450;
+
+    init_window(
+        screen_width,
+        screen_height,
+        "raylib [core] example - automation events",
+    );
 
     // Define player
     let mut player = Player::default();
     player.position = Vector2 { x: 400.0, y: 280.0 };
-    player.speed = 0.0;
-    player.canJump = false;
 
     // Define environment elements (platforms)
-    let mut envElements: [EnvElement; MAX_ENVIRONMENT_ELEMENTS] = [
-        EnvElement { rect: Rectangle { x: 0.0, y: 0.0, width: 1000.0, height: 400.0 }, blocking: 0, color: LIGHTGRAY },
-        EnvElement { rect: Rectangle { x: 0.0, y: 400.0, width: 1000.0, height: 200.0 }, blocking: 1, color: GRAY },
-        EnvElement { rect: Rectangle { x: 300.0, y: 200.0, width: 400.0, height: 10.0 }, blocking: 1, color: GRAY },
-        EnvElement { rect: Rectangle { x: 250.0, y: 300.0, width: 100.0, height: 10.0 }, blocking: 1, color: GRAY },
-        EnvElement { rect: Rectangle { x: 650.0, y: 300.0, width: 100.0, height: 10.0 }, blocking: 1, color: GRAY },
+    let env_elements: [EnvElement; MAX_ENVIRONMENT_ELEMENTS] = [
+        EnvElement {
+            rect: Rectangle {
+                x: 0.0,
+                y: 0.0,
+                width: 1000.0,
+                height: 400.0,
+            },
+            blocking: 0,
+            color: LIGHTGRAY,
+        },
+        EnvElement {
+            rect: Rectangle {
+                x: 0.0,
+                y: 400.0,
+                width: 1000.0,
+                height: 200.0,
+            },
+            blocking: 1,
+            color: GRAY,
+        },
+        EnvElement {
+            rect: Rectangle {
+                x: 300.0,
+                y: 200.0,
+                width: 400.0,
+                height: 10.0,
+            },
+            blocking: 1,
+            color: GRAY,
+        },
+        EnvElement {
+            rect: Rectangle {
+                x: 250.0,
+                y: 300.0,
+                width: 100.0,
+                height: 10.0,
+            },
+            blocking: 1,
+            color: GRAY,
+        },
+        EnvElement {
+            rect: Rectangle {
+                x: 650.0,
+                y: 300.0,
+                width: 100.0,
+                height: 10.0,
+            },
+            blocking: 1,
+            color: GRAY,
+        },
     ];
 
     // Define camera
     let mut camera = Camera2D::default();
     camera.target = player.position;
-    camera.offset = Vector2 { x: screenWidth as f32 / 2.0, y: screenHeight as f32 / 2.0 };
+    camera.offset = Vector2 {
+        x: screen_width as f32 / 2.0,
+        y: screen_height as f32 / 2.0,
+    };
     camera.rotation = 0.0;
     camera.zoom = 1.0;
 
     // Automation events
-    let mut aelist = LoadAutomationEventList(None as Option<String>); // Initialize list of automation events to record new events
-    SetAutomationEventList(&mut aelist);
-    let mut eventRecording = false;
-    let mut eventPlaying = false;
+    // Initialize list of automation events to record new events
+    let mut aelist = load_automation_event_list(None::<String>);
+    set_automation_event_list(&mut aelist);
+    let mut event_recording = false;
+    let mut event_playing = false;
 
-    let mut frameCounter: u32 = 0;
-    let mut playFrameCounter: u32 = 0;
-    let mut currentPlayFrame: usize = 0;
+    let mut frame_counter: u32 = 0;
+    let mut play_frame_counter: u32 = 0;
+    let mut current_play_frame: usize = 0;
 
-    SetTargetFPS(60);
-    //--------------------------------------------------------------------------------------
+    set_target_fps(60);
 
     // Main game loop
-    while !WindowShouldClose() {
+    while !window_should_close() {
         // Update
-        //----------------------------------------------------------------------------------
-        let deltaTime: f32 = 0.015; //GetFrameTime();
+        let delta_time: f32 = 0.015; // get_frame_time();
 
         // Dropped files logic
-        //----------------------------------------------------------------------------------
-        if IsFileDropped() {
-            // dragged and drop files
-            //let droppedFiles = LoadDroppedFiles();
-
-            // Supports loading .rgs style files (text or binary) and .png style palette images
-            //if IsFileExtension(droppedFiles.paths[0], ".txt;.rae") {
-            //    UnloadAutomationEventList(&mut aelist);
-            //    aelist = LoadAutomationEventList(droppedFiles.paths[0]);
-//
-            //    eventRecording = false;
-//
-            //    // Reset scene state to play
-            //    eventPlaying = true;
-            //    playFrameCounter = 0;
-            //    currentPlayFrame = 0;
-//
-            //    player.position = Vector2 { x: 400.0, y: 280.0 };
-            //    player.speed = 0.0;
-            //    player.canJump = false;
-//
-            //    camera.target = player.position;
-            //    camera.offset = Vector2 { x: screenWidth as f32 / 2.0, y: screenHeight as f32 / 2.0 };
-            //    camera.rotation = 0.0;
-            //    camera.zoom = 1.0;
-            //}
-//
-            //UnloadDroppedFiles(droppedFiles); // Unload filepaths from memory
+        // Dropped files logic
+        if is_file_dropped() {
+            // TODO: load the dropped .rae file to replay it. That needs LoadDroppedFiles(),
+            // which this port does not implement yet.
         }
-        //----------------------------------------------------------------------------------
 
         // Update player
-        //----------------------------------------------------------------------------------
-        if IsKeyDown(KEY_LEFT) { player.position.x -= PLAYER_HOR_SPD * deltaTime; }
-        if IsKeyDown(KEY_RIGHT) { player.position.x += PLAYER_HOR_SPD * deltaTime; }
-        if IsKeyDown(KEY_SPACE) && player.canJump {
+        if is_key_down(KeyboardKey::KEY_LEFT) {
+            player.position.x -= PLAYER_HOR_SPD * delta_time;
+        }
+        if is_key_down(KeyboardKey::KEY_RIGHT) {
+            player.position.x += PLAYER_HOR_SPD * delta_time;
+        }
+        if is_key_down(KeyboardKey::KEY_SPACE) && player.can_jump {
             player.speed = -PLAYER_JUMP_SPD;
-            player.canJump = false;
+            player.can_jump = false;
         }
 
-        let mut hitObstacle = 0;
+        let mut hit_obstacle = 0;
         for i in 0..MAX_ENVIRONMENT_ELEMENTS {
-            let element = &mut envElements[i];
-            let p = &mut player.position;
-            if element.blocking != 0 &&
-                element.rect.x <= p.x &&
-                element.rect.x + element.rect.width >= p.x &&
-                element.rect.y >= p.y &&
-                element.rect.y <= p.y + player.speed * deltaTime
+            let element = &env_elements[i];
+            if element.blocking != 0
+                && element.rect.x <= player.position.x
+                && element.rect.x + element.rect.width >= player.position.x
+                && element.rect.y >= player.position.y
+                && element.rect.y <= player.position.y + player.speed * delta_time
             {
-                hitObstacle = 1;
+                hit_obstacle = 1;
                 player.speed = 0.0;
-                p.y = element.rect.y;
+                player.position.y = element.rect.y;
             }
         }
 
-        if hitObstacle == 0 {
-            player.position.y += player.speed * deltaTime;
-            player.speed += GRAVITY * deltaTime;
-            player.canJump = false;
+        if hit_obstacle == 0 {
+            player.position.y += player.speed * delta_time;
+            player.speed += GRAVITY * delta_time;
+            player.can_jump = false;
         } else {
-            player.canJump = true;
+            player.can_jump = true;
         }
 
-        if IsKeyPressed(KEY_R) {
+        if is_key_pressed(KeyboardKey::KEY_R) {
             // Reset game state
             player.position = Vector2 { x: 400.0, y: 280.0 };
             player.speed = 0.0;
-            player.canJump = false;
+            player.can_jump = false;
 
             camera.target = player.position;
-            camera.offset = Vector2 { x: screenWidth as f32 / 2.0, y: screenHeight as f32 / 2.0 };
+            camera.offset = Vector2 {
+                x: screen_width as f32 / 2.0,
+                y: screen_height as f32 / 2.0,
+            };
             camera.rotation = 0.0;
             camera.zoom = 1.0;
         }
-        //----------------------------------------------------------------------------------
 
         // Events playing
         // NOTE: Logic must be before Camera update because it depends on mouse-wheel value,
         // that can be set by the played event... but some other inputs could be affected
-        //----------------------------------------------------------------------------------
-        if eventPlaying {
+        if event_playing {
             // NOTE: Multiple events could be executed in a single frame
-            while playFrameCounter == aelist.events[currentPlayFrame].frame {
-                PlayAutomationEvent(aelist.events[currentPlayFrame]);
-                currentPlayFrame += 1;
+            while play_frame_counter == aelist.events[current_play_frame].frame {
+                play_automation_event(aelist.events[current_play_frame]);
+                current_play_frame += 1;
 
-                if currentPlayFrame == aelist.count as usize {
-                    eventPlaying = false;
-                    currentPlayFrame = 0;
-                    playFrameCounter = 0;
+                if current_play_frame == aelist.count as usize {
+                    event_playing = false;
+                    current_play_frame = 0;
+                    play_frame_counter = 0;
 
-                        info!("FINISH PLAYING!");
+                    info!("FINISH PLAYING!");
                     break;
                 }
             }
 
-            playFrameCounter += 1;
+            play_frame_counter += 1;
         }
-        //----------------------------------------------------------------------------------
 
         // Update camera
-        //----------------------------------------------------------------------------------
         camera.target = player.position;
-        camera.offset = Vector2 { x: screenWidth as f32 / 2.0, y: screenHeight as f32 / 2.0 };
-        let mut minX: f32 = 1000.0;
-        let mut minY: f32 = 1000.0;
-        let mut maxX: f32 = -1000.0;
-        let mut maxY: f32 = -1000.0;
+        camera.offset = Vector2 {
+            x: screen_width as f32 / 2.0,
+            y: screen_height as f32 / 2.0,
+        };
+        let mut min_x: f32 = 1000.0;
+        let mut min_y: f32 = 1000.0;
+        let mut max_x: f32 = -1000.0;
+        let mut max_y: f32 = -1000.0;
 
         // WARNING: On event replay, mouse-wheel internal value is set
-        camera.zoom += GetMouseWheelMove() as f32 * 0.05;
+        camera.zoom += get_mouse_wheel_move() * 0.05;
         if camera.zoom > 3.0 {
             camera.zoom = 3.0;
         } else if camera.zoom < 0.25 {
@@ -229,114 +238,150 @@ unsafe fn start() {
         }
 
         for i in 0..MAX_ENVIRONMENT_ELEMENTS {
-            let element = &envElements[i];
-            minX = f32::min(element.rect.x, minX);
-            maxX = f32::max(element.rect.x + element.rect.width, maxX);
-            minY = f32::min(element.rect.y, minY);
-            maxY = f32::max(element.rect.y + element.rect.height, maxY);
+            let element = &env_elements[i];
+            min_x = f32::min(element.rect.x, min_x);
+            max_x = f32::max(element.rect.x + element.rect.width, max_x);
+            min_y = f32::min(element.rect.y, min_y);
+            max_y = f32::max(element.rect.y + element.rect.height, max_y);
         }
 
-        let max = GetWorldToScreen2D(Vector2 { x: maxX, y: maxY }, camera);
-        let min = GetWorldToScreen2D(Vector2 { x: minX, y: minY }, camera);
+        let max = get_world_to_screen_2d(Vector2 { x: max_x, y: max_y }, camera);
+        let min = get_world_to_screen_2d(Vector2 { x: min_x, y: min_y }, camera);
 
-        if max.x < screenWidth as f32 { camera.offset.x = screenWidth as f32 - (max.x - screenWidth as f32 / 2.0); }
-        if max.y < screenHeight as f32 { camera.offset.y = screenHeight as f32 - (max.y - screenHeight as f32 / 2.0); }
-        if min.x > 0.0 { camera.offset.x = screenWidth as f32 / 2.0 - min.x; }
-        if min.y > 0.0 { camera.offset.y = screenHeight as f32 / 2.0 - min.y; }
-        //----------------------------------------------------------------------------------
+        if max.x < screen_width as f32 {
+            camera.offset.x = screen_width as f32 - (max.x - screen_width as f32 / 2.0);
+        }
+        if max.y < screen_height as f32 {
+            camera.offset.y = screen_height as f32 - (max.y - screen_height as f32 / 2.0);
+        }
+        if min.x > 0.0 {
+            camera.offset.x = screen_width as f32 / 2.0 - min.x;
+        }
+        if min.y > 0.0 {
+            camera.offset.y = screen_height as f32 / 2.0 - min.y;
+        }
 
         // Events management
-        if IsKeyPressed(KEY_S) { // Toggle events recording
-            if !eventPlaying {
-                if eventRecording {
-                    StopAutomationEventRecording();
-                    eventRecording = false;
+        if is_key_pressed(KeyboardKey::KEY_S) {
+            // Toggle events recording
+            if !event_playing {
+                if event_recording {
+                    stop_automation_event_recording();
+                    event_recording = false;
 
-                    ExportAutomationEventList(aelist.clone(), "automation.rae");
+                    export_automation_event_list(aelist.clone(), "automation.rae");
 
-                    info!("{}", format!("RECORDED FRAMES: {}", aelist.count))
+                    info!("{}", format!("RECORDED FRAMES: {}", aelist.count));
                 } else {
-                    SetAutomationEventBaseFrame(180);
-                    StartAutomationEventRecording();
-                    eventRecording = true;
+                    set_automation_event_base_frame(180);
+                    start_automation_event_recording();
+                    event_recording = true;
                 }
             }
-        } else if IsKeyPressed(KEY_A) { // Toggle events playing (WARNING: Starts next frame)
-            if !eventRecording && (aelist.count > 0) {
+        } else if is_key_pressed(KeyboardKey::KEY_A) {
+            // Toggle events playing (WARNING: Starts next frame)
+            if !event_recording && (aelist.count > 0) {
                 // Reset scene state to play
-                eventPlaying = true;
-                playFrameCounter = 0;
-                currentPlayFrame = 0;
+                event_playing = true;
+                play_frame_counter = 0;
+                current_play_frame = 0;
 
                 player.position = Vector2 { x: 400.0, y: 280.0 };
                 player.speed = 0.0;
-                player.canJump = false;
+                player.can_jump = false;
 
                 camera.target = player.position;
-                camera.offset = Vector2 { x: screenWidth as f32 / 2.0, y: screenHeight as f32 / 2.0 };
+                camera.offset = Vector2 {
+                    x: screen_width as f32 / 2.0,
+                    y: screen_height as f32 / 2.0,
+                };
                 camera.rotation = 0.0;
                 camera.zoom = 1.0;
             }
         }
 
-        if eventRecording || eventPlaying {
-            frameCounter += 1;
+        if event_recording || event_playing {
+            frame_counter += 1;
         } else {
-            frameCounter = 0;
+            frame_counter = 0;
         }
-        //----------------------------------------------------------------------------------
 
         // Draw
-        //----------------------------------------------------------------------------------
-        BeginDrawing();
+        begin_drawing();
 
-            ClearBackground(LIGHTGRAY);
+        clear_background(LIGHTGRAY);
 
-            BeginMode2D(camera);
+        begin_mode_2d(camera);
 
-                // Draw environment elements
-                for i in 0..MAX_ENVIRONMENT_ELEMENTS {
-                    DrawRectangleRec(envElements[i].rect, envElements[i].color);
-                }
+        // Draw environment elements
+        for i in 0..MAX_ENVIRONMENT_ELEMENTS {
+            draw_rectangle_rec(env_elements[i].rect, env_elements[i].color);
+        }
 
-                // Draw player rectangle
-                DrawRectangleRec(Rectangle { x: player.position.x - 20.0, y: player.position.y - 40.0, width: 40.0, height: 40.0 }, RED);
+        // Draw player rectangle
+        draw_rectangle_rec(
+            Rectangle {
+                x: player.position.x - 20.0,
+                y: player.position.y - 40.0,
+                width: 40.0,
+                height: 40.0,
+            },
+            RED,
+        );
 
-            EndMode2D();
+        end_mode_2d();
 
-            // Draw game controls
-            DrawRectangle(10, 10, 290, 145, Fade(SKYBLUE, 0.5));
-            DrawRectangleLines(10, 10, 290, 145, Fade(BLUE, 0.8));
+        // Draw game controls
+        draw_rectangle(10, 10, 290, 145, fade(SKYBLUE, 0.5));
+        draw_rectangle_lines(10, 10, 290, 145, fade(BLUE, 0.8));
 
-            DrawText("Controls:", 20, 20, 10, BLACK);
-            DrawText("- RIGHT | LEFT: Player movement", 30, 40, 10, DARKGRAY);
-            DrawText("- SPACE: Player jump", 30, 60, 10, DARKGRAY);
-            DrawText("- R: Reset game state", 30, 80, 10, DARKGRAY);
+        draw_text("Controls:", 20, 20, 10, BLACK);
+        draw_text("- RIGHT | LEFT: Player movement", 30, 40, 10, DARKGRAY);
+        draw_text("- SPACE: Player jump", 30, 60, 10, DARKGRAY);
+        draw_text("- R: Reset game state", 30, 80, 10, DARKGRAY);
 
-            DrawText("- S: START/STOP RECORDING INPUT EVENTS", 30, 110, 10, BLACK);
-            DrawText("- A: REPLAY LAST RECORDED INPUT EVENTS", 30, 130, 10, BLACK);
+        draw_text("- S: START/STOP RECORDING INPUT EVENTS", 30, 110, 10, BLACK);
+        draw_text("- A: REPLAY LAST RECORDED INPUT EVENTS", 30, 130, 10, BLACK);
 
-            // Draw automation events recording indicator
-            if eventRecording {
-                DrawRectangle(10, 160, 290, 30, Fade(RED, 0.3));
-                DrawRectangleLines(10, 160, 290, 30, Fade(MAROON, 0.8));
-                DrawCircle(30, 175, 10.0, MAROON);
+        // Draw automation events recording indicator
+        if event_recording {
+            draw_rectangle(10, 160, 290, 30, fade(RED, 0.3));
+            draw_rectangle_lines(10, 160, 290, 30, fade(MAROON, 0.8));
+            draw_circle(30, 175, 10.0, MAROON);
 
-                if ((frameCounter / 15) % 2) == 1 { DrawText(&format!("RECORDING EVENTS... [{}]", aelist.count), 50, 170, 10, MAROON); }
-            } else if eventPlaying {
-                DrawRectangle(10, 160, 290, 30, Fade(LIME, 0.3));
-                DrawRectangleLines(10, 160, 290, 30, Fade(DARKGREEN, 0.8));
-                DrawTriangle(Vector2 { x: 20.0, y: 155.0 + 10.0 }, Vector2 { x: 20.0, y: 155.0 + 30.0 }, Vector2 { x: 40.0, y: 155.0 + 20.0 }, DARKGREEN);
-
-                if ((frameCounter / 15) % 2) == 1 { DrawText(&format!("PLAYING RECORDED EVENTS... [{}]", currentPlayFrame), 50, 170, 10, DARKGREEN); }
+            if ((frame_counter / 15) % 2) == 1 {
+                draw_text(
+                    &format!("RECORDING EVENTS... [{}]", aelist.count),
+                    50,
+                    170,
+                    10,
+                    MAROON,
+                );
             }
+        } else if event_playing {
+            draw_rectangle(10, 160, 290, 30, fade(LIME, 0.3));
+            draw_rectangle_lines(10, 160, 290, 30, fade(DARKGREEN, 0.8));
+            draw_triangle(
+                Vector2 { x: 20.0, y: 165.0 },
+                Vector2 { x: 20.0, y: 185.0 },
+                Vector2 { x: 40.0, y: 175.0 },
+                DARKGREEN,
+            );
 
-        EndDrawing();
-        //----------------------------------------------------------------------------------
+            if ((frame_counter / 15) % 2) == 1 {
+                draw_text(
+                    &format!("PLAYING RECORDED EVENTS... [{}]", current_play_frame),
+                    50,
+                    170,
+                    10,
+                    DARKGREEN,
+                );
+            }
+        }
+
+        end_drawing();
     }
 
     // De-Initialization
-    //--------------------------------------------------------------------------------------
-    CloseWindow(); // Close window and OpenGL context
-    //--------------------------------------------------------------------------------------
+    close_window(); // Close window and OpenGL context
 }

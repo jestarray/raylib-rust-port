@@ -1,26 +1,12 @@
-#![allow(unused_variables)]
-#![allow(unsafe_op_in_unsafe_fn)]
-#![allow(non_snake_case, non_upper_case_globals)]
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(missing_safety_doc, unused_parens, non_snake_case, static_mut_refs)]
-#![allow(
-    clippy::too_many_arguments,
-    clippy::needless_return,
-    clippy::manual_range_contains,
-    clippy::field_reassign_with_default,
-    clippy::manual_map,
-    clippy::match_like_matches_macro,
-    clippy::upper_case_acronyms,
-    clippy::let_and_return,
-    clippy::double_parens,
-)]
-use std::os::raw::c_void;
-
-use raylib::{
-    rcore::{
-        BeginDrawing, BeginShaderMode, ClearBackground, CloseWindow, EndDrawing, EndShaderMode, GetFrameTime, GetScreenHeight, GetScreenWidth, GetShaderLocation, InitWindow, LoadShader, SetShaderValue, SetTargetFPS, UnloadShader,
-    }, rcore_desktop_sdl::WindowShouldClose, rtextures::{DrawTexture, LoadTexture, UnloadTexture}, types::{RAYWHITE, ShaderUniformDataType::*, WHITE},
+use raylib::core::{
+    begin_drawing, begin_shader_mode, clear_background, close_window, end_drawing, end_shader_mode,
+    get_frame_time, get_screen_height, get_screen_width, get_shader_location, init_window,
+    load_shader, set_shader_value, set_target_fps, unload_shader,
 };
+use raylib::rcolors::{RAYWHITE, WHITE};
+use raylib::sdl::window_should_close;
+use raylib::textures::{draw_texture, load_texture, unload_texture};
+use raylib::types::ShaderUniformDataType;
 
 #[cfg(target_os = "android")]
 const GLSL_VERSION: i32 = 100;
@@ -28,90 +14,125 @@ const GLSL_VERSION: i32 = 100;
 const GLSL_VERSION: i32 = 330;
 
 fn main() {
-    unsafe {
-        start();
-    }
-}
-unsafe fn start() {
-    // Initialization
-    let screenWidth: i32 = 800;
-    let screenHeight: i32 = 450;
+    env_logger::init_from_env(env_logger::Env::default().filter_or("MY_LOG_LEVEL", "info"));
 
-    InitWindow(
-        screenWidth,
-        screenHeight,
+    // Initialization
+    let screen_width: i32 = 800;
+    let screen_height: i32 = 450;
+
+    init_window(
+        screen_width,
+        screen_height,
         "raylib [shaders] example - texture waves",
     );
 
     // Load texture to apply shaders
-    let mut texture = LoadTexture("resources/space.png");
+    let mut texture = load_texture("resources/space.png");
 
     // Load shader and setup location points and values
-    let mut shader = LoadShader(
-        None,
-        Some(&format!("resources/shaders/glsl{}/wave.fs", GLSL_VERSION)),
+    let mut shader = load_shader(
+        None::<&str>,
+        Some(format!("resources/shaders/glsl{GLSL_VERSION}/wave.fs")),
     );
 
-    let secondsLoc = GetShaderLocation(&shader, "seconds");
-    let freqXLoc = GetShaderLocation(&shader, "freqX");
-    let freqYLoc = GetShaderLocation(&shader, "freqY");
-    let ampXLoc = GetShaderLocation(&shader, "ampX");
-    let ampYLoc = GetShaderLocation(&shader, "ampY");
-    let speedXLoc = GetShaderLocation(&shader, "speedX");
-    let speedYLoc = GetShaderLocation(&shader, "speedY");
+    let seconds_loc = get_shader_location(&shader, "seconds");
+    let freq_x_loc = get_shader_location(&shader, "freqX");
+    let freq_y_loc = get_shader_location(&shader, "freqY");
+    let amp_x_loc = get_shader_location(&shader, "ampX");
+    let amp_y_loc = get_shader_location(&shader, "ampY");
+    let speed_x_loc = get_shader_location(&shader, "speedX");
+    let speed_y_loc = get_shader_location(&shader, "speedY");
 
     // Shader uniform values that can be updated at any time
-    let mut freqX: f32 = 25.0;
-    let mut freqY: f32 = 25.0;
-    let mut ampX: f32 = 5.0;
-    let mut ampY: f32 = 5.0;
-    let mut speedX: f32 = 8.0;
-    let mut speedY: f32 = 8.0;
+    let freq_x: f32 = 25.0;
+    let freq_y: f32 = 25.0;
+    let amp_x: f32 = 5.0;
+    let amp_y: f32 = 5.0;
+    let speed_x: f32 = 8.0;
+    let speed_y: f32 = 8.0;
 
-    let screenSize: [f32; 2] = [GetScreenWidth() as f32, GetScreenHeight() as f32];
-    let locIndex = GetShaderLocation(&shader, "size");
-    SetShaderValue(
+    let screen_size: [f32; 2] = [get_screen_width() as f32, get_screen_height() as f32];
+    let size_loc = get_shader_location(&shader, "size");
+
+    // The raw bindings took a `*const c_void` plus a uniform type; the safe wrappers take a
+    // reference to the value, so no pointer casts are needed here.
+    set_shader_value(
         &mut shader,
-        locIndex,
-        screenSize.as_ptr() as *const c_void,
-        SHADER_UNIFORM_VEC2 as i32,
+        size_loc,
+        &screen_size,
+        ShaderUniformDataType::SHADER_UNIFORM_VEC2,
     );
-    SetShaderValue(&mut shader, freqXLoc, &freqX as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
-    SetShaderValue(&mut shader, freqYLoc, &freqY as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
-    SetShaderValue(&mut shader, ampXLoc, &ampX as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
-    SetShaderValue(&mut shader, ampYLoc, &ampY as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
-    SetShaderValue(&mut shader, speedXLoc, &speedX as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
-    SetShaderValue(&mut shader, speedYLoc, &speedY as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
+    set_shader_value(
+        &mut shader,
+        freq_x_loc,
+        &freq_x,
+        ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
+    );
+    set_shader_value(
+        &mut shader,
+        freq_y_loc,
+        &freq_y,
+        ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
+    );
+    set_shader_value(
+        &mut shader,
+        amp_x_loc,
+        &amp_x,
+        ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
+    );
+    set_shader_value(
+        &mut shader,
+        amp_y_loc,
+        &amp_y,
+        ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
+    );
+    set_shader_value(
+        &mut shader,
+        speed_x_loc,
+        &speed_x,
+        ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
+    );
+    set_shader_value(
+        &mut shader,
+        speed_y_loc,
+        &speed_y,
+        ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
+    );
 
     let mut seconds: f32 = 0.0;
 
-    SetTargetFPS(60);
+    set_target_fps(60);
 
     // Main game loop
-    while !WindowShouldClose() {
+    while !window_should_close() {
         // Update
-        seconds += GetFrameTime();
+        seconds += get_frame_time();
 
-        SetShaderValue(&mut shader, secondsLoc, &seconds as *const f32 as *const c_void, SHADER_UNIFORM_FLOAT as i32);
+        set_shader_value(
+            &mut shader,
+            seconds_loc,
+            &seconds,
+            ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
+        );
 
         // Draw
-        BeginDrawing();
+        begin_drawing();
 
-        ClearBackground(RAYWHITE);
+        clear_background(RAYWHITE);
 
-        BeginShaderMode(&mut shader);
+        begin_shader_mode(&mut shader);
 
-        DrawTexture(&texture, 0, 0, WHITE);
-        DrawTexture(&texture, texture.width, 0, WHITE);
+        draw_texture(&texture, 0, 0, WHITE);
+        draw_texture(&texture, texture.width, 0, WHITE);
 
-        EndShaderMode();
+        end_shader_mode();
 
-        EndDrawing();
+        end_drawing();
     }
 
     // De-Initialization
-    UnloadShader(&mut shader);
-    UnloadTexture(&mut texture);
+    unload_shader(&mut shader);
+    unload_texture(&mut texture);
 
-    CloseWindow();
+    close_window();
 }

@@ -1,45 +1,44 @@
-use raylib::rcore::{
-    BeginDrawing, ClearBackground, CloseWindow, EndDrawing, InitWindow, SetTargetFPS,
+use raylib::core::{
+    begin_drawing, clear_background, close_window, end_drawing, init_window, set_target_fps,
 };
-use raylib::rcore_desktop_sdl::*;
-use raylib::rtext::*;
-use raylib::types::Color;
+use raylib::rcolors::{DARKGRAY, LIGHTGRAY, RAYWHITE};
+use raylib::sdl::window_should_close;
+use raylib::text::draw_text;
 
 fn main() {
+    env_logger::init_from_env(env_logger::Env::default().filter_or("MY_LOG_LEVEL", "info"));
     let screen_width = 800;
     let screen_height = 450;
 
-    unsafe {
-        InitWindow(
-            screen_width,
-            screen_height,
-            "raylib-rs [text] example - default font",
+    init_window(
+        screen_width,
+        screen_height,
+        "raylib-rs [text] example - default font",
+    );
+
+    set_target_fps(60);
+
+    while !window_should_close() {
+        begin_drawing();
+        clear_background(RAYWHITE);
+
+        draw_text(
+            "Congratulations! You created your first window!",
+            190,
+            200,
+            20,
+            LIGHTGRAY,
+        );
+        draw_text(
+            "This text is drawn with the default font!",
+            240,
+            240,
+            20,
+            DARKGRAY,
         );
 
-        SetTargetFPS(60);
-
-        while !WindowShouldClose() {
-            BeginDrawing();
-            ClearBackground(Color::RAYWHITE);
-
-            DrawText(
-                "Congratulations! You created your first window!",
-                190,
-                200,
-                20,
-                Color::LIGHTGRAY,
-            );
-            DrawText(
-                "This text is drawn with the default font!",
-                240,
-                240,
-                20,
-                Color::DARKGRAY,
-            );
-
-            EndDrawing();
-        }
-
-        CloseWindow();
+        end_drawing();
     }
+
+    close_window();
 }

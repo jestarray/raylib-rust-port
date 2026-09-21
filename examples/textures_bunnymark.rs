@@ -1,164 +1,135 @@
-#![allow(unused_variables)]
-#![allow(unsafe_op_in_unsafe_fn)]
-#![allow(non_snake_case, non_upper_case_globals)]
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(missing_safety_doc, unused_parens, static_mut_refs)]
-#![allow(
-    clippy::too_many_arguments,
-    clippy::needless_return,
-    clippy::manual_range_contains,
-    clippy::field_reassign_with_default,
-    clippy::manual_map,
-    clippy::match_like_matches_macro,
-    clippy::upper_case_acronyms,
-    clippy::let_and_return,
-    clippy::double_parens,
-)]
-use raylib::rcore::*;
-use raylib::rcore_desktop_sdl::*;
-use raylib::rshapes::*;
-use raylib::rtext::DrawText;
-use raylib::rtext::*;
-use raylib::rtextures::DrawTexture;
-use raylib::rtextures::Fade;
-use raylib::rtextures::LoadTexture;
-use raylib::rtextures::UnloadTexture;
-use raylib::rtextures::*;
-use raylib::types::ConfigFlags::FLAG_MSAA_4X_HINT;
-use raylib::types::KeyboardKey::*;
-use raylib::types::{Camera2D, Color, Rectangle, Vector2};
-use raylib::types::*;
-use raylib::types::GamepadButton::*;
-use raylib::types::GamepadAxis::*;
-use raylib::types::MouseButton::*;
+use raylib::core::{
+    begin_drawing, clear_background, close_window, end_drawing, get_frame_time, get_mouse_position,
+    get_random_value, get_screen_height, get_screen_width, get_touch_point_count, init_window,
+    is_key_pressed, is_mouse_button_down, set_target_fps,
+};
+use raylib::rcolors::{BLACK, GREEN, MAROON, RAYWHITE};
+use raylib::sdl::window_should_close;
+use raylib::shapes::draw_rectangle;
+use raylib::text::{draw_fps, draw_text};
+use raylib::textures::{draw_texture, load_texture, unload_texture};
+use raylib::types::{Color, KeyboardKey, MouseButton, Texture2D, Vector2};
 
 // This is the maximum amount of elements (quads) per batch
 // NOTE: This value is defined in [rlgl] module and can be changed there
 const MAX_BATCH_ELEMENTS: i32 = 8192;
 
-//----------------------------------------------------------------------------------
-// Types and Structures Definition
-//----------------------------------------------------------------------------------
-#[repr(C)]
 #[derive(Clone, Copy, Default)]
-pub struct Bunny {
-    pub position: Vector2,
-    pub speed: Vector2,
-    pub color: Color,
+struct Bunny {
+    position: Vector2,
+    speed: Vector2,
+    color: Color,
 }
 
-//------------------------------------------------------------------------------------
-// Program main entry point
-//------------------------------------------------------------------------------------
-
-pub fn main() {
-    unsafe { start();}
-}
-
-unsafe fn start() {
+fn main() {
     env_logger::init_from_env(env_logger::Env::default().filter_or("MY_LOG_LEVEL", "info"));
-    // Initialization
-    //--------------------------------------------------------------------------------------
-    let screenWidth: i32 = 800;
-    let screenHeight: i32 = 450;
 
-    InitWindow(screenWidth, screenHeight, "raylib [textures] example - bunnymark");
+    // Initialization
+    let screen_width: i32 = 800;
+    let screen_height: i32 = 450;
+
+    init_window(
+        screen_width,
+        screen_height,
+        "raylib [textures] example - bunnymark",
+    );
 
     // Load bunny texture (support both local desktop path and Android APK assets)
-    let mut texBunny: Texture2D = LoadTexture("resources/raybunny.png");
-    if texBunny.id == 0 {
-        texBunny = LoadTexture("raybunny.png");
-    }
+    let mut tex_bunny: Texture2D = load_texture("resources/raybunny.png");
 
     let mut bunnies: Vec<Bunny> = Vec::new(); // Bunnies array
+    let mut paused = false;
 
-    let mut paused: bool = false;
-
-    SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
-    //--------------------------------------------------------------------------------------
+    set_target_fps(60); // Set our game to run at 60 frames-per-second
 
     // Main game loop
-    while !WindowShouldClose() // Detect window close button or ESC key
-    {
+    while !window_should_close() {
         // Update
-        //----------------------------------------------------------------------------------
-        let isTouching = GetTouchPointCount() > 0;
-        if IsMouseButtonDown(MOUSE_BUTTON_LEFT as i32) || isTouching {
-            let spawnPos = if isTouching {
-                GetTouchPosition(0)
-            } else {
-                GetMousePosition()
-            };
+        let is_touching = get_touch_point_count() > 0;
+        if is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) || is_touching {
             // Create more bunnies
             for _ in 0..100 {
                 bunnies.push(Bunny {
-                    position: GetMousePosition(),
+                    position: get_mouse_position(),
                     speed: Vector2 {
-                        x: GetRandomValue(-250, 250) as f32,
-                        y: GetRandomValue(-250, 250) as f32,
+                        x: get_random_value(-250, 250) as f32,
+                        y: get_random_value(-250, 250) as f32,
                     },
                     color: Color {
-                        r: GetRandomValue(50, 240) as u8,
-                        g: GetRandomValue(80, 240) as u8,
-                        b: GetRandomValue(100, 240) as u8,
+                        r: get_random_value(50, 240) as u8,
+                        g: get_random_value(80, 240) as u8,
+                        b: get_random_value(100, 240) as u8,
                         a: 255,
                     },
                 });
             }
         }
 
-        if IsKeyPressed(KEY_P) {
+        if is_key_pressed(KeyboardKey::KEY_P) {
             paused = !paused;
         }
 
         if !paused {
             // Update bunnies
             for bunny in &mut bunnies {
-                bunny.position.x += bunny.speed.x * GetFrameTime();
-                bunny.position.y += bunny.speed.y * GetFrameTime();
+                bunny.position.x += bunny.speed.x * get_frame_time();
+                bunny.position.y += bunny.speed.y * get_frame_time();
 
-                if ((bunny.position.x + texBunny.width as f32 / 2.0) > GetScreenWidth() as f32) ||
-                   ((bunny.position.x + texBunny.width as f32 / 2.0) < 0.0) {
+                if (bunny.position.x + tex_bunny.width as f32 / 2.0) > get_screen_width() as f32
+                    || (bunny.position.x + tex_bunny.width as f32 / 2.0) < 0.0
+                {
                     bunny.speed.x *= -1.0;
                 }
-                if ((bunny.position.y + texBunny.height as f32 / 2.0) > GetScreenHeight() as f32) ||
-                   ((bunny.position.y + texBunny.height as f32 / 2.0 - 40.0) < 0.0) {
+                if (bunny.position.y + tex_bunny.height as f32 / 2.0) > get_screen_height() as f32
+                    || (bunny.position.y + tex_bunny.height as f32 / 2.0 - 40.0) < 0.0
+                {
                     bunny.speed.y *= -1.0;
                 }
             }
         }
-        //----------------------------------------------------------------------------------
 
         // Draw
-        //----------------------------------------------------------------------------------
-        BeginDrawing();
+        // NOTE: When the internal batch buffer limit is reached (MAX_BATCH_ELEMENTS) a draw call is
+        // launched and the buffer starts filling again; pushing past it costs a stall per frame.
+        begin_drawing();
 
-            ClearBackground(Color::RAYWHITE);
+        clear_background(RAYWHITE);
 
-            for bunny in &bunnies {
-                // NOTE: When internal batch buffer limit is reached (MAX_BATCH_ELEMENTS),
-                // a draw call is launched and buffer starts being filled again;
-                // before issuing a draw call, updated vertex data from internal CPU buffer is send to GPU...
-                // Process of sending data is costly and it could happen that GPU data has not been completely
-                // processed for drawing while new data is tried to be sent (updating current in-use buffers)
-                // it could generates a stall and consequently a frame drop, limiting the number of drawn bunnies
-                DrawTexture(&texBunny, bunny.position.x as i32, bunny.position.y as i32, bunny.color);
-            }
+        for bunny in &bunnies {
+            draw_texture(
+                &tex_bunny,
+                bunny.position.x as i32,
+                bunny.position.y as i32,
+                bunny.color,
+            );
+        }
 
-            DrawRectangle(0, 0, GetScreenWidth(), 40, Color::BLACK);
-            DrawText(&format!("bunnies: {}", bunnies.len() as i32), 120, 10, 20, Color::GREEN);
-            DrawText(&format!("batched draw calls!: {}", 1 + bunnies.len() as i32 / MAX_BATCH_ELEMENTS), 320, 10, 20, Color::MAROON);
+        draw_rectangle(0, 0, get_screen_width(), 40, BLACK);
+        draw_text(
+            &format!("bunnies: {}", bunnies.len() as i32),
+            120,
+            10,
+            20,
+            GREEN,
+        );
+        draw_text(
+            &format!(
+                "batched draw calls!: {}",
+                1 + bunnies.len() as i32 / MAX_BATCH_ELEMENTS
+            ),
+            320,
+            10,
+            20,
+            MAROON,
+        );
 
-            DrawFPS(10, 10);
+        draw_fps(10, 10);
 
-        EndDrawing();
-        //----------------------------------------------------------------------------------
+        end_drawing();
     }
 
     // De-Initialization
-    //--------------------------------------------------------------------------------------
-    UnloadTexture(&mut texBunny); // Unload bunny texture
+    unload_texture(&mut tex_bunny); // Unload bunny texture
 
-    CloseWindow(); // Close window and OpenGL context
-    //--------------------------------------------------------------------------------------
+    close_window(); // Close window and OpenGL context
 }
