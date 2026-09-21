@@ -74,7 +74,8 @@ fn main() {
     });
 
     let is_linux_like = target_os == "linux" || target_os == "freebsd";
-    let skip_download = no_download_flag || manual_libs_in_root.is_some() || is_linux_like;
+    let supports_download = target_os == "windows" || target_os == "android";
+    let skip_download = no_download_flag || manual_libs_in_root.is_some() || !supports_download;
 
     let cache_dir = match out_path
         .parent()
@@ -86,7 +87,6 @@ fn main() {
         None => out_path.join("sdl_cache"),
     };
 
-    let mut lib_path = None;
     let mut bin_path_opt = None;
 
     if skip_download {
@@ -95,7 +95,6 @@ fn main() {
                 "cargo:warning=[SDL3] Detected existing SDL3 files in project root ({}).",
                 root.display()
             );
-            lib_path = Some(root.clone());
             let dll_candidate = root.join("SDL3.dll");
             if dll_candidate.exists() {
                 bin_path_opt = Some(dll_candidate);
@@ -111,21 +110,24 @@ fn main() {
                     "cargo:warning=[SDL3] Please install SDL3 via your package manager (e.g., `sudo apt install libsdl3-dev` or `sudo dnf install libsdl3-devel`)."
                 );
             }
-            lib_path = None;
-        } else {
+        } else if no_download_flag {
             println!(
-                "cargo:warning=[SDL3] 'no_sdl_sdl' feature enabled. Skipping automatic download. Looking for manually placed libraries in project root."
+                "cargo:warning=[SDL3] 'no_dl_sdl' feature enabled. Skipping automatic download."
             );
             if let Some(root) = consumer_project_root {
-                lib_path = Some(root.to_path_buf());
                 let dll_candidate = root.join("SDL3.dll");
                 if dll_candidate.exists() {
                     bin_path_opt = Some(dll_candidate);
                 }
             }
+        } else {
+            println!(
+                "cargo:warning=[SDL3] Automatic SDL3 downloads are only supported for Windows and Android; skipping download for target OS '{}'.",
+                target_os
+            );
         }
     } else {
-        // Automatic Download & Extraction Logic (Windows, Android, macOS, etc.)
+        // Automatic download and extraction is only supported for Windows and Android.
         let is_cached = cache_dir.exists() && cache_dir.join("lib").exists();
 
         if !is_cached {
@@ -161,14 +163,12 @@ fn main() {
                     "sdl.zip",
                     true,
                 ),
-                _ => (
-                    format!(
-                        "https://github.com/libsdl-org/SDL/releases/download/release-{}/SDL3-{}.tar.gz",
-                        SDL_RELEASE_VERSION, SDL_RELEASE_VERSION
-                    ),
-                    "sdl.tar.gz",
-                    false,
-                ),
+                _ => {
+                    println!(
+                        "cargo:warn= SDL3 gh repo does not have compiled .so/.lib/.a files on linux/other platforms, skipping..."
+                    );
+                    return;
+                }
             };
 
             let archive_path = cache_dir.join(archive_name);
@@ -181,7 +181,12 @@ fn main() {
                 .args(["-L", "-o", &archive_path.to_string_lossy(), &url])
                 .status()
                 .expect("Failed to execute curl. Is curl installed?");
-            assert!(status.success(), "Download failed");
+            if !status.success() {
+                println!(
+                    "cargo:warning=[SDL3] Download failed with status {}.",
+                    status
+                );
+            }
 
             println!(
                 "cargo:warning=[SDL3] Extracting archive directly into: {}",
@@ -189,7 +194,7 @@ fn main() {
             );
 
             let host_triple = env::var("HOST").unwrap();
-            if is_zip || host_triple.contains("windows") && is_zip {
+            if is_zip {
                 if host_triple.contains("windows") {
                     let status = Command::new("powershell")
                         .args([
@@ -202,7 +207,12 @@ fn main() {
                         ])
                         .status()
                         .expect("Failed to extract zip via PowerShell");
-                    assert!(status.success(), "Extraction failed");
+                    if !status.success() {
+                        println!(
+                            "cargo:warning=[SDL3] PowerShell extraction failed with status {}.",
+                            status
+                        );
+                    }
                 } else {
                     let status = Command::new("unzip")
                         .args([
@@ -213,7 +223,12 @@ fn main() {
                         ])
                         .status()
                         .expect("Failed to execute unzip. Is unzip installed?");
-                    assert!(status.success(), "Extraction failed");
+                    if !status.success() {
+                        println!(
+                            "cargo:warning=[SDL3] unzip extraction failed with status {}.",
+                            status
+                        );
+                    }
                 }
             } else {
                 let status = Command::new("tar")
@@ -225,7 +240,12 @@ fn main() {
                     ])
                     .status()
                     .expect("Failed to execute tar. Is tar installed?");
-                assert!(status.success(), "Extraction failed");
+                if !status.success() {
+                    println!(
+                        "cargo:warning=[SDL3] tar extraction failed with status {}.",
+                        status
+                    );
+                }
             }
 
             // Flatten nested folder structure if present
@@ -246,8 +266,8 @@ fn main() {
             }
         }
 
-        // Resolve paths from cache
-        let (l_path, d_path) = if target_os == "windows" && target_env == "msvc" {
+        // Locate the runtime DLL for Windows. Android does not need a copied runtime file.
+        bin_path_opt = if target_os == "windows" && target_env == "msvc" {
             let arch_folder = match target_arch.as_str() {
                 "x86_64" => "x64",
                 "x86" => "x86",
@@ -259,32 +279,14 @@ fn main() {
                 cache_dir.join("bin").join(arch_folder).join("SDL3.dll"),
                 lp.join("SDL3.dll"),
             ];
-            (lp, bin_candidates.into_iter().find(|p| p.exists()))
-        } else if target_os == "android" {
-            let abi = match target_arch.as_str() {
-                "arm" | "armv7" => "armeabi-v7a",
-                "aarch64" => "arm64-v8a",
-                "x86" => "x86",
-                "x86_64" => "x86_64",
-                _ => panic!("Unsupported Android target architecture: {}", target_arch),
-            };
-            (cache_dir.join("lib").join(abi), None)
+            bin_candidates.into_iter().find(|p| p.exists())
+        } else if target_os == "windows" {
+            let dll = cache_dir.join("bin").join("SDL3.dll");
+            dll.exists().then_some(dll)
         } else {
-            let lp = cache_dir.join("lib");
-            let dp = cache_dir.join("bin").join("SDL3.dll");
-            (lp, if dp.exists() { Some(dp) } else { None })
+            None
         };
-
-        lib_path = Some(l_path);
-        bin_path_opt = d_path;
     }
-
-    // Configure Linker
-    if let Some(l_path) = lib_path {
-        println!("cargo:rustc-link-search=native={}", l_path.display());
-    }
-
-    println!("cargo:rustc-link-lib=dylib=SDL3");
 
     // Mirror DLL into target/debug or target/release if present (Windows)
     if let Some(bin_path) = bin_path_opt

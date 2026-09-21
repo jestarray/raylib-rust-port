@@ -86,6 +86,7 @@ SUPPORT_SPLINE_MITERS = []
 SUPPORT_SPLINE_SEGMENT_CAPS = []
 NO_DL_SDL = []
 BUILD_SDL_FROM_SOURCE = ["sdl3-sys/build-from-source"]
+SDL_NO_LINK = ["sdl3-sys/no-link"]
 
  # multithreading but image recommends library crates optionally enable this
 IMAGE_RAYON = ["image/rayon"]
