@@ -17,7 +17,7 @@
 use std::{ffi::{CString, c_char}, path::Path};
 
 use crate::{
-    math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{rlGetVersion, rlGlVersion}, rtextures::{ExportImage, initialize_missing_texture}, types::{Color, Image, Matrix, RAYLIB_VERSION, Texture2D, Vector2},
+    math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{rlGetVersion, rlGlVersion}, rtextures::{ExportImage, init_missing_texture}, types::{Color, Image, Matrix, RAYLIB_VERSION, Texture2D, Vector2},
 };
 use crate::rcore_desktop_sdl::*;
 
@@ -300,7 +300,7 @@ pub static mut CORE: CoreData = CoreData {
 
 use std::ffi::{c_void, CStr};
 use std::fmt::Write;
-use log::{info, warn};
+use log::{error, info, warn};
 use crate::math::DEG2RAD;
 use crate::rlgl::*;
 use crate::types::{AutomationEvent, AutomationEventList, BlendMode, Camera, Camera2D, CameraProjection, ConfigFlags, GamepadAxis, GamepadButton, KeyboardKey, MouseButton, MouseCursor, Quaternion, Ray, RenderTexture2D, Shader, ShaderLocationIndex, TraceLogLevel, Vector3, VrDeviceInfo, VrStereoConfig};
@@ -511,7 +511,7 @@ pub unsafe fn InitWindow(width: i32, height: i32, title: &str)
 
     if (result != 0)
     {
-        warn!("SYSTEM: Failed to initialize platform");
+        error!("SYSTEM: Failed to initialize platform");
         return;
     }
 
@@ -532,7 +532,7 @@ pub unsafe fn InitWindow(width: i32, height: i32, title: &str)
 
     // Setup default viewport
     SetupViewport(CORE.Window.render.x as i32, CORE.Window.render.y as i32);
-    initialize_missing_texture();
+    init_missing_texture();
 
 #[cfg(feature = "SUPPORT_MODULE_RTEXT")]
 {

@@ -24,7 +24,6 @@ default = ["DESKTOP_DEFAULTS"]
 # look in raylib config.h and make sure they match for reasonably good defaults
 DESKTOP_DEFAULTS = [
     "GRAPHICS_API_OPENGL_33", 
-    "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT", 
     "SUPPORT_WINMM_HIGHRES_TIMER", 
     "SUPPORT_PARTIALBUSY_WAIT_LOOP", 
     "SUPPORT_MODULE_RTEXT",
@@ -52,7 +51,6 @@ GRAPHICS_API_OPENGL_43 = ["GRAPHICS_API_OPENGL_33"]
 GRAPHICS_API_OPENGL_ES2 = []
 GRAPHICS_API_OPENGL_ES3 = ["GRAPHICS_API_OPENGL_ES2"]
 RLGL_SHOW_GL_DETAILS_INFO = [] # prints all loaded extensions,etc, very verbose
-RLGL_ENABLE_OPENGL_DEBUG_CONTEXT = [] # useless without GRAPHICS_API_OPENGL_43 turned on
 
 PICO_RP2350 = []
 PLATFORM_ANDROID = []

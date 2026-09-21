@@ -1742,10 +1742,6 @@ pub unsafe fn InitPlatform() -> i32
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE.0);
-    #[cfg(feature = "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT")]
-    {
-            SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG.0);   // Enable OpenGL Debug Context
-    }
         }
         else if (rlGetVersion() == RL_OPENGL_ES_20)                 // Request OpenGL ES 2.0 context
         {
@@ -1764,6 +1760,10 @@ pub unsafe fn InitPlatform() -> i32
         {
             SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
             SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+        }
+        if (((CORE.Window.flags & FLAG_GL_CONTEXT_DEBUG as u32) != 0))
+        {
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG.0);   // Enable OpenGL Debug Context
         }
     }
 

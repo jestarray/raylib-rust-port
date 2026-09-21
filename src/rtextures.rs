@@ -684,7 +684,7 @@ pub static mut MISSING_TEXTURE: Texture = Texture { id: 0, width: 0, height: 0, 
 /// 
 /// # Safety
 /// Calls unsafe OpenGL FFI functions. An active OpenGL context must be bound on the calling thread.
-pub unsafe fn initialize_missing_texture() {
+pub unsafe fn init_missing_texture() {
     let magenta: [u8; 4] = [255, 0, 255, 255];
     let black: [u8; 4]   = [0, 0, 0, 255];
 

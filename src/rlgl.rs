@@ -1495,7 +1495,7 @@ pub unsafe fn rlSetBlendFactorsSeparate(glSrcRGB: i32, glDstRGB: i32, glSrcAlpha
 //----------------------------------------------------------------------------------
 // Module Functions Definition - OpenGL Debug
 //----------------------------------------------------------------------------------
-#[cfg(all(feature = "GRAPHICS_API_OPENGL_43", feature = "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"))]
+#[allow(clippy::not_unsafe_ptr_arg_deref)] //otherwise we get compile error
 pub extern "system" fn rlDebugMessageCallback(source: u32, type_: u32, id: u32, severity: u32, length: i32, message: *const c_char, userParam: *mut c_void)
 {
     // Ignore non-significant error/warning codes (NVidia drivers)
@@ -1559,22 +1559,6 @@ pub extern "system" fn rlDebugMessageCallback(source: u32, type_: u32, id: u32, 
 pub unsafe fn rlglInit(width: i32, height: i32)
 {
     IS_GPU_READY = true;
-
-    // Enable OpenGL debug context if requested (and supported)
-    #[cfg(all(feature = "GRAPHICS_API_OPENGL_43", feature = "RLGL_ENABLE_OPENGL_DEBUG_CONTEXT"))]
-    {
-        if gl::DebugMessageCallback::is_loaded() && gl::DebugMessageControl::is_loaded()
-        {
-            gl::DebugMessageCallback(Some(rlDebugMessageCallback), null());
-            // glDebugMessageControl(GL_DEBUG_SOURCE_API, GL_DEBUG_TYPE_ERROR, GL_DEBUG_SEVERITY_HIGH, 0, 0, GL_TRUE);
-
-            // Debug context options:
-            //  - GL_DEBUG_OUTPUT - Faster version but not useful for breakpoints
-            //  - GL_DEBUG_OUTPUT_SYNCHRONUS - Callback is in sync with errors, so a breakpoint can be placed on the callback in order to get a stacktrace for the GL error
-            gl::Enable(gl::DEBUG_OUTPUT);
-            gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
-        }
-    }
 
     // Init default white texture
     let pixels: [u8; 4] = [ 255, 255, 255, 255 ];   // 1 pixel RGBA (4 bytes)
@@ -1878,6 +1862,23 @@ pub unsafe fn rlLoadExtensions(loader: *mut c_void)
         if RLGL.ExtSupported.texCompASTC { info!("GL: ASTC compressed textures supported"); }
         if RLGL.ExtSupported.computeShader { info!("GL: Compute shaders supported"); }
         if RLGL.ExtSupported.ssbo { info!("GL: Shader storage buffer objects supported"); }
+    }
+    // Enable OpenGL debug context if requested (and supported)
+    let mut windowEnabledDebugHint = 0;
+    gl::GetIntegerv(gl::CONTEXT_FLAGS, &mut windowEnabledDebugHint);
+    if (windowEnabledDebugHint & gl::CONTEXT_FLAG_DEBUG_BIT as i32) != 0 {
+        if gl::DebugMessageCallback::is_loaded() && gl::DebugMessageControl::is_loaded()
+        {
+            gl::DebugMessageCallback(Some(rlDebugMessageCallback), null());
+            gl::DebugMessageControl(gl::DONT_CARE, gl::DONT_CARE, gl::DONT_CARE, 0, std::ptr::null(), gl::TRUE); // show everything
+            //gl::DebugMessageControl(gl::DEBUG_SOURCE_API, gl::DEBUG_TYPE_ERROR, gl::DEBUG_SEVERITY_HIGH, 0, std::ptr::null(), gl::TRUE); // only show high severity and errors
+
+            // Debug context options:
+            //  - GL_DEBUG_OUTPUT - Faster version but not useful for breakpoints
+            //  - GL_DEBUG_OUTPUT_SYNCHRONUS - Callback is in sync with errors, so a breakpoint can be placed on the callback in order to get a stacktrace for the GL error
+            gl::Enable(gl::DEBUG_OUTPUT);
+            gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
+        }
     }
 }
 
