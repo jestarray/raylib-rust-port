@@ -19,7 +19,7 @@ use std::{ffi::{CString, c_char}, path::Path};
 use crate::{
     math::{QuaternionTransform, Vector3Transform, Vector3Unproject}, rlgl::{rlGetVersion, rlGlVersion}, rtextures::{ExportImage, init_missing_texture}, types::{Color, Image, Matrix, RAYLIB_VERSION, Texture2D, Vector2},
 };
-use crate::rcore_desktop_sdl::*;
+use crate::rsdl::*;
 
 pub const MAX_TRACELOG_MSG_LENGTH: usize = 256;
 pub const MAX_FILEPATH_CAPACITY: usize = 8192;
