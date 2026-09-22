@@ -47,6 +47,9 @@ mod rtext;
 #[allow(dead_code)]
 mod rtextures;
 
+// re-exports
+pub use glam;
+
 #[cfg(test)]
 mod tests {
     use crate::rcore::WindowData;

@@ -15,11 +15,13 @@
     clippy::double_parens,
 )]
 use crate::rcore::LoadFileData;
-use crate::rlgl::{RL_QUADS, rlBegin, rlColor4ub, rlEnd, rlLoadTexture, rlPopMatrix, rlPushMatrix, rlRotatef, rlSetTexture, rlTexCoord2f, rlTranslatef, rlUnloadTexture, rlVertex2f};
-use crate::types::{Color, Image, NPatchInfo, NPatchLayout, PixelFormat, Rectangle, Texture, Vector2};
+use crate::rlgl::{RL_QUADS, RL_TEXTURE_FILTER_ANISOTROPIC, RL_TEXTURE_FILTER_LINEAR, RL_TEXTURE_FILTER_LINEAR_MIP_NEAREST, RL_TEXTURE_FILTER_MIP_LINEAR, RL_TEXTURE_FILTER_MIP_NEAREST, RL_TEXTURE_FILTER_NEAREST, RL_TEXTURE_MAG_FILTER, RL_TEXTURE_MIN_FILTER, RL_TEXTURE_WRAP_CLAMP, RL_TEXTURE_WRAP_MIRROR_CLAMP, RL_TEXTURE_WRAP_MIRROR_REPEAT, RL_TEXTURE_WRAP_REPEAT, RL_TEXTURE_WRAP_S, RL_TEXTURE_WRAP_T, rlBegin, rlColor4ub, rlEnd, rlGenTextureMipmaps, rlLoadTexture, rlPopMatrix, rlPushMatrix, rlReadTexturePixels, rlRotatef, rlSetTexture, rlTexCoord2f, rlTextureParameters, rlTranslatef, rlUnloadTexture, rlUpdateTexture, rlVertex2f};
+use crate::types::{TextureFilter, TextureWrap};
+use crate::types::{Color, Image, NPatchInfo, NPatchLayout, PixelFormat, Rectangle, Texture, Texture2D, Vector2};
+use std::ffi::c_void;
 use std::path::Path;
 use image::ImageReader;
-use log::{warn};
+use log::{info, warn};
 use crate::types::PixelFormat::*;
 
 #[allow(non_snake_case)]
@@ -347,6 +349,214 @@ pub fn UnloadTexture(texture: &mut Texture) {
         rlUnloadTexture(texture.id);
         texture.id = 0;
     }
+}
+// Update GPU texture with new data
+// NOTE 1: pixels data must match texture.format
+// NOTE 2: pixels data must contain at least as many pixels as texture
+pub unsafe fn UpdateTexture(texture: Texture2D, pixels: &[u8])
+{
+    rlUpdateTexture(
+        texture.id,
+        0,
+        0,
+        texture.width,
+        texture.height,
+        texture.format,
+        pixels.as_ptr() as *const c_void,
+    );
+}
+
+// Update GPU texture rectangle with new data
+// NOTE 1: pixels data must match texture.format
+// NOTE 2: pixels data must contain as many pixels as rec contains
+// NOTE 3: rec must fit completely within texture's width and height
+pub unsafe fn UpdateTextureRec(texture: Texture2D, rec: Rectangle, pixels: &[u8])
+{
+    rlUpdateTexture(
+        texture.id,
+        rec.x as i32,
+        rec.y as i32,
+        rec.width as i32,
+        rec.height as i32,
+        texture.format,
+        pixels.as_ptr() as *const c_void,
+    );
+}
+
+//------------------------------------------------------------------------------------
+// Texture configuration functions
+//------------------------------------------------------------------------------------
+// Generate GPU mipmaps for a texture
+pub unsafe fn GenTextureMipmaps(texture: &mut Texture2D)
+{
+    // NOTE: NPOT textures support check inside function
+    // On WebGL (OpenGL ES 2.0) NPOT textures support is limited
+    rlGenTextureMipmaps(
+        texture.id,
+        texture.width,
+        texture.height,
+        texture.format,
+        &mut texture.mipmaps,
+    );
+}
+
+// Set texture scaling filter mode
+pub unsafe fn SetTextureFilter(texture: Texture2D, filter: i32)
+{
+    if filter == TextureFilter::TEXTURE_FILTER_POINT as i32
+    {
+        if texture.mipmaps > 1
+        {
+            // RL_TEXTURE_FILTER_MIP_NEAREST - tex filter: POINT, mipmaps filter: POINT (sharp switching between mipmaps)
+            rlTextureParameters(texture.id, RL_TEXTURE_MIN_FILTER as i32, RL_TEXTURE_FILTER_MIP_NEAREST as i32);
+
+            // RL_TEXTURE_FILTER_NEAREST - tex filter: POINT (no filter), no mipmaps
+            rlTextureParameters(texture.id, RL_TEXTURE_MAG_FILTER as i32, RL_TEXTURE_FILTER_NEAREST as i32);
+        }
+        else
+        {
+            // RL_TEXTURE_FILTER_NEAREST - tex filter: POINT (no filter), no mipmaps
+            rlTextureParameters(texture.id, RL_TEXTURE_MIN_FILTER as i32, RL_TEXTURE_FILTER_NEAREST as i32);
+            rlTextureParameters(texture.id, RL_TEXTURE_MAG_FILTER as i32, RL_TEXTURE_FILTER_NEAREST as i32);
+        }
+    }
+    else if filter == TextureFilter::TEXTURE_FILTER_BILINEAR as i32
+    {
+        if texture.mipmaps > 1
+        {
+            // RL_TEXTURE_FILTER_LINEAR_MIP_NEAREST - tex filter: BILINEAR, mipmaps filter: POINT (sharp switching between mipmaps)
+            // Alternative: RL_TEXTURE_FILTER_NEAREST_MIP_LINEAR - tex filter: POINT, mipmaps filter: BILINEAR (smooth transition between mipmaps)
+            rlTextureParameters(texture.id, RL_TEXTURE_MIN_FILTER as i32, RL_TEXTURE_FILTER_LINEAR_MIP_NEAREST as i32);
+
+            // RL_TEXTURE_FILTER_LINEAR - tex filter: BILINEAR, no mipmaps
+            rlTextureParameters(texture.id, RL_TEXTURE_MAG_FILTER as i32, RL_TEXTURE_FILTER_LINEAR as i32);
+        }
+        else
+        {
+            // RL_TEXTURE_FILTER_LINEAR - tex filter: BILINEAR, no mipmaps
+            rlTextureParameters(texture.id, RL_TEXTURE_MIN_FILTER as i32, RL_TEXTURE_FILTER_LINEAR as i32);
+            rlTextureParameters(texture.id, RL_TEXTURE_MAG_FILTER as i32, RL_TEXTURE_FILTER_LINEAR as i32);
+        }
+    }
+    else if filter == TextureFilter::TEXTURE_FILTER_TRILINEAR as i32
+    {
+        if texture.mipmaps > 1
+        {
+            // RL_TEXTURE_FILTER_MIP_LINEAR - tex filter: BILINEAR, mipmaps filter: BILINEAR (smooth transition between mipmaps)
+            rlTextureParameters(texture.id, RL_TEXTURE_MIN_FILTER as i32, RL_TEXTURE_FILTER_MIP_LINEAR as i32);
+
+            // RL_TEXTURE_FILTER_LINEAR - tex filter: BILINEAR, no mipmaps
+            rlTextureParameters(texture.id, RL_TEXTURE_MAG_FILTER as i32, RL_TEXTURE_FILTER_LINEAR as i32);
+        }
+        else
+        {
+            warn!(
+                "TEXTURE: [ID {}] No mipmaps available for TRILINEAR texture filtering",
+                texture.id,
+            );
+
+            // RL_TEXTURE_FILTER_LINEAR - tex filter: BILINEAR, no mipmaps
+            rlTextureParameters(texture.id, RL_TEXTURE_MIN_FILTER as i32, RL_TEXTURE_FILTER_LINEAR as i32);
+            rlTextureParameters(texture.id, RL_TEXTURE_MAG_FILTER as i32, RL_TEXTURE_FILTER_LINEAR as i32);
+        }
+    }
+    else if filter == TextureFilter::TEXTURE_FILTER_ANISOTROPIC_4X as i32
+    {
+        rlTextureParameters(texture.id, RL_TEXTURE_FILTER_ANISOTROPIC as i32, 4);
+    }
+    else if filter == TextureFilter::TEXTURE_FILTER_ANISOTROPIC_8X as i32
+    {
+        rlTextureParameters(texture.id, RL_TEXTURE_FILTER_ANISOTROPIC as i32, 8);
+    }
+    else if filter == TextureFilter::TEXTURE_FILTER_ANISOTROPIC_16X as i32
+    {
+        rlTextureParameters(texture.id, RL_TEXTURE_FILTER_ANISOTROPIC as i32, 16);
+    }
+    // default: break;
+}
+pub unsafe fn SetTextureWrap(texture: Texture2D, wrap: i32)
+{
+    if wrap == TextureWrap::TEXTURE_WRAP_REPEAT as i32
+    {
+        // NOTE: It only works if NPOT textures are supported, i.e. OpenGL ES 2.0 could not support it
+        rlTextureParameters(texture.id, RL_TEXTURE_WRAP_S as i32, RL_TEXTURE_WRAP_REPEAT as i32);
+        rlTextureParameters(texture.id, RL_TEXTURE_WRAP_T as i32, RL_TEXTURE_WRAP_REPEAT as i32);
+    }
+    else if wrap == TextureWrap::TEXTURE_WRAP_CLAMP as i32
+    {
+        rlTextureParameters(texture.id, RL_TEXTURE_WRAP_S as i32, RL_TEXTURE_WRAP_CLAMP as i32);
+        rlTextureParameters(texture.id, RL_TEXTURE_WRAP_T as i32, RL_TEXTURE_WRAP_CLAMP as i32);
+    }
+    else if wrap == TextureWrap::TEXTURE_WRAP_MIRROR_REPEAT as i32
+    {
+        rlTextureParameters(texture.id, RL_TEXTURE_WRAP_S as i32, RL_TEXTURE_WRAP_MIRROR_REPEAT as i32);
+        rlTextureParameters(texture.id, RL_TEXTURE_WRAP_T as i32, RL_TEXTURE_WRAP_MIRROR_REPEAT as i32);
+    }
+    else if wrap == TextureWrap::TEXTURE_WRAP_MIRROR_CLAMP as i32
+    {
+        rlTextureParameters(texture.id, RL_TEXTURE_WRAP_S as i32, RL_TEXTURE_WRAP_MIRROR_CLAMP as i32);
+        rlTextureParameters(texture.id, RL_TEXTURE_WRAP_T as i32, RL_TEXTURE_WRAP_MIRROR_CLAMP as i32);
+    }
+    // default: break;
+}
+
+pub unsafe fn LoadImageFromTexture(texture: Texture2D) -> Image
+{
+    let mut image = Image::default();
+
+    if (texture.format as i32) < (PIXELFORMAT_COMPRESSED_DXT1_RGB as i32)
+    {
+        image.data = rlReadTexturePixels(texture.id, texture.width, texture.height, texture.format);
+
+        if !image.is_data_null()
+        {
+            image.width  = texture.width;
+            image.height = texture.height;
+            #[cfg(feature = "FBO_READ_TEXTURE_AS_RGBA")]
+            {
+                // WARNING: On OpenGL ES 2.0/WebGL 1.0, there is no glGetTexImage() so,
+                // texture data is retrieved by creating an RGBA fbo, binding the texture
+                // to the fbo color attachment, and reading it as RGBA data with glReadPixels()
+                // Returned data *should* be RGBA but it seems on some platforms (RPI, WASM)
+                // original texture format is retrieved, so adding a define for this patch
+                image.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+            }
+            #[cfg(not(feature = "FBO_READ_TEXTURE_AS_RGBA"))]
+            {
+                image.format = texture.format;
+            }
+            image.mipmaps = 1;
+
+            info!("TEXTURE: [ID {}] Pixel data retrieved successfully", texture.id);
+        }
+        else
+        {
+            warn!("TEXTURE: [ID {}] Failed to retrieve pixel data", texture.id);
+        }
+    }
+    else
+    {
+        warn!("TEXTURE: [ID {}] Failed to retrieve compressed pixel data", texture.id);
+    }
+
+    return image;
+}
+
+#[allow(non_snake_case)]
+pub fn IsTextureValid(texture: Texture2D) -> bool
+{
+    let mut result: bool = false;
+
+    if (texture.id > 0) &&          // Validate OpenGL id (texture uploaded to GPU)
+       (texture.width > 0) &&       // Validate texture width
+       (texture.height > 0) &&      // Validate texture height
+       (texture.format > 0) &&      // Validate texture pixel format
+       (texture.mipmaps > 0)        // Validate texture mipmaps (at least 1 for basic mipmap level)
+    {
+        result = true;
+    }
+
+    return result;
 }
 
 // Draw a texture

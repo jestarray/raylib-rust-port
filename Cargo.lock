@@ -490,6 +490,9 @@ name = "glam"
 version = "0.33.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0990707078259d76f65619a692e87c82645be66cbee224173cd1af151e54ba2"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "half"
@@ -1039,6 +1042,7 @@ dependencies = [
  "image",
  "log",
  "sdl3-sys",
+ "serde",
  "strum",
  "strum_macros",
  "swash",
@@ -1146,6 +1150,16 @@ dependencies = [
  "rpkg-config",
  "sdl3-src",
  "vcpkg",
+]
+
+[[package]]
+name = "serde"
+version = "1.0.229"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
+dependencies = [
+ "serde_core",
+ "serde_derive",
 ]
 
 [[package]]

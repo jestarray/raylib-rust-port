@@ -12,7 +12,7 @@ use std::path::Path;
 
 use crate::rtextures::*;
 use crate::safe::core::path_to_str;
-use crate::types::{Color, Image, NPatchInfo, PixelFormat, Rectangle, Texture, Vector2};
+use crate::types::{Color, Image, NPatchInfo, PixelFormat, Rectangle, Texture, Texture2D, TextureFilter, TextureWrap, Vector2};
 
 pub fn get_pixel_data_size(width: i32, height: i32, format: PixelFormat) -> i32 {
     GetPixelDataSize(width, height, format as i32)
@@ -33,6 +33,14 @@ pub fn load_image<P: AsRef<Path>>(file_path: P) -> Image {
 /// The data size is derived from `file_data.len()`.
 pub fn load_image_from_memory(file_ext: &str, file_data: &[u8]) -> Image {
     LoadImageFromMemory(file_ext, file_data, file_data.len() as i32)
+}
+
+pub fn load_image_from_texture(texture: Texture2D) -> Image {
+    unsafe { LoadImageFromTexture(texture) }
+}
+
+pub fn is_texture_valid(texture: Texture2D) -> bool {
+    IsTextureValid(texture)
 }
 
 pub fn is_image_valid(image: &Image) -> bool {
@@ -66,9 +74,18 @@ pub fn unload_texture(texture: &mut Texture) {
     UnloadTexture(texture)
 }
 
+pub fn update_texture(texture: Texture2D, pixels: &[u8]) { unsafe { UpdateTexture(texture, pixels) } }
+
+pub fn update_texture_rec(texture: Texture2D, rec: Rectangle, pixels: &[u8]) { unsafe { UpdateTextureRec(texture, rec, pixels) } }
+
+pub fn gen_texture_mipmaps(texture: &mut Texture2D) { unsafe { GenTextureMipmaps(texture) } }
+
+pub fn set_texture_filter(texture: Texture2D, filter: TextureFilter) { unsafe { SetTextureFilter(texture, filter as i32) } }
+
 pub fn draw_texture(texture: &Texture, pos_x: i32, pos_y: i32, tint: Color) {
     DrawTexture(texture, pos_x, pos_y, tint)
 }
+pub fn set_texture_wrap(texture: Texture2D, wrap: TextureWrap) { unsafe { SetTextureWrap(texture, wrap as i32) } }
 
 pub fn draw_texture_v(texture: &Texture, pos: Vector2, tint: Color) {
     DrawTextureV(texture, pos, tint)

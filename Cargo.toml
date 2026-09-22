@@ -8,7 +8,7 @@ name = "raylib"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-glam = "0.33"
+glam = { version = "0.33" }
 sdl3-sys = { version = "0.7.1", features = []}
 gl = "0.14.0"
 log = { version = "0.4" }
@@ -17,6 +17,7 @@ strum = "0.28"
 strum_macros = "0.28"
 image = { version = "0.25.10", default-features = false } # todo: re-export more configurable feature flags
 swash = { version = "0.2.10"}
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 [features]
 default = ["DESKTOP_DEFAULTS"]
@@ -79,6 +80,7 @@ SUPPORT_SPLINE_SEGMENT_CAPS = []
 NO_DL_SDL = []
 BUILD_SDL_FROM_SOURCE = ["sdl3-sys/build-from-source"]
 SDL_NO_LINK = ["sdl3-sys/no-link"]
+serde = ["dep:serde", "glam/serde"]
 
  # multithreading but image recommends library crates optionally enable this
 IMAGE_RAYON = ["image/rayon"]

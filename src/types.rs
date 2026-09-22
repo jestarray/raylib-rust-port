@@ -1,6 +1,8 @@
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use image::ColorType;
 
+use crate::textures::*;
+
 pub type Vector2 = Vec2;
 pub type Vector3 = Vec3;
 pub type Vector4 = Vec4;
@@ -14,6 +16,7 @@ pub type Quaternion = Vec4;
 pub type Matrix = Mat4;
 
 pub const RAYLIB_VERSION: &str = "6.1-dev";
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(C)]
 pub struct Color {
@@ -26,13 +29,62 @@ pub struct Color {
 impl Color {
     pub const ZERO: Self = Self::new(0, 0, 0, 0);
     pub const TRANS: Self = Self::ZERO;
-    pub const WHITE: Self = Self::new(255, 255, 255, 255);
-    pub const BLACK: Self = Self::new(0, 0, 0, 255);
+    pub const LIGHTGRAY: Color = Color::new(200, 200, 200, 255);
+    pub const GRAY: Color = Color::new(130, 130, 130, 255);
+    pub const DARKGRAY: Color = Color::new(80, 80, 80, 255);
+    pub const YELLOW: Color = Color::new(253, 249, 0, 255);
+    pub const GOLD: Color = Color::new(255, 203, 0, 255);
+    pub const ORANGE: Color = Color::new(255, 161, 0, 255);
+    pub const PINK: Color = Color::new(255, 109, 194, 255);
+    pub const RED: Color = Color::new(230, 41, 55, 255);
+    pub const MAROON: Color = Color::new(190, 33, 55, 255);
+    pub const GREEN: Color = Color::new(0, 228, 48, 255);
+    pub const LIME: Color = Color::new(0, 158, 47, 255);
+    pub const DARKGREEN: Color = Color::new(0, 117, 44, 255);
+    pub const SKYBLUE: Color = Color::new(102, 191, 255, 255);
+    pub const BLUE: Color = Color::new(0, 121, 241, 255);
+    pub const DARKBLUE: Color = Color::new(0, 82, 172, 255);
+    pub const PURPLE: Color = Color::new(200, 122, 255, 255);
+    pub const VIOLET: Color = Color::new(135, 60, 190, 255);
+    pub const DARKPURPLE: Color = Color::new(112, 31, 126, 255);
+    pub const BEIGE: Color = Color::new(211, 176, 131, 255);
+    pub const BROWN: Color = Color::new(127, 106, 79, 255);
+    pub const DARKBROWN: Color = Color::new(76, 63, 47, 255);
+    pub const WHITE: Color = Color::new(255, 255, 255, 255);
+    pub const BLACK: Color = Color::new(0, 0, 0, 255);
+    pub const BLANK: Color = Color::new(0, 0, 0, 0);
+    pub const MAGENTA: Color = Color::new(255, 0, 255, 255);
+    pub const RAYWHITE: Color = Color::new(245, 245, 245, 255);
     pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }
+    #[inline(always)]
+    #[must_use]
+    pub fn with_a(self, a: u8) -> Self {
+        Self {
+            r: self.r,
+            g: self.g,
+            b: self.b,
+            a,
+        }
+    }
+    pub const fn int_to_color(color: u32) -> Self {
+        Self {
+            r: ((color >> 24) & 0xFF) as u8,
+            g: ((color >> 16) & 0xFF) as u8,
+            b: ((color >> 8) & 0xFF) as u8,
+            a: (color & 0xFF) as u8,
+        }
+    }
 }
 
+#[inline(always)]
+#[must_use]
+pub const fn rcolor(r: u8, g: u8, b: u8, a: u8) -> Color {
+    Color::new(r, g, b, a)
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 #[repr(C)]
 pub struct Rectangle {
@@ -43,7 +95,11 @@ pub struct Rectangle {
 }
 
 impl Rectangle {
-    pub fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
+    pub const ZERO: Self = Rectangle::new(0.0, 0.0, 0.0, 0.0);
+    /// Creates a new rectangle from position and size.
+    #[must_use]
+    #[inline(always)]
+    pub const fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
         Self {
             x,
             y,
@@ -51,8 +107,250 @@ impl Rectangle {
             height,
         }
     }
+
+    /// Creates a rectangle from position and size vectors.
+    #[must_use]
+    #[inline(always)]
+    pub fn v2(pos: Vector2, dims: Vector2) -> Self {
+        Self {
+            x: pos.x,
+            y: pos.y,
+            width: dims.x,
+            height: dims.y,
+        }
+    }
+
+    /// Returns the position as a `Vector2`.
+    /// Alt name: [Self::pos]
+    #[must_use]
+    #[inline(always)]
+    pub const fn xy(self) -> Vector2 {
+        Vector2 {
+            x: self.x,
+            y: self.y,
+        }
+    }
+
+    /// Returns the position as a `Vector2`.
+    #[must_use]
+    #[inline(always)]
+    /// Alt name: [Self::xy]
+    pub const fn pos(self) -> Vector2 {
+        self.xy()
+    }
+
+    /// Returns the width & height as a `Vector2`.
+    #[must_use]
+    #[inline(always)]
+    pub const fn size(self) -> Vector2 {
+        Vector2 {
+            x: self.width,
+            y: self.height,
+        }
+    }
+
+    /// Returns the bottom right corner by adding x&y to w&h
+    #[must_use]
+    #[inline(always)]
+    pub const fn max(self) -> Vector2 {
+        Vector2 {
+            x: self.x + self.width,
+            y: self.y + self.height,
+        }
+    }
+
+    #[must_use]
+    #[inline(always)]
+    /// Returns the half the width & height as a `Vector2`.
+    pub fn half_size(self) -> Vector2 {
+        self.size() / 2.0
+    }
+
+    /// Returns a copy with changed x & y given the vector
+    #[must_use]
+    #[inline(always)]
+    pub fn with_pos(self, pos: Vector2) -> Self {
+        Self {
+            x: pos.x,
+            y: pos.y,
+            width: self.width,
+            height: self.height,
+        }
+    }
+    /// Returns a copy with the given `x` and `y`.
+    #[must_use]
+    #[inline(always)]
+    pub const fn with_xy(self, x: f32, y: f32) -> Self {
+        Self {
+            x,
+            y,
+            width: self.width,
+            height: self.height,
+        }
+    }
+
+    /// Returns a copy with changed width & height given the vector
+    #[must_use]
+    #[inline(always)]
+    pub fn with_size(self, size: Vector2) -> Self {
+        Self {
+            x: self.x,
+            y: self.y,
+            width: size.x,
+            height: size.y,
+        }
+    }
+
+    /// Returns a copy with the given `width` and `height`.
+    #[must_use]
+    #[inline(always)]
+    pub const fn with_wh(self, width: f32, height: f32) -> Self {
+        Self {
+            x: self.x,
+            y: self.y,
+            width,
+            height,
+        }
+    }
+
+    /// Check collision between two rectangles
+    /// Shorter alias name: [Self::overlap]
+    #[inline(always)]
+    #[must_use]
+    pub fn check_collision_recs(self, other: Rectangle) -> bool {
+        //unsafe { ffi::CheckCollisionRecs(self.into(), other.into()) }
+        let rec1 = self;
+        let rec2 = other;
+        (rec1.x < (rec2.x + rec2.width) && (rec1.x + rec1.width) > rec2.x)
+            && (rec1.y < (rec2.y + rec2.height) && (rec1.y + rec1.height) > rec2.y)
+    }
+
+    /// Check collision between two rectangles
+    /// Alias of [Self::check_collision_recs]
+    /// Use [Self::get_overlap_area] if you want the region of collision
+    #[inline(always)]
+    #[must_use]
+    pub fn overlap(self, other: Rectangle) -> bool {
+        self.check_collision_recs(other)
+    }
+
+    /// Checks collision between circle and rectangle.
+    /// Shorter alias name: [Self::overlaps_circle]
+    #[inline(always)]
+    #[must_use]
+    pub fn check_collision_circle_rec(self, center: Vector2, radius: f32) -> bool {
+        //unsafe { ffi::CheckCollisionCircleRec(center.into(), radius, self.into()) }
+        let rec = self;
+        let collision;
+
+        let rec_center_x = rec.x + rec.width / 2.0;
+        let rec_center_y = rec.y + rec.height / 2.0;
+
+        let dx = (center.x - rec_center_x).abs();
+        let dy = (center.y - rec_center_y).abs();
+
+        if dx > (rec.width / 2.0 + radius) {
+            return false;
+        }
+        if dy > (rec.height / 2.0 + radius) {
+            return false;
+        }
+
+        if dx <= (rec.width / 2.0) {
+            return true;
+        }
+        if dy <= (rec.height / 2.0) {
+            return true;
+        }
+
+        let corner_distance_sq = (dx - rec.width / 2.0) * (dx - rec.width / 2.0)
+            + (dy - rec.height / 2.0) * (dy - rec.height / 2.0);
+
+        collision = corner_distance_sq <= (radius * radius);
+
+        return collision;
+    }
+
+    #[inline(always)]
+    #[must_use]
+    /// Checks collision between circle and rectangle.
+    /// alias for [Self::check_collision_circle_rec]
+    pub fn overlaps_circle(self, center: Vector2, radius: f32) -> bool {
+        self.check_collision_circle_rec(center, radius)
+    }
+
+    /// Checks if point is inside rectangle.
+    /// Shorter alias name: [Self::contains_point]
+    #[inline(always)]
+    #[must_use]
+    pub fn check_collision_point_rec(self, point: Vector2) -> bool {
+        (point.x >= self.x)
+            && (point.x < (self.x + self.width))
+            && (point.y >= self.y)
+            && (point.y < (self.y + self.height))
+    }
+
+    /// Checks if point is inside rectangle.
+    /// alias for [Self::check_collision_point_rec]
+    #[inline(always)]
+    #[must_use]
+    pub fn contains_point(self, point: Vector2) -> bool {
+        self.check_collision_point_rec(point)
+    }
+    /// Gets the overlap between two colliding rectangles.
+    /// Shorter alias name: [Self::get_overlap_area]
+    /// ```rust
+    /// use raylib::core::math::Rectangle;
+    /// let r1 = Rectangle::new(0.0, 0.0, 10.0, 10.0);
+    /// let r2 = Rectangle::new(20.0, 20.0, 10.0, 10.0);
+    /// assert_eq!(None, r1.get_collision_rec(r2));
+    /// assert_eq!(Some(r1), r1.get_collision_rec(r1));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn get_collision_rec(self, other: Rectangle) -> Option<Self> {
+        //unsafe { ffi::GetCollisionRec(self.into(), other.into()) }
+        let rec1 = self;
+        let rec2 = other;
+
+        let left = if rec1.x > rec2.x { rec1.x } else { rec2.x };
+        let right1 = rec1.x + rec1.width;
+        let right2 = rec2.x + rec2.width;
+        let right = if right1 < right2 { right1 } else { right2 };
+        let top = if rec1.y > rec2.y { rec1.y } else { rec2.y };
+        let bottom1 = rec1.y + rec1.height;
+        let bottom2 = rec2.y + rec2.height;
+        let bottom = if bottom1 < bottom2 { bottom1 } else { bottom2 };
+
+        if (left < right) && (top < bottom) {
+            let overlap = Rectangle::new(left, top, right - left, bottom - top);
+            return Some(overlap);
+        }
+        return None;
+    }
+    #[inline]
+    #[must_use]
+    /// Gets the overlap between two colliding rectangles.
+    /// Shorter alias name: [Self::get_collision_rec]
+    /// Use [Self::overlap] if you don't care about the overlap area
+    pub fn get_overlap_area(self, other: Rectangle) -> Option<Self> {
+        self.get_collision_rec(other)
+    }
 }
 
+#[must_use]
+#[inline(always)]
+/// Shorthand for creating a rectangle [Rectangle]
+pub const fn rectf(x: f32, y: f32, width: f32, height: f32) -> Rectangle {
+    Rectangle {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct Image {
@@ -92,6 +390,7 @@ impl Image {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub struct Texture {
@@ -104,6 +403,7 @@ pub struct Texture {
 pub type Texture2D = Texture;
 pub type TextureCubemap = Texture;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub struct RenderTexture {
@@ -112,7 +412,90 @@ pub struct RenderTexture {
     pub depth: Texture,
 }
 pub type RenderTexture2D = RenderTexture;
+pub trait RaylibTexture2D: AsRef<Texture2D> + AsMut<Texture2D> {
+    /// Texture base width
+    #[inline]
+    #[must_use]
+    fn width(&self) -> i32 {
+        self.as_ref().width
+    }
 
+    /// Texture base height
+    #[inline]
+    #[must_use]
+    fn height(&self) -> i32 {
+        self.as_ref().height
+    }
+
+    /// Mipmap levels, 1 by default
+    #[inline]
+    #[must_use]
+    fn mipmaps(&self) -> i32 {
+        self.as_ref().width
+    }
+
+    /// Data format (PixelFormat type)
+    #[inline]
+    #[must_use]
+    fn format(&self) -> i32 {
+        self.as_ref().format
+    }
+
+    /// Updates GPU texture with new data.
+    #[inline]
+    fn update_texture(&mut self, pixels: &[u8]) {
+        update_texture(
+            *self.as_mut(),
+            pixels,
+        );
+    }
+
+    /// Update GPU texture rectangle with new data
+    fn update_texture_rec(
+        &mut self,
+        rec: Rectangle,
+        pixels: &[u8],
+    ) {
+        update_texture_rec(
+            *self.as_ref(),
+            rec,
+            pixels,
+        );
+    }
+
+    /// Gets pixel data from GPU texture and returns an `Image`.
+    /// Fairly sure this would never fail. If it does wrap in result.
+    #[inline]
+    #[must_use]
+    fn load_image(&self) -> Image {
+        load_image_from_texture(*self.as_ref())
+    }
+
+    /// Generates GPU mipmaps for a `texture`.
+    #[inline]
+    fn gen_texture_mipmaps(&mut self) {
+        gen_texture_mipmaps(self.as_mut());
+    }
+
+    /// Sets global `texture` scaling filter mode.
+    #[inline]
+    fn set_texture_filter(&self, filter_mode: TextureFilter) {
+        set_texture_filter(*self.as_ref(), filter_mode);
+    }
+
+    /// Sets global texture wrapping mode.
+    #[inline]
+    fn set_texture_wrap(&self, wrap_mode: TextureWrap) {
+        set_texture_wrap(*self.as_ref(), wrap_mode);
+    }
+
+    // Check if a texture is valid (loaded in GPU)
+    //#[inline]
+    //fn is_texture_valid(&self) -> bool {
+    //    is_texture_valid(self.texture)
+    //}
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub enum CameraProjection {
@@ -120,6 +503,7 @@ pub enum CameraProjection {
     CAMERA_ORTHOGRAPHIC,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub enum CameraMode {
@@ -130,6 +514,7 @@ pub enum CameraMode {
     CAMERA_THIRD_PERSON,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(C)]
 pub struct Camera3D {
@@ -141,6 +526,7 @@ pub struct Camera3D {
 }
 pub type Camera = Camera3D;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 #[repr(C)]
 pub struct Camera2D {
@@ -150,6 +536,7 @@ pub struct Camera2D {
     pub zoom: f32,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NPatchLayout {
@@ -158,6 +545,7 @@ pub enum NPatchLayout {
     ThreePatchHorizontal, // Npatch layout: 3x1 tiles
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NPatchInfo {
@@ -169,6 +557,7 @@ pub struct NPatchInfo {
     pub layout: i32,       // Layout of the n-patch: 3x3, 1x3 or 3x1
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
 #[derive(Debug, Clone, Default)]
 pub struct GlyphInfo {
@@ -179,6 +568,7 @@ pub struct GlyphInfo {
     pub image: Image,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct Font {
@@ -190,6 +580,7 @@ pub struct Font {
     pub glyphs: Vec<GlyphInfo>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 #[rustfmt::skip]
@@ -212,6 +603,7 @@ pub enum ConfigFlags {
     FLAG_INTERLACED_HINT              = 0x00010000,   // Set to try enabling interlaced video format (for V3D)
     FLAG_GL_CONTEXT_DEBUG                 = 0x00020000,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Default)]
 pub enum TraceLogLevel {
@@ -225,6 +617,7 @@ pub enum TraceLogLevel {
     LOG_FATAL = 6,
     LOG_NONE = 7,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum KeyboardKey {
@@ -344,6 +737,7 @@ impl From<KeyboardKey> for i32 {
         val as i32
     }
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum MouseButton {
@@ -355,6 +749,7 @@ pub enum MouseButton {
     MOUSE_BUTTON_FORWARD = 5,
     MOUSE_BUTTON_BACK = 6,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum MouseCursor {
@@ -370,6 +765,7 @@ pub enum MouseCursor {
     MOUSE_CURSOR_RESIZE_ALL = 9,
     MOUSE_CURSOR_NOT_ALLOWED = 10,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum GamepadButton {
@@ -392,6 +788,7 @@ pub enum GamepadButton {
     GAMEPAD_BUTTON_LEFT_THUMB,      // Gamepad joystick pressed button left
     GAMEPAD_BUTTON_RIGHT_THUMB,     // Gamepad joystick pressed button right
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum GamepadAxis {
@@ -402,6 +799,7 @@ pub enum GamepadAxis {
     GAMEPAD_AXIS_LEFT_TRIGGER = 4,
     GAMEPAD_AXIS_RIGHT_TRIGGER = 5,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum MaterialMapIndex {
@@ -417,6 +815,7 @@ pub enum MaterialMapIndex {
     MATERIAL_MAP_PREFILTER = 9,
     MATERIAL_MAP_BRDF = 10,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum ShaderLocationIndex {
@@ -451,6 +850,7 @@ pub enum ShaderLocationIndex {
     SHADER_LOC_MATRIX_BONETRANSFORMS = 28,
     SHADER_LOC_VERTEX_INSTANCETRANSFORM = 29,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum ShaderUniformDataType {
@@ -468,6 +868,7 @@ pub enum ShaderUniformDataType {
     SHADER_UNIFORM_UIVEC4 = 11,
     SHADER_UNIFORM_SAMPLER2D = 12,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum ShaderAttributeDataType {
@@ -476,6 +877,7 @@ pub enum ShaderAttributeDataType {
     SHADER_ATTRIB_VEC3 = 2,
     SHADER_ATTRIB_VEC4 = 3,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum PixelFormat {
@@ -537,6 +939,7 @@ impl PixelFormat {
         }
     }
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum TextureFilter {
@@ -547,6 +950,7 @@ pub enum TextureFilter {
     TEXTURE_FILTER_ANISOTROPIC_8X = 4,
     TEXTURE_FILTER_ANISOTROPIC_16X = 5,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum TextureWrap {
@@ -555,6 +959,7 @@ pub enum TextureWrap {
     TEXTURE_WRAP_MIRROR_REPEAT = 2,
     TEXTURE_WRAP_MIRROR_CLAMP = 3,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum CubemapLayout {
@@ -564,6 +969,7 @@ pub enum CubemapLayout {
     CUBEMAP_LAYOUT_CROSS_THREE_BY_FOUR = 3,
     CUBEMAP_LAYOUT_CROSS_FOUR_BY_THREE = 4,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum FontType {
@@ -571,6 +977,7 @@ pub enum FontType {
     FONT_BITMAP = 1,
     FONT_SDF = 2,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum BlendMode {
@@ -583,6 +990,7 @@ pub enum BlendMode {
     BLEND_CUSTOM = 6,
     BLEND_CUSTOM_SEPARATE = 7,
 }
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum Gesture {
@@ -599,6 +1007,7 @@ pub enum Gesture {
     GESTURE_PINCH_OUT = 512,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Shader {
@@ -609,6 +1018,7 @@ pub struct Shader {
 // use crate::Matrix; // or import the matching C-compatible Matrix type
 
 // VrDeviceInfo, Head-Mounted-Display device parameters
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct VrDeviceInfo {
@@ -624,6 +1034,7 @@ pub struct VrDeviceInfo {
 }
 
 // VrStereoConfig, VR stereo rendering configuration for simulator
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
 #[allow(non_snake_case)]
 #[derive(Clone)]
@@ -646,6 +1057,7 @@ pub struct FilePathList {
 }
 
 // Automation event
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
 #[allow(non_snake_case)]
 #[derive(Copy, Clone, Default)]
@@ -656,6 +1068,7 @@ pub struct AutomationEvent {
 }
 
 // Automation event list
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
 #[allow(non_snake_case)]
 #[derive(Clone)]
@@ -674,6 +1087,7 @@ impl AutomationEventList {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
 pub struct Ray {
     pub position: Vector3,  // Ray position (origin)

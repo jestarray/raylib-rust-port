@@ -497,10 +497,10 @@ pub trait RaylibDraw {
     fn draw_texture_ex(&mut self, texture: &Texture, position: Vector2, rotation: f32, scale: f32, tint: Color) { draw_texture_ex(texture, position, rotation, scale, tint); }
 
     #[inline]
-    fn draw_texture_rec(&mut self, texture: &Texture, source: Rectangle, position: Vector2, tint: Color) { draw_texture_rec(texture, source, position, tint); }
+    fn draw_texture_rec(&mut self, texture: &Texture, source: impl Into<Rectangle>, position: Vector2, tint: Color) { draw_texture_rec(texture, source.into(), position, tint); }
 
     #[inline]
-    fn draw_texture_pro(&mut self, texture: &Texture, source: Rectangle, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color) { draw_texture_pro(texture, source, dest, origin, rotation, tint); }
+    fn draw_texture_pro(&mut self, texture: &Texture, source: impl Into<Rectangle>, dest: impl Into<Rectangle>, origin: Vector2, rotation: f32, tint: Color) { draw_texture_pro(texture, source.into(), dest.into(), origin, rotation, tint); }
 
     #[inline]
     fn draw_texture_n_patch(&mut self, texture: &Texture, n_patch_info: NPatchInfo, dest: Rectangle, origin: Vector2, rotation: f32, tint: Color) { draw_texture_n_patch(texture, n_patch_info, dest, origin, rotation, tint); }
@@ -797,7 +797,6 @@ where
     Self: Sized,
 {
     /// Begin stereo rendering (requires VR simulator).
-    /// Prefer using the closure version, [RaylibVRModeExt::draw_vr_stereo_mode] . This version returns a handle that calls [raylib_sys::EndVrStereoMode] at the end of the scope and is provided as a fallback incase you run into issues with closures(such as lifetime or performance reasons)
     #[inline]
     #[must_use]
     fn begin_vr_stereo_mode<'a, 'b>(
