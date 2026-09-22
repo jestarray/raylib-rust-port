@@ -16,6 +16,7 @@
 //! private, so these submodules are the only entry points.
 
 pub mod core;
+pub mod handle;
 pub mod sdl;
 pub mod shapes;
 pub mod text;

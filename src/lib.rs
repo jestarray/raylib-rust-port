@@ -20,7 +20,7 @@ compile_error!(
 // write `use raylib::core::*;` rather than `use raylib::safe::core::*;`.
 mod safe;
 
-pub use safe::{core, sdl, shapes, text, textures};
+pub use safe::{core, handle, sdl, shapes, text, textures};
 
 pub mod math;
 pub mod rcamera;

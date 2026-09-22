@@ -403,8 +403,8 @@ pub fn take_screenshot<P: AsRef<Path>>(file_name: P) {
 
 /// Flags accumulate, so call this once per flag to request several; it has no effect after
 /// [`init_window`] has run.
-pub fn set_config_flags(flags: ConfigFlags) {
-    unsafe { SetConfigFlags(flags as u32) }
+pub fn set_config_flags(flags: u32) {
+    unsafe { SetConfigFlags(flags) }
 }
 
 pub fn set_trace_log_level(log_type: TraceLogLevel) {

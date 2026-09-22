@@ -213,8 +213,9 @@ pub enum ConfigFlags {
     FLAG_GL_CONTEXT_DEBUG                 = 0x00020000,
 }
 #[repr(u32)]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Default)]
 pub enum TraceLogLevel {
+    #[default]
     LOG_ALL = 0,
     LOG_TRACE = 1,
     LOG_DEBUG = 2,
@@ -625,6 +626,7 @@ pub struct VrDeviceInfo {
 // VrStereoConfig, VR stereo rendering configuration for simulator
 #[repr(C)]
 #[allow(non_snake_case)]
+#[derive(Clone)]
 pub struct VrStereoConfig {
     pub projection: [Matrix; 2],     // VR projection matrices (per eye)
     pub viewOffset: [Matrix; 2],     // VR view offset matrices (per eye)
