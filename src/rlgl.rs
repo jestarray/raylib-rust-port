@@ -2381,7 +2381,8 @@ pub unsafe fn rlLoadTexture(data: &[u8], width: i32, height: i32, format: i32, m
     let mut mipOffset = 0;          // Mipmap data offset, only used for tracelog
 
     // NOTE: Added pointer math separately from function to avoid UBSAN complaining
-    let mut dataPtr = data;
+    // DO NOT CHANGE THIS, WE HAVE TO PASS dataPtr as null in the gl:: calls! You will segfault otherwise
+    let mut dataPtr = if !data.is_empty() { data.as_ptr() } else { std::ptr::null_mut() };
 
     // Load the different mipmap levels
     for i in 0..mipmapCount
@@ -2397,8 +2398,8 @@ pub unsafe fn rlLoadTexture(data: &[u8], width: i32, height: i32, format: i32, m
 
         if glInternalFormat != 0
         {
-            if format < PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32 { gl::TexImage2D(gl::TEXTURE_2D, i, glInternalFormat as i32, mipWidth, mipHeight, 0, glFormat, glType, dataPtr.as_ptr() as *const c_void); }
-            else { gl::CompressedTexImage2D(gl::TEXTURE_2D, i, glInternalFormat, mipWidth, mipHeight, 0, mipSize as i32, dataPtr.as_ptr() as *const c_void); }
+            if format < PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32 { gl::TexImage2D(gl::TEXTURE_2D, i, glInternalFormat as i32, mipWidth, mipHeight, 0, glFormat, glType, dataPtr as *const c_void); }
+            else { gl::CompressedTexImage2D(gl::TEXTURE_2D, i, glInternalFormat, mipWidth, mipHeight, 0, mipSize as i32, dataPtr as *const c_void); }
 
             #[cfg(feature = "GRAPHICS_API_OPENGL_33")]
             {
@@ -2418,7 +2419,7 @@ pub unsafe fn rlLoadTexture(data: &[u8], width: i32, height: i32, format: i32, m
         mipWidth /= 2;
         mipHeight /= 2;
         mipOffset += mipSize; // Increment offset position to next mipmap
-        dataPtr = &dataPtr[mipSize as usize..]; // Increment data pointer to next mipmap
+        if !dataPtr.is_null() { dataPtr = dataPtr.add(mipSize as usize) }; // Increment data pointer to next mipmap
 
         // Security check for NPOT textures
         if mipWidth < 1 { mipWidth = 1; }

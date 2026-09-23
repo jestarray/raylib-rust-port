@@ -388,6 +388,24 @@ impl Image {
     pub fn is_data_null(&self) -> bool {
         self.data.is_empty()
     }
+    pub fn gen_image_color(width: i32, height: i32, color: Color) -> Image {
+        let format = PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+        let dims = (width * height) as usize;
+        let mut data = Vec::with_capacity(dims);
+        for _ in 0..dims {
+            data.push(color.r);
+            data.push(color.g);
+            data.push(color.b);
+            data.push(color.a);
+        }
+        Self {
+            width,
+            height,
+            data,
+            mipmaps: 1,
+            format: format as i32,
+        }
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -402,6 +420,61 @@ pub struct Texture {
 }
 pub type Texture2D = Texture;
 pub type TextureCubemap = Texture;
+
+impl Default for Texture {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            width: 0,
+            height: 0,
+            mipmaps: 1,
+            format: 0,
+        }
+    }
+}
+
+impl AsRef<Texture2D> for Texture {
+    fn as_ref(&self) -> &Texture2D {
+        self
+    }
+}
+
+impl AsMut<Texture2D> for Texture {
+    fn as_mut(&mut self) -> &mut Texture2D {
+        self
+    }
+}
+
+impl RaylibTexture2D for Texture {}
+
+impl AsRef<Texture2D> for RenderTexture {
+    fn as_ref(&self) -> &Texture2D {
+        &self.texture
+    }
+}
+
+impl AsMut<Texture2D> for RenderTexture {
+    fn as_mut(&mut self) -> &mut Texture2D {
+        &mut self.texture
+    }
+}
+
+impl RaylibTexture2D for RenderTexture {}
+
+impl RenderTexture {
+    /// Shared reference to the color buffer texture.
+    #[inline]
+    #[must_use]
+    pub fn texture(&self) -> &Texture2D {
+        &self.texture
+    }
+
+    /// Mutable reference to the color buffer texture.
+    #[inline]
+    pub fn texture_mut(&mut self) -> &mut Texture2D {
+        &mut self.texture
+    }
+}
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -619,7 +692,7 @@ pub enum TraceLogLevel {
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, strum_macros::FromRepr)]
 pub enum KeyboardKey {
     KEY_NULL = 0,
     KEY_APOSTROPHE = 39,

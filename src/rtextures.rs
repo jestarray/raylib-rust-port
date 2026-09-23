@@ -14,9 +14,13 @@
     clippy::let_and_return,
     clippy::double_parens,
 )]
+use crate::rcore::{GetRenderHeight, GetRenderWidth};
 use crate::rcore::LoadFileData;
-use crate::rlgl::{RL_QUADS, RL_TEXTURE_FILTER_ANISOTROPIC, RL_TEXTURE_FILTER_LINEAR, RL_TEXTURE_FILTER_LINEAR_MIP_NEAREST, RL_TEXTURE_FILTER_MIP_LINEAR, RL_TEXTURE_FILTER_MIP_NEAREST, RL_TEXTURE_FILTER_NEAREST, RL_TEXTURE_MAG_FILTER, RL_TEXTURE_MIN_FILTER, RL_TEXTURE_WRAP_CLAMP, RL_TEXTURE_WRAP_MIRROR_CLAMP, RL_TEXTURE_WRAP_MIRROR_REPEAT, RL_TEXTURE_WRAP_REPEAT, RL_TEXTURE_WRAP_S, RL_TEXTURE_WRAP_T, rlBegin, rlColor4ub, rlEnd, rlGenTextureMipmaps, rlLoadTexture, rlPopMatrix, rlPushMatrix, rlReadTexturePixels, rlRotatef, rlSetTexture, rlTexCoord2f, rlTextureParameters, rlTranslatef, rlUnloadTexture, rlUpdateTexture, rlVertex2f};
-use crate::types::{TextureFilter, TextureWrap};
+use crate::rlgl::rlFramebufferAttachTextureType::*;
+use crate::rlgl::rlFramebufferAttachType::*;
+use crate::rlgl::{rlReadScreenPixels, rlUnloadFramebuffer};
+use crate::rlgl::{RL_QUADS, RL_TEXTURE_FILTER_ANISOTROPIC, RL_TEXTURE_FILTER_LINEAR, RL_TEXTURE_FILTER_LINEAR_MIP_NEAREST, RL_TEXTURE_FILTER_MIP_LINEAR, RL_TEXTURE_FILTER_MIP_NEAREST, RL_TEXTURE_FILTER_NEAREST, RL_TEXTURE_MAG_FILTER, RL_TEXTURE_MIN_FILTER, RL_TEXTURE_WRAP_CLAMP, RL_TEXTURE_WRAP_MIRROR_CLAMP, RL_TEXTURE_WRAP_MIRROR_REPEAT, RL_TEXTURE_WRAP_REPEAT, RL_TEXTURE_WRAP_S, RL_TEXTURE_WRAP_T, rlBegin, rlColor4ub, rlDisableFramebuffer, rlEnableFramebuffer, rlEnd, rlFramebufferAttach, rlFramebufferComplete, rlGenTextureMipmaps, rlLoadFramebuffer, rlLoadTexture, rlLoadTextureDepth, rlPopMatrix, rlPushMatrix, rlReadTexturePixels, rlRotatef, rlSetTexture, rlTexCoord2f, rlTextureParameters, rlTranslatef, rlUnloadTexture, rlUpdateTexture, rlVertex2f};
+use crate::types::{RenderTexture2D, TextureFilter, TextureWrap};
 use crate::types::{Color, Image, NPatchInfo, NPatchLayout, PixelFormat, Rectangle, Texture, Texture2D, Vector2};
 use std::ffi::c_void;
 use std::path::Path;
@@ -275,6 +279,19 @@ pub fn LoadImageFromMemory(file_ext: &str, file_data: &[u8], data_size: i32) -> 
     return res;
 }
 
+pub unsafe fn LoadImageFromScreen() -> Image
+{
+    let mut image = Image::default();
+
+    image.width = GetRenderWidth() as i32;
+    image.height = GetRenderHeight() as i32;
+    image.mipmaps = 1;
+    image.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32;
+    image.data = rlReadScreenPixels(image.width as i32, image.height as i32);
+
+    return image;
+}
+
 // Check if an image is ready
 pub fn IsImageValid(image: &Image) -> bool
 {
@@ -309,6 +326,40 @@ pub fn ExportImage(image: &Image, path: &str) {
     if let Err(err) = buffer.save(path) {
         warn!("Could not write image {}", err);
     }
+}
+
+/// Encodes `image` into `file_type` (e.g. "png") and returns the bytes, or `None` if the
+/// image data is not a valid RGBA buffer.
+pub fn ExportImageToMemory(image: &Image, file_type: &str) -> Option<Vec<u8>> {
+    use image::*;
+    use std::io::Cursor;
+
+    let width = image.width as u32;
+    let height = image.height as u32;
+    let try_buffer: Option<ImageBuffer<Rgba<u8>, &[u8]>> =
+        ImageBuffer::from_raw(width, height, image.data.as_slice());
+    let buffer = match try_buffer {
+        Some(buffer) => buffer,
+        None => {
+            warn!("Could not create buffer?");
+            return None;
+        }
+    };
+
+    let format = match ImageFormat::from_extension(file_type) {
+        Some(format) => format,
+        None => {
+            warn!("Image format not supported: {}", file_type);
+            return None;
+        }
+    };
+
+    let mut bytes = Vec::new();
+    if let Err(err) = buffer.write_to(&mut Cursor::new(&mut bytes), format) {
+        warn!("Could not encode image {}", err);
+        return None;
+    }
+    Some(bytes)
 }
 
 pub fn LoadTexture(file_name: &str) -> Texture {
@@ -350,6 +401,36 @@ pub fn UnloadTexture(texture: &mut Texture) {
         texture.id = 0;
     }
 }
+
+// Check if render texture is valid (loaded in GPU)
+pub fn IsRenderTextureValid(target: RenderTexture2D) -> bool
+{
+    let mut result = false;
+
+    if ((target.id > 0) &&                  // Validate OpenGL id (loaded on GPU)
+        IsTextureValid(target.depth) &&     // Validate FBO depth texture/renderbuffer attachment
+        IsTextureValid(target.texture)) { result = true; } // Validate FBO texture attachment
+
+    return result;
+}
+
+// Unload render texture from GPU memory (VRAM)
+pub unsafe fn UnloadRenderTexture(target: RenderTexture2D)
+{
+    if (target.id > 0)
+    {
+        if (target.texture.id > 0)
+        {
+            // Color texture attached to FBO is deleted
+            rlUnloadTexture(target.texture.id);
+        }
+
+        // NOTE: Depth texture/renderbuffer is automatically
+        // queried and deleted before deleting framebuffer
+        rlUnloadFramebuffer(target.id);
+    }
+}
+
 // Update GPU texture with new data
 // NOTE 1: pixels data must match texture.format
 // NOTE 2: pixels data must contain at least as many pixels as texture
@@ -540,6 +621,59 @@ pub unsafe fn LoadImageFromTexture(texture: Texture2D) -> Image
     }
 
     return image;
+}
+
+
+// Load RGBA texture for rendering (framebuffer)
+pub unsafe fn LoadRenderTexture(width: i32, height: i32) -> RenderTexture2D
+{
+    return LoadRenderTextureEx(width, height, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32);
+}
+
+// Load texture for rendering (framebuffer), with specific format
+// NOTE: Render texture is loaded by default with RGBA color attachment and depth RenderBuffer
+pub unsafe fn LoadRenderTextureEx(width: i32, height: i32, format: i32) -> RenderTexture2D
+{
+    let mut target: RenderTexture2D = RenderTexture2D { id: 0, texture: Texture::default(), depth: Texture::default() };
+
+    if format >= PIXELFORMAT_COMPRESSED_DXT1_RGB as i32
+    {
+        warn!("FBO: Render texture format not supported");
+        return target;
+    }
+
+    target.id = rlLoadFramebuffer(); // Load an empty framebuffer
+
+    if target.id > 0
+    {
+        rlEnableFramebuffer(target.id);
+
+        // Create color texture (default to RGBA)
+        target.texture.id = rlLoadTexture(&[], width, height, format, 1);
+        target.texture.width = width;
+        target.texture.height = height;
+        target.texture.format = format;
+        target.texture.mipmaps = 1;
+
+        // Create depth renderbuffer/texture
+        target.depth.id = rlLoadTextureDepth(width, height, true);
+        target.depth.width = width;
+        target.depth.height = height;
+        target.depth.format = 19;       //DEPTH_COMPONENT_24BIT?
+        target.depth.mipmaps = 1;
+
+        // Attach color texture and depth renderbuffer/texture to FBO
+        rlFramebufferAttach(target.id, target.texture.id, RL_ATTACHMENT_COLOR_CHANNEL0 as i32, RL_ATTACHMENT_TEXTURE2D as i32, 0);
+        rlFramebufferAttach(target.id, target.depth.id, RL_ATTACHMENT_DEPTH as i32, RL_ATTACHMENT_RENDERBUFFER as i32, 0);
+
+        // Check if fbo is complete with attachments (valid)
+        if rlFramebufferComplete(target.id) { info!("FBO: [ID {}] Framebuffer object created successfully", target.id); }
+
+        rlDisableFramebuffer();
+    }
+    else { warn!("FBO: Framebuffer object can not be created"); }
+
+    return target;
 }
 
 #[allow(non_snake_case)]

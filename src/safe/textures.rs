@@ -12,7 +12,7 @@ use std::path::Path;
 
 use crate::rtextures::*;
 use crate::safe::core::path_to_str;
-use crate::types::{Color, Image, NPatchInfo, PixelFormat, Rectangle, Texture, Texture2D, TextureFilter, TextureWrap, Vector2};
+use crate::types::{Color, Image, NPatchInfo, PixelFormat, Rectangle, RenderTexture2D, Texture, Texture2D, TextureFilter, TextureWrap, Vector2};
 
 pub fn get_pixel_data_size(width: i32, height: i32, format: PixelFormat) -> i32 {
     GetPixelDataSize(width, height, format as i32)
@@ -39,8 +39,29 @@ pub fn load_image_from_texture(texture: Texture2D) -> Image {
     unsafe { LoadImageFromTexture(texture) }
 }
 
+
+pub fn load_render_texture(width: i32, height: i32) -> RenderTexture2D {
+    return unsafe { LoadRenderTexture(width, height) };
+}
+
+pub fn load_render_texture_ex(width: i32, height: i32, format: PixelFormat) -> RenderTexture2D {
+    return unsafe { LoadRenderTextureEx(width, height, format as i32) };
+}
+
+pub fn is_render_texture_valid(target: RenderTexture2D) -> bool {
+    IsRenderTextureValid(target) 
+}
+
+pub fn unload_render_texture(target: RenderTexture2D)  {
+    return unsafe { UnloadRenderTexture(target) };
+}
+
 pub fn is_texture_valid(texture: Texture2D) -> bool {
     IsTextureValid(texture)
+}
+
+pub fn load_image_from_screen() -> Image {
+    unsafe { LoadImageFromScreen() }
 }
 
 pub fn is_image_valid(image: &Image) -> bool {
@@ -56,6 +77,12 @@ pub fn export_image<P: AsRef<Path>>(image: &Image, path: P) {
     if let Some(path) = path_to_str(path) {
         ExportImage(image, path);
     }
+}
+
+/// Encodes `image` into `file_ext` (e.g. `"png"`) in memory. Returns `None` when the image
+/// data is not a valid RGBA buffer or the format is unsupported.
+pub fn export_image_to_memory(image: &Image, file_ext: &str) -> Option<Vec<u8>> {
+    ExportImageToMemory(image, file_ext)
 }
 
 /// Falls back to the "missing texture" checkerboard when the path is not valid UTF-8.
