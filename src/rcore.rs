@@ -529,12 +529,12 @@ pub unsafe fn InitWindow(width: i32, height: i32, title: &str)
     if (((CORE.Window.flags & ConfigFlags::FLAG_MSAA_4X_HINT as u32) == ConfigFlags::FLAG_MSAA_4X_HINT as u32))
     {
         // NOTE: Try to maximize rec padding to avoid pixel bleeding on MSAA filtering
-        SetShapesTexture(default_font.texture, Rectangle { x: rec.x + 2.0, y: rec.y + 2.0, width: 1.0, height: 1.0 });
+        SetShapesTexture(default_font.texture.clone(), Rectangle { x: rec.x + 2.0, y: rec.y + 2.0, width: 1.0, height: 1.0 });
     }
     else
     {
         // NOTE: Set up a 1px padding on char rectangle to avoid pixel bleeding
-        SetShapesTexture(default_font.texture, Rectangle { x: rec.x + 1.0, y: rec.y + 1.0, width: rec.width - 2.0, height: rec.height - 2.0 });
+        SetShapesTexture(default_font.texture.clone(), Rectangle { x: rec.x + 1.0, y: rec.y + 1.0, width: rec.width - 2.0, height: rec.height - 2.0 });
     }
     }
 }

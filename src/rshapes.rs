@@ -65,7 +65,7 @@ pub unsafe fn SetShapesTexture(texture: Texture2D, rec: Rectangle)
 // Get texture that is used for shapes drawing
 pub unsafe fn GetShapesTexture() -> Texture2D
 {
-    return texShapes;
+    return texShapes.clone();
 }
 
 // Get texture source rectangle that is used for shapes drawing

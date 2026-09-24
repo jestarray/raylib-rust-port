@@ -1,7 +1,11 @@
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use image::ColorType;
 
-use crate::textures::*;
+use crate::{
+    core::{get_shader_location, get_world_to_screen_2d, set_shader_value},
+    text::measure_text_ex,
+    textures::*,
+};
 
 pub type Vector2 = Vec2;
 pub type Vector3 = Vec3;
@@ -480,7 +484,7 @@ impl RenderTexture {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
 pub struct RenderTexture {
     pub id: u32,
@@ -520,12 +524,12 @@ pub trait RaylibTexture2D: AsRef<Texture2D> + AsMut<Texture2D> {
     /// Updates GPU texture with new data.
     #[inline]
     fn update_texture(&mut self, pixels: &[u8]) {
-        update_texture(*self.as_mut(), pixels);
+        update_texture(self.as_mut().clone(), pixels);
     }
 
     /// Update GPU texture rectangle with new data
     fn update_texture_rec(&mut self, rec: Rectangle, pixels: &[u8]) {
-        update_texture_rec(*self.as_ref(), rec, pixels);
+        update_texture_rec(self.as_ref().clone(), rec, pixels);
     }
 
     /// Gets pixel data from GPU texture and returns an `Image`.
@@ -533,7 +537,7 @@ pub trait RaylibTexture2D: AsRef<Texture2D> + AsMut<Texture2D> {
     #[inline]
     #[must_use]
     fn load_image(&self) -> Image {
-        load_image_from_texture(*self.as_ref())
+        load_image_from_texture(self.as_ref().clone())
     }
 
     /// Generates GPU mipmaps for a `texture`.
@@ -545,13 +549,13 @@ pub trait RaylibTexture2D: AsRef<Texture2D> + AsMut<Texture2D> {
     /// Sets global `texture` scaling filter mode.
     #[inline]
     fn set_texture_filter(&self, filter_mode: TextureFilter) {
-        set_texture_filter(*self.as_ref(), filter_mode);
+        set_texture_filter(self.as_ref().clone(), filter_mode);
     }
 
     /// Sets global texture wrapping mode.
     #[inline]
     fn set_texture_wrap(&self, wrap_mode: TextureWrap) {
-        set_texture_wrap(*self.as_ref(), wrap_mode);
+        set_texture_wrap(self.as_ref().clone(), wrap_mode);
     }
 
     // Check if a texture is valid (loaded in GPU)
@@ -601,6 +605,12 @@ pub struct Camera2D {
     pub zoom: f32,
 }
 
+impl Camera2D {
+    pub fn get_world_to_screen_2d(&self, position: Vector2) -> Vector2 {
+        get_world_to_screen_2d(position, *self)
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -643,6 +653,12 @@ pub struct Font {
     pub texture: Texture,
     pub recs: Vec<Rectangle>,
     pub glyphs: Vec<GlyphInfo>,
+}
+impl Font {
+    #[must_use]
+    pub fn measure_text(&self, text: &str, font_size: f32, spacing: f32) -> Vector2 {
+        measure_text_ex(self, text, font_size, spacing)
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1078,6 +1094,21 @@ pub enum Gesture {
 pub struct Shader {
     pub id: u32,
     pub locs: Vec<i32>,
+}
+
+impl Shader {
+    #[must_use]
+    pub fn get_shader_location(&self, uniform_name: &str) -> i32 {
+        get_shader_location(self, uniform_name)
+    }
+    pub fn set_shader_value<T>(
+        &mut self,
+        loc_index: i32,
+        value: T,
+        uniform_type: ShaderUniformDataType,
+    ) {
+        set_shader_value(self, loc_index, value, uniform_type);
+    }
 }
 
 // use crate::Matrix; // or import the matching C-compatible Matrix type

@@ -281,17 +281,11 @@ pub fn get_shader_location_attrib(shader: Shader, attrib_name: &str) -> i32 {
 pub fn set_shader_value<T>(
     shader: &mut Shader,
     loc_index: i32,
-    value: &T,
+    value: T,
     uniform_type: ShaderUniformDataType,
 ) {
-    unsafe {
-        SetShaderValue(
-            shader,
-            loc_index,
-            std::ptr::from_ref(value).cast(),
-            uniform_type as i32,
-        )
-    }
+    let v = std::ptr::from_ref(&value).cast();
+    unsafe { SetShaderValue(shader, loc_index, v, uniform_type as i32) }
 }
 
 /// Takes a slice whose `len()` becomes the uniform count. Each element of `value` must be

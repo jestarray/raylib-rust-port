@@ -620,7 +620,7 @@ where
         &'a mut self,
         framebuffer: &'b mut RenderTexture2D,
     ) -> RaylibTextureMode<'a, 'b, Self> {
-        begin_texture_mode(*framebuffer);
+        begin_texture_mode(framebuffer.clone());
         RaylibTextureMode(self, PhantomData)
     }
 }
