@@ -5,7 +5,9 @@ use raylib::core::{
 };
 use raylib::rcolors::{BLACK, BLUE, DARKGRAY, GREEN, RAYWHITE, RED, SKYBLUE};
 use raylib::sdl::window_should_close;
-use raylib::shapes::{draw_line, draw_rectangle, draw_rectangle_lines, draw_rectangle_rec};
+use raylib::shapes::{
+    draw_circle_gradient, draw_line, draw_rectangle, draw_rectangle_lines, draw_rectangle_rec,
+};
 use raylib::text::draw_text;
 use raylib::textures::fade;
 use raylib::types::{Camera2D, Color, KeyboardKey, Rectangle, Vector2};
@@ -101,6 +103,7 @@ fn main() {
         }
 
         draw_rectangle_rec(player, RED);
+        draw_circle_gradient(player.xy(), 100.0, Color::GREEN, Color::BLANK);
 
         draw_line(
             camera.target.x as i32,

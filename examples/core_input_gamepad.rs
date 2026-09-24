@@ -31,7 +31,7 @@ fn main() {
     let screen_width: i32 = 800;
     let screen_height: i32 = 450;
 
-    set_config_flags(ConfigFlags::FLAG_MSAA_4X_HINT);
+    set_config_flags(ConfigFlags::FLAG_MSAA_4X_HINT as u32);
 
     init_window(
         screen_width,
