@@ -12,7 +12,10 @@ use std::path::Path;
 
 use crate::rtextures::*;
 use crate::safe::core::path_to_str;
-use crate::types::{Color, Image, NPatchInfo, PixelFormat, Rectangle, RenderTexture2D, Texture, Texture2D, TextureFilter, TextureWrap, Vector2};
+use crate::types::{
+    Color, Image, NPatchInfo, PixelFormat, Rectangle, RenderTexture2D, Texture, Texture2D,
+    TextureFilter, TextureWrap, Vector2,
+};
 
 pub fn get_pixel_data_size(width: i32, height: i32, format: PixelFormat) -> i32 {
     GetPixelDataSize(width, height, format as i32)
@@ -39,7 +42,6 @@ pub fn load_image_from_texture(texture: Texture2D) -> Image {
     unsafe { LoadImageFromTexture(texture) }
 }
 
-
 pub fn load_render_texture(width: i32, height: i32) -> RenderTexture2D {
     return unsafe { LoadRenderTexture(width, height) };
 }
@@ -49,10 +51,10 @@ pub fn load_render_texture_ex(width: i32, height: i32, format: PixelFormat) -> R
 }
 
 pub fn is_render_texture_valid(target: RenderTexture2D) -> bool {
-    IsRenderTextureValid(target) 
+    IsRenderTextureValid(target)
 }
 
-pub fn unload_render_texture(target: RenderTexture2D)  {
+pub fn unload_render_texture(target: RenderTexture2D) {
     return unsafe { UnloadRenderTexture(target) };
 }
 
@@ -101,18 +103,28 @@ pub fn unload_texture(texture: &mut Texture) {
     UnloadTexture(texture)
 }
 
-pub fn update_texture(texture: Texture2D, pixels: &[u8]) { unsafe { UpdateTexture(texture, pixels) } }
+pub fn update_texture(texture: Texture2D, pixels: &[u8]) {
+    unsafe { UpdateTexture(texture, pixels) }
+}
 
-pub fn update_texture_rec(texture: Texture2D, rec: Rectangle, pixels: &[u8]) { unsafe { UpdateTextureRec(texture, rec, pixels) } }
+pub fn update_texture_rec(texture: Texture2D, rec: Rectangle, pixels: &[u8]) {
+    unsafe { UpdateTextureRec(texture, rec, pixels) }
+}
 
-pub fn gen_texture_mipmaps(texture: &mut Texture2D) { unsafe { GenTextureMipmaps(texture) } }
+pub fn gen_texture_mipmaps(texture: &mut Texture2D) {
+    unsafe { GenTextureMipmaps(texture) }
+}
 
-pub fn set_texture_filter(texture: Texture2D, filter: TextureFilter) { unsafe { SetTextureFilter(texture, filter as i32) } }
+pub fn set_texture_filter(texture: Texture2D, filter: TextureFilter) {
+    unsafe { SetTextureFilter(texture, filter as i32) }
+}
 
 pub fn draw_texture(texture: &Texture, pos_x: i32, pos_y: i32, tint: Color) {
     DrawTexture(texture, pos_x, pos_y, tint)
 }
-pub fn set_texture_wrap(texture: Texture2D, wrap: TextureWrap) { unsafe { SetTextureWrap(texture, wrap as i32) } }
+pub fn set_texture_wrap(texture: Texture2D, wrap: TextureWrap) {
+    unsafe { SetTextureWrap(texture, wrap as i32) }
+}
 
 pub fn draw_texture_v(texture: &Texture, pos: Vector2, tint: Color) {
     DrawTextureV(texture, pos, tint)
@@ -151,7 +163,7 @@ pub fn draw_texture_n_patch(
     rotation: f32,
     tint: Color,
 ) {
-    DrawTextureNPatch(texture, n_patch_info, dest, origin, rotation, tint)
+    unsafe { DrawTextureNPatch(texture, n_patch_info, dest, origin, rotation, tint) }
 }
 
 pub fn fade(color: Color, alpha: f32) -> Color {

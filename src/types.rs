@@ -406,6 +406,9 @@ impl Image {
             format: format as i32,
         }
     }
+    pub fn export_image_to_memory(&self, file_ext: &str) -> Option<Vec<u8>> {
+        export_image_to_memory(self, file_ext)
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -517,23 +520,12 @@ pub trait RaylibTexture2D: AsRef<Texture2D> + AsMut<Texture2D> {
     /// Updates GPU texture with new data.
     #[inline]
     fn update_texture(&mut self, pixels: &[u8]) {
-        update_texture(
-            *self.as_mut(),
-            pixels,
-        );
+        update_texture(*self.as_mut(), pixels);
     }
 
     /// Update GPU texture rectangle with new data
-    fn update_texture_rec(
-        &mut self,
-        rec: Rectangle,
-        pixels: &[u8],
-    ) {
-        update_texture_rec(
-            *self.as_ref(),
-            rec,
-            pixels,
-        );
+    fn update_texture_rec(&mut self, rec: Rectangle, pixels: &[u8]) {
+        update_texture_rec(*self.as_ref(), rec, pixels);
     }
 
     /// Gets pixel data from GPU texture and returns an `Image`.

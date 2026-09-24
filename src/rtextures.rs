@@ -16,7 +16,7 @@
 )]
 use crate::rcore::{GetRenderHeight, GetRenderWidth};
 use crate::rcore::LoadFileData;
-use crate::rlgl::rlFramebufferAttachTextureType::*;
+use crate::rlgl::{rlFramebufferAttachTextureType::*, rlNormal3f};
 use crate::rlgl::rlFramebufferAttachType::*;
 use crate::rlgl::{rlReadScreenPixels, rlUnloadFramebuffer};
 use crate::rlgl::{RL_QUADS, RL_TEXTURE_FILTER_ANISOTROPIC, RL_TEXTURE_FILTER_LINEAR, RL_TEXTURE_FILTER_LINEAR_MIP_NEAREST, RL_TEXTURE_FILTER_MIP_LINEAR, RL_TEXTURE_FILTER_MIP_NEAREST, RL_TEXTURE_FILTER_NEAREST, RL_TEXTURE_MAG_FILTER, RL_TEXTURE_MIN_FILTER, RL_TEXTURE_WRAP_CLAMP, RL_TEXTURE_WRAP_MIRROR_CLAMP, RL_TEXTURE_WRAP_MIRROR_REPEAT, RL_TEXTURE_WRAP_REPEAT, RL_TEXTURE_WRAP_S, RL_TEXTURE_WRAP_T, rlBegin, rlColor4ub, rlDisableFramebuffer, rlEnableFramebuffer, rlEnd, rlFramebufferAttach, rlFramebufferComplete, rlGenTextureMipmaps, rlLoadFramebuffer, rlLoadTexture, rlLoadTextureDepth, rlPopMatrix, rlPushMatrix, rlReadTexturePixels, rlRotatef, rlSetTexture, rlTexCoord2f, rlTextureParameters, rlTranslatef, rlUnloadTexture, rlUpdateTexture, rlVertex2f};
@@ -373,7 +373,7 @@ pub fn LoadTextureFromImage(image: &Image) -> Texture {
     if image.is_data_null() || image.width <= 0 || image.height <= 0 {
         warn!("IMAGE: Data is not valid to load texture");
         let width = if image.width > 0 { image.width } else { unsafe { MISSING_TEXTURE.width } };
-        let height = if image.height > 0 { image.width } else { unsafe { MISSING_TEXTURE.height } };
+        let height = if image.height > 0 { image.height } else { unsafe { MISSING_TEXTURE.height } };
         return unsafe { Texture { id: MISSING_TEXTURE.id, width, height, mipmaps: 1, format: 0 } };
     }
     unsafe {
@@ -585,7 +585,7 @@ pub unsafe fn LoadImageFromTexture(texture: Texture2D) -> Image
 {
     let mut image = Image::default();
 
-    if (texture.format as i32) < (PIXELFORMAT_COMPRESSED_DXT1_RGB as i32)
+    if texture.format < (PIXELFORMAT_COMPRESSED_DXT1_RGB as i32)
     {
         image.data = rlReadTexturePixels(texture.id, texture.width, texture.height, texture.format);
 
@@ -593,19 +593,7 @@ pub unsafe fn LoadImageFromTexture(texture: Texture2D) -> Image
         {
             image.width  = texture.width;
             image.height = texture.height;
-            #[cfg(feature = "FBO_READ_TEXTURE_AS_RGBA")]
-            {
-                // WARNING: On OpenGL ES 2.0/WebGL 1.0, there is no glGetTexImage() so,
-                // texture data is retrieved by creating an RGBA fbo, binding the texture
-                // to the fbo color attachment, and reading it as RGBA data with glReadPixels()
-                // Returned data *should* be RGBA but it seems on some platforms (RPI, WASM)
-                // original texture format is retrieved, so adding a define for this patch
-                image.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-            }
-            #[cfg(not(feature = "FBO_READ_TEXTURE_AS_RGBA"))]
-            {
-                image.format = texture.format;
-            }
+            image.format = texture.format;
             image.mipmaps = 1;
 
             info!("TEXTURE: [ID {}] Pixel data retrieved successfully", texture.id);
@@ -819,10 +807,11 @@ pub fn DrawTexturePro(
         rlVertex2f(top_left.x, top_left.y);
 
         rlEnd();
+        rlSetTexture(0);
     }
 }
 
-pub fn DrawTextureNPatch(
+pub unsafe fn DrawTextureNPatch(
     texture: &Texture,
     n_patch_info: NPatchInfo,
     dest: Rectangle,
@@ -890,123 +879,123 @@ pub fn DrawTextureNPatch(
         );
         let coord_d = Vector2::new((source.x + source.width) / width, (source.y + source.height) / height);
 
-        unsafe {
-            rlSetTexture(texture.id);
-            rlPushMatrix();
-            rlTranslatef(dest.x, dest.y, 0.0);
-            rlRotatef(rotation, 0.0, 0.0, 1.0);
-            rlTranslatef(-origin.x, -origin.y, 0.0);
+        rlSetTexture(texture.id);
+        rlPushMatrix();
+        rlTranslatef(dest.x, dest.y, 0.0);
+        rlRotatef(rotation, 0.0, 0.0, 1.0);
+        rlTranslatef(-origin.x, -origin.y, 0.0);
 
-            rlBegin(RL_QUADS);
-            rlColor4ub(tint.r, tint.g, tint.b, tint.a);
+        rlBegin(RL_QUADS);
+        rlColor4ub(tint.r, tint.g, tint.b, tint.a);
+        rlNormal3f(0.0, 0.0, 1.0);               // Normal vector pointing towards viewer
 
-            if n_patch_info.layout == NPatchLayout::NinePatch as i32 {
-                // TOP-LEFT QUAD
-                rlTexCoord2f(coord_a.x, coord_b.y); rlVertex2f(vert_a.x, vert_b.y);
+        if n_patch_info.layout == NPatchLayout::NinePatch as i32 {
+            // TOP-LEFT QUAD
+            rlTexCoord2f(coord_a.x, coord_b.y); rlVertex2f(vert_a.x, vert_b.y);
+            rlTexCoord2f(coord_b.x, coord_b.y); rlVertex2f(vert_b.x, vert_b.y);
+            rlTexCoord2f(coord_b.x, coord_a.y); rlVertex2f(vert_b.x, vert_a.y);
+            rlTexCoord2f(coord_a.x, coord_a.y); rlVertex2f(vert_a.x, vert_a.y);
+
+            if draw_center {
+                // TOP-CENTER QUAD
                 rlTexCoord2f(coord_b.x, coord_b.y); rlVertex2f(vert_b.x, vert_b.y);
-                rlTexCoord2f(coord_b.x, coord_a.y); rlVertex2f(vert_b.x, vert_a.y);
-                rlTexCoord2f(coord_a.x, coord_a.y); rlVertex2f(vert_a.x, vert_a.y);
-
-                if draw_center {
-                    // TOP-CENTER QUAD
-                    rlTexCoord2f(coord_b.x, coord_b.y); rlVertex2f(vert_b.x, vert_b.y);
-                    rlTexCoord2f(coord_c.x, coord_b.y); rlVertex2f(vert_c.x, vert_b.y);
-                    rlTexCoord2f(coord_c.x, coord_a.y); rlVertex2f(vert_c.x, vert_a.y);
-                    rlTexCoord2f(coord_b.x, coord_a.y); rlVertex2f(vert_b.x, vert_a.y);
-                }
-
-                // TOP-RIGHT QUAD
                 rlTexCoord2f(coord_c.x, coord_b.y); rlVertex2f(vert_c.x, vert_b.y);
-                rlTexCoord2f(coord_d.x, coord_b.y); rlVertex2f(vert_d.x, vert_b.y);
-                rlTexCoord2f(coord_d.x, coord_a.y); rlVertex2f(vert_d.x, vert_a.y);
                 rlTexCoord2f(coord_c.x, coord_a.y); rlVertex2f(vert_c.x, vert_a.y);
-
-                if draw_middle {
-                    // MIDDLE-LEFT QUAD
-                    rlTexCoord2f(coord_a.x, coord_c.y); rlVertex2f(vert_a.x, vert_c.y);
-                    rlTexCoord2f(coord_b.x, coord_c.y); rlVertex2f(vert_b.x, vert_c.y);
-                    rlTexCoord2f(coord_b.x, coord_b.y); rlVertex2f(vert_b.x, vert_b.y);
-                    rlTexCoord2f(coord_a.x, coord_b.y); rlVertex2f(vert_a.x, vert_b.y);
-
-                    if draw_center {
-                        // MIDDLE-CENTER QUAD
-                        rlTexCoord2f(coord_b.x, coord_c.y); rlVertex2f(vert_b.x, vert_c.y);
-                        rlTexCoord2f(coord_c.x, coord_c.y); rlVertex2f(vert_c.x, vert_c.y);
-                        rlTexCoord2f(coord_c.x, coord_b.y); rlVertex2f(vert_c.x, vert_b.y);
-                        rlTexCoord2f(coord_b.x, coord_b.y); rlVertex2f(vert_b.x, vert_b.y);
-                    }
-
-                    // MIDDLE-RIGHT QUAD
-                    rlTexCoord2f(coord_c.x, coord_c.y); rlVertex2f(vert_c.x, vert_c.y);
-                    rlTexCoord2f(coord_d.x, coord_c.y); rlVertex2f(vert_d.x, vert_c.y);
-                    rlTexCoord2f(coord_d.x, coord_b.y); rlVertex2f(vert_d.x, vert_b.y);
-                    rlTexCoord2f(coord_c.x, coord_b.y); rlVertex2f(vert_c.x, vert_b.y);
-                }
-
-                // BOTTOM-LEFT QUAD
-                rlTexCoord2f(coord_a.x, coord_d.y); rlVertex2f(vert_a.x, vert_d.y);
-                rlTexCoord2f(coord_b.x, coord_d.y); rlVertex2f(vert_b.x, vert_d.y);
-                rlTexCoord2f(coord_b.x, coord_c.y); rlVertex2f(vert_b.x, vert_c.y);
-                rlTexCoord2f(coord_a.x, coord_c.y); rlVertex2f(vert_a.x, vert_c.y);
-
-                if draw_center {
-                    // BOTTOM-CENTER QUAD
-                    rlTexCoord2f(coord_b.x, coord_d.y); rlVertex2f(vert_b.x, vert_d.y);
-                    rlTexCoord2f(coord_c.x, coord_d.y); rlVertex2f(vert_c.x, vert_d.y);
-                    rlTexCoord2f(coord_c.x, coord_c.y); rlVertex2f(vert_c.x, vert_c.y);
-                    rlTexCoord2f(coord_b.x, coord_c.y); rlVertex2f(vert_b.x, vert_c.y);
-                }
-
-                // BOTTOM-RIGHT QUAD
-                rlTexCoord2f(coord_c.x, coord_d.y); rlVertex2f(vert_c.x, vert_d.y);
-                rlTexCoord2f(coord_d.x, coord_d.y); rlVertex2f(vert_d.x, vert_d.y);
-                rlTexCoord2f(coord_d.x, coord_c.y); rlVertex2f(vert_d.x, vert_c.y);
-                rlTexCoord2f(coord_c.x, coord_c.y); rlVertex2f(vert_c.x, vert_c.y);
-            } else if n_patch_info.layout == NPatchLayout::ThreePatchVertical as i32 {
-                // TOP QUAD
-                rlTexCoord2f(coord_a.x, coord_b.y); rlVertex2f(vert_a.x, vert_b.y);
-                rlTexCoord2f(coord_d.x, coord_b.y); rlVertex2f(vert_d.x, vert_b.y);
-                rlTexCoord2f(coord_d.x, coord_a.y); rlVertex2f(vert_d.x, vert_a.y);
-                rlTexCoord2f(coord_a.x, coord_a.y); rlVertex2f(vert_a.x, vert_a.y);
-
-                if draw_center {
-                    // MIDDLE QUAD
-                    rlTexCoord2f(coord_a.x, coord_c.y); rlVertex2f(vert_a.x, vert_c.y);
-                    rlTexCoord2f(coord_d.x, coord_c.y); rlVertex2f(vert_d.x, vert_c.y);
-                    rlTexCoord2f(coord_d.x, coord_b.y); rlVertex2f(vert_d.x, vert_b.y);
-                    rlTexCoord2f(coord_a.x, coord_b.y); rlVertex2f(vert_a.x, vert_b.y);
-                }
-
-                // BOTTOM QUAD
-                rlTexCoord2f(coord_a.x, coord_d.y); rlVertex2f(vert_a.x, vert_d.y);
-                rlTexCoord2f(coord_d.x, coord_d.y); rlVertex2f(vert_d.x, vert_d.y);
-                rlTexCoord2f(coord_d.x, coord_c.y); rlVertex2f(vert_d.x, vert_c.y);
-                rlTexCoord2f(coord_a.x, coord_c.y); rlVertex2f(vert_a.x, vert_c.y);
-            } else if n_patch_info.layout == NPatchLayout::ThreePatchHorizontal as i32 {
-                // LEFT QUAD
-                rlTexCoord2f(coord_a.x, coord_d.y); rlVertex2f(vert_a.x, vert_d.y);
-                rlTexCoord2f(coord_b.x, coord_d.y); rlVertex2f(vert_b.x, vert_d.y);
                 rlTexCoord2f(coord_b.x, coord_a.y); rlVertex2f(vert_b.x, vert_a.y);
-                rlTexCoord2f(coord_a.x, coord_a.y); rlVertex2f(vert_a.x, vert_a.y);
-
-                if draw_center {
-                    // CENTER QUAD
-                    rlTexCoord2f(coord_b.x, coord_d.y); rlVertex2f(vert_b.x, vert_d.y);
-                    rlTexCoord2f(coord_c.x, coord_d.y); rlVertex2f(vert_c.x, vert_d.y);
-                    rlTexCoord2f(coord_c.x, coord_a.y); rlVertex2f(vert_c.x, vert_a.y);
-                    rlTexCoord2f(coord_b.x, coord_a.y); rlVertex2f(vert_b.x, vert_a.y);
-                }
-
-                // RIGHT QUAD
-                rlTexCoord2f(coord_c.x, coord_d.y); rlVertex2f(vert_c.x, vert_d.y);
-                rlTexCoord2f(coord_d.x, coord_d.y); rlVertex2f(vert_d.x, vert_d.y);
-                rlTexCoord2f(coord_d.x, coord_a.y); rlVertex2f(vert_d.x, vert_a.y);
-                rlTexCoord2f(coord_c.x, coord_a.y); rlVertex2f(vert_c.x, vert_a.y);
             }
 
-            rlEnd();
-            rlPopMatrix();
+            // TOP-RIGHT QUAD
+            rlTexCoord2f(coord_c.x, coord_b.y); rlVertex2f(vert_c.x, vert_b.y);
+            rlTexCoord2f(coord_d.x, coord_b.y); rlVertex2f(vert_d.x, vert_b.y);
+            rlTexCoord2f(coord_d.x, coord_a.y); rlVertex2f(vert_d.x, vert_a.y);
+            rlTexCoord2f(coord_c.x, coord_a.y); rlVertex2f(vert_c.x, vert_a.y);
+
+            if draw_middle {
+                // MIDDLE-LEFT QUAD
+                rlTexCoord2f(coord_a.x, coord_c.y); rlVertex2f(vert_a.x, vert_c.y);
+                rlTexCoord2f(coord_b.x, coord_c.y); rlVertex2f(vert_b.x, vert_c.y);
+                rlTexCoord2f(coord_b.x, coord_b.y); rlVertex2f(vert_b.x, vert_b.y);
+                rlTexCoord2f(coord_a.x, coord_b.y); rlVertex2f(vert_a.x, vert_b.y);
+
+                if draw_center {
+                    // MIDDLE-CENTER QUAD
+                    rlTexCoord2f(coord_b.x, coord_c.y); rlVertex2f(vert_b.x, vert_c.y);
+                    rlTexCoord2f(coord_c.x, coord_c.y); rlVertex2f(vert_c.x, vert_c.y);
+                    rlTexCoord2f(coord_c.x, coord_b.y); rlVertex2f(vert_c.x, vert_b.y);
+                    rlTexCoord2f(coord_b.x, coord_b.y); rlVertex2f(vert_b.x, vert_b.y);
+                }
+
+                // MIDDLE-RIGHT QUAD
+                rlTexCoord2f(coord_c.x, coord_c.y); rlVertex2f(vert_c.x, vert_c.y);
+                rlTexCoord2f(coord_d.x, coord_c.y); rlVertex2f(vert_d.x, vert_c.y);
+                rlTexCoord2f(coord_d.x, coord_b.y); rlVertex2f(vert_d.x, vert_b.y);
+                rlTexCoord2f(coord_c.x, coord_b.y); rlVertex2f(vert_c.x, vert_b.y);
+            }
+
+            // BOTTOM-LEFT QUAD
+            rlTexCoord2f(coord_a.x, coord_d.y); rlVertex2f(vert_a.x, vert_d.y);
+            rlTexCoord2f(coord_b.x, coord_d.y); rlVertex2f(vert_b.x, vert_d.y);
+            rlTexCoord2f(coord_b.x, coord_c.y); rlVertex2f(vert_b.x, vert_c.y);
+            rlTexCoord2f(coord_a.x, coord_c.y); rlVertex2f(vert_a.x, vert_c.y);
+
+            if draw_center {
+                // BOTTOM-CENTER QUAD
+                rlTexCoord2f(coord_b.x, coord_d.y); rlVertex2f(vert_b.x, vert_d.y);
+                rlTexCoord2f(coord_c.x, coord_d.y); rlVertex2f(vert_c.x, vert_d.y);
+                rlTexCoord2f(coord_c.x, coord_c.y); rlVertex2f(vert_c.x, vert_c.y);
+                rlTexCoord2f(coord_b.x, coord_c.y); rlVertex2f(vert_b.x, vert_c.y);
+            }
+
+            // BOTTOM-RIGHT QUAD
+            rlTexCoord2f(coord_c.x, coord_d.y); rlVertex2f(vert_c.x, vert_d.y);
+            rlTexCoord2f(coord_d.x, coord_d.y); rlVertex2f(vert_d.x, vert_d.y);
+            rlTexCoord2f(coord_d.x, coord_c.y); rlVertex2f(vert_d.x, vert_c.y);
+            rlTexCoord2f(coord_c.x, coord_c.y); rlVertex2f(vert_c.x, vert_c.y);
+        } else if n_patch_info.layout == NPatchLayout::ThreePatchVertical as i32 {
+            // TOP QUAD
+            rlTexCoord2f(coord_a.x, coord_b.y); rlVertex2f(vert_a.x, vert_b.y);
+            rlTexCoord2f(coord_d.x, coord_b.y); rlVertex2f(vert_d.x, vert_b.y);
+            rlTexCoord2f(coord_d.x, coord_a.y); rlVertex2f(vert_d.x, vert_a.y);
+            rlTexCoord2f(coord_a.x, coord_a.y); rlVertex2f(vert_a.x, vert_a.y);
+
+            if draw_center {
+                // MIDDLE QUAD
+                rlTexCoord2f(coord_a.x, coord_c.y); rlVertex2f(vert_a.x, vert_c.y);
+                rlTexCoord2f(coord_d.x, coord_c.y); rlVertex2f(vert_d.x, vert_c.y);
+                rlTexCoord2f(coord_d.x, coord_b.y); rlVertex2f(vert_d.x, vert_b.y);
+                rlTexCoord2f(coord_a.x, coord_b.y); rlVertex2f(vert_a.x, vert_b.y);
+            }
+
+            // BOTTOM QUAD
+            rlTexCoord2f(coord_a.x, coord_d.y); rlVertex2f(vert_a.x, vert_d.y);
+            rlTexCoord2f(coord_d.x, coord_d.y); rlVertex2f(vert_d.x, vert_d.y);
+            rlTexCoord2f(coord_d.x, coord_c.y); rlVertex2f(vert_d.x, vert_c.y);
+            rlTexCoord2f(coord_a.x, coord_c.y); rlVertex2f(vert_a.x, vert_c.y);
+        } else if n_patch_info.layout == NPatchLayout::ThreePatchHorizontal as i32 {
+            // LEFT QUAD
+            rlTexCoord2f(coord_a.x, coord_d.y); rlVertex2f(vert_a.x, vert_d.y);
+            rlTexCoord2f(coord_b.x, coord_d.y); rlVertex2f(vert_b.x, vert_d.y);
+            rlTexCoord2f(coord_b.x, coord_a.y); rlVertex2f(vert_b.x, vert_a.y);
+            rlTexCoord2f(coord_a.x, coord_a.y); rlVertex2f(vert_a.x, vert_a.y);
+
+            if draw_center {
+                // CENTER QUAD
+                rlTexCoord2f(coord_b.x, coord_d.y); rlVertex2f(vert_b.x, vert_d.y);
+                rlTexCoord2f(coord_c.x, coord_d.y); rlVertex2f(vert_c.x, vert_d.y);
+                rlTexCoord2f(coord_c.x, coord_a.y); rlVertex2f(vert_c.x, vert_a.y);
+                rlTexCoord2f(coord_b.x, coord_a.y); rlVertex2f(vert_b.x, vert_a.y);
+            }
+
+            // RIGHT QUAD
+            rlTexCoord2f(coord_c.x, coord_d.y); rlVertex2f(vert_c.x, vert_d.y);
+            rlTexCoord2f(coord_d.x, coord_d.y); rlVertex2f(vert_d.x, vert_d.y);
+            rlTexCoord2f(coord_d.x, coord_a.y); rlVertex2f(vert_d.x, vert_a.y);
+            rlTexCoord2f(coord_c.x, coord_a.y); rlVertex2f(vert_c.x, vert_a.y);
         }
+
+        rlEnd();
+        rlPopMatrix();
+        rlSetTexture(0);
     }
 }
 

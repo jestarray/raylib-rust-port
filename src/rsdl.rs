@@ -1679,6 +1679,9 @@ pub unsafe fn PollInputEvents()
 // Initialize platform: graphics, inputs and more
 pub unsafe fn InitPlatform() -> i32
 {
+    // SDL's resizable-window setup otherwise overrides the manifest orientation.
+    #[cfg(target_os = "android")]
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, c"LandscapeLeft LandscapeRight".as_ptr());
     // Initialize SDL internal global state, only required systems
     // NOTE: Not all systems need to be initialized, SDL_INIT_AUDIO is not required, managed by miniaudio
     if !SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD) {
@@ -1869,10 +1872,12 @@ pub unsafe fn InitPlatform() -> i32
         i += 1;
     }
 
-    // Disable mouse events being interpreted as touch events
-    // NOTE: This is wanted because there are SDL_FINGER* events available which provide unique data
-    // Due to the way PollInputEvents() and rgestures.h are currently implemented, setting this won't break SUPPORT_MOUSE_GESTURES
+    // Desktop callers receive raw finger events without synthesized mouse input.
+    #[cfg(not(target_os = "android"))]
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, c"0".as_ptr());
+    // The game UI consumes mouse events; let taps drive it on Android.
+    #[cfg(target_os = "android")]
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, c"1".as_ptr());
 
     SDL_EventState(SDL_EVENT_DROP_FILE, SDL_ENABLE as i32);
     //----------------------------------------------------------------------------

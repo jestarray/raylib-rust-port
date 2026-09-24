@@ -37,6 +37,13 @@ fn is_sdl3_installed_on_system() -> bool {
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
+    // An external packager (Android AAR), or sdl3-sys, owns SDL in these modes.
+    if env::var_os("CARGO_FEATURE_SDL_NO_LINK").is_some()
+        || env::var_os("CARGO_FEATURE_BUILD_SDL_FROM_SOURCE").is_some()
+    {
+        return;
+    }
+
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
