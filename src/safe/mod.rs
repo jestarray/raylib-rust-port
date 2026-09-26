@@ -1,8 +1,7 @@
-//! Safe, `snake_case` wrappers around the raw C-style bindings in the crate root.
+//! Safe, `snake_case` wrappers around global operations in the raw bindings.
 //!
-//! Each submodule mirrors one of the raw modules, exposing every one of its public
-//! functions under a `snake_case` name and a signature that can be called without
-//! `unsafe`:
+//! Methods on data types live in [`crate::types`].
+//! Live global state access remains explicitly `unsafe`:
 //!
 //! | Wrapper module      | Raw module    |
 //! |---------------------|---------------|
@@ -12,8 +11,6 @@
 //! | [`text`]            | `rtext`       |
 //! | [`textures`]        | `rtextures`   |
 //!
-//! Every raw function has exactly one wrapper here, and the raw modules themselves are
-//! private, so these submodules are the only entry points.
 
 pub mod core;
 pub mod handle;

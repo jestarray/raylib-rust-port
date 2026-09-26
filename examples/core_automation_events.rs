@@ -1,9 +1,9 @@
 use log::info;
 use raylib::core::{
     begin_drawing, begin_mode_2d, clear_background, close_window, end_drawing, end_mode_2d,
-    export_automation_event_list, get_mouse_wheel_move, get_world_to_screen_2d, init_window,
+    get_mouse_wheel_move, init_window,
     is_file_dropped, is_key_down, is_key_pressed, load_automation_event_list,
-    play_automation_event, set_automation_event_base_frame, set_automation_event_list,
+    set_automation_event_base_frame,
     set_target_fps, start_automation_event_recording, stop_automation_event_recording,
 };
 use raylib::rcolors::{
@@ -14,7 +14,6 @@ use raylib::shapes::{
     draw_circle, draw_rectangle, draw_rectangle_lines, draw_rectangle_rec, draw_triangle,
 };
 use raylib::text::draw_text;
-use raylib::textures::fade;
 use raylib::types::{Camera2D, Color, KeyboardKey, Rectangle, Vector2};
 
 const GRAVITY: f32 = 400.0;
@@ -124,7 +123,7 @@ fn start() {
     // Automation events
     // Initialize list of automation events to record new events
     let mut aelist = load_automation_event_list(None::<String>);
-    set_automation_event_list(&mut aelist);
+    let aelist = aelist.set_automation_event_list();
     let mut event_recording = false;
     let mut event_playing = false;
 
@@ -201,11 +200,13 @@ fn start() {
         // that can be set by the played event... but some other inputs could be affected
         if event_playing {
             // NOTE: Multiple events could be executed in a single frame
-            while play_frame_counter == aelist.events[current_play_frame].frame {
-                play_automation_event(aelist.events[current_play_frame]);
+            let events = aelist.snapshot();
+            while current_play_frame < events.count as usize
+                && play_frame_counter == events.events[current_play_frame].frame {
+                events.events[current_play_frame].play_automation_event();
                 current_play_frame += 1;
 
-                if current_play_frame == aelist.count as usize {
+                if current_play_frame == events.count as usize {
                     event_playing = false;
                     current_play_frame = 0;
                     play_frame_counter = 0;
@@ -245,8 +246,8 @@ fn start() {
             max_y = f32::max(element.rect.y + element.rect.height, max_y);
         }
 
-        let max = get_world_to_screen_2d(Vector2 { x: max_x, y: max_y }, camera);
-        let min = get_world_to_screen_2d(Vector2 { x: min_x, y: min_y }, camera);
+        let max = camera.get_world_to_screen_2d(Vector2 { x: max_x, y: max_y });
+        let min = camera.get_world_to_screen_2d(Vector2 { x: min_x, y: min_y });
 
         if max.x < screen_width as f32 {
             camera.offset.x = screen_width as f32 - (max.x - screen_width as f32 / 2.0);
@@ -269,9 +270,11 @@ fn start() {
                     stop_automation_event_recording();
                     event_recording = false;
 
-                    export_automation_event_list(aelist.clone(), "automation.rae");
+                    let events = aelist.snapshot();
+                    let count = events.count;
+                    events.export_automation_event_list("automation.rae");
 
-                    info!("{}", format!("RECORDED FRAMES: {}", aelist.count));
+                    info!("{}", format!("RECORDED FRAMES: {}", count));
                 } else {
                     set_automation_event_base_frame(180);
                     start_automation_event_recording();
@@ -280,7 +283,7 @@ fn start() {
             }
         } else if is_key_pressed(KeyboardKey::KEY_A) {
             // Toggle events playing (WARNING: Starts next frame)
-            if !event_recording && (aelist.count > 0) {
+            if !event_recording && (aelist.count() > 0) {
                 // Reset scene state to play
                 event_playing = true;
                 play_frame_counter = 0;
@@ -332,8 +335,8 @@ fn start() {
         end_mode_2d();
 
         // Draw game controls
-        draw_rectangle(10, 10, 290, 145, fade(SKYBLUE, 0.5));
-        draw_rectangle_lines(10, 10, 290, 145, fade(BLUE, 0.8));
+        draw_rectangle(10, 10, 290, 145, SKYBLUE.fade(0.5));
+        draw_rectangle_lines(10, 10, 290, 145, BLUE.fade(0.8));
 
         draw_text("Controls:", 20, 20, 10, BLACK);
         draw_text("- RIGHT | LEFT: Player movement", 30, 40, 10, DARKGRAY);
@@ -345,13 +348,13 @@ fn start() {
 
         // Draw automation events recording indicator
         if event_recording {
-            draw_rectangle(10, 160, 290, 30, fade(RED, 0.3));
-            draw_rectangle_lines(10, 160, 290, 30, fade(MAROON, 0.8));
+            draw_rectangle(10, 160, 290, 30, RED.fade(0.3));
+            draw_rectangle_lines(10, 160, 290, 30, MAROON.fade(0.8));
             draw_circle(30, 175, 10.0, MAROON);
 
             if ((frame_counter / 15) % 2) == 1 {
                 draw_text(
-                    &format!("RECORDING EVENTS... [{}]", aelist.count),
+                    &format!("RECORDING EVENTS... [{}]", aelist.count()),
                     50,
                     170,
                     10,
@@ -359,8 +362,8 @@ fn start() {
                 );
             }
         } else if event_playing {
-            draw_rectangle(10, 160, 290, 30, fade(LIME, 0.3));
-            draw_rectangle_lines(10, 160, 290, 30, fade(DARKGREEN, 0.8));
+            draw_rectangle(10, 160, 290, 30, LIME.fade(0.3));
+            draw_rectangle_lines(10, 160, 290, 30, DARKGREEN.fade(0.8));
             draw_triangle(
                 Vector2 { x: 20.0, y: 165.0 },
                 Vector2 { x: 20.0, y: 185.0 },

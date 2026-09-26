@@ -180,12 +180,12 @@ pub fn restore_window() {
     unsafe { RestoreWindow() }
 }
 
-/// Flags accumulate, so several variants can be applied by calling this once per flag.
+/// Applies a window-state flag.
 pub fn set_window_state(flags: ConfigFlags) {
     unsafe { SetWindowState(flags as u32) }
 }
 
-/// Flags accumulate, so call this once per flag to clear several.
+/// Clears a window-state flag.
 pub fn clear_window_state(flags: ConfigFlags) {
     unsafe { ClearWindowState(flags as u32) }
 }

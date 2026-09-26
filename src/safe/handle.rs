@@ -6,7 +6,7 @@ use crate::{
         begin_texture_mode, begin_vr_stereo_mode, clear_background, close_window,
         disable_event_waiting, enable_event_waiting, end_blend_mode, end_drawing, end_mode_2d,
         end_scissor_mode, end_shader_mode, end_texture_mode, end_vr_stereo_mode, init_window,
-        is_window_ready, set_config_flags, set_trace_log_level,
+        is_window_ready, set_config_flags,
     },
     shapes::{
         draw_circle, draw_circle_gradient, draw_circle_lines, draw_circle_lines_v,
@@ -24,7 +24,6 @@ use crate::{
         draw_triangle_fan, draw_triangle_lines, draw_triangle_strip, get_shapes_texture,
         get_shapes_texture_rectangle, get_spline_point_basis, get_spline_point_bezier_cubic,
         get_spline_point_bezier_quadratic, get_spline_point_catmull_rom, get_spline_point_linear,
-        set_shapes_texture,
     },
     text::{draw_fps, draw_text, draw_text_codepoint, draw_text_ex, draw_text_pro},
     textures::{
@@ -38,7 +37,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct RaylibHandle(());
+pub struct RaylibHandle(PhantomData<std::rc::Rc<()>>);
 
 impl Drop for RaylibHandle {
     fn drop(&mut self) {
@@ -51,25 +50,22 @@ impl Drop for RaylibHandle {
 /// Fluent builder for configuring the raylib window before it is created.
 ///
 /// Obtain a `RaylibBuilder` via [`init`], chain the desired options, then call [`build`] to open
-/// the window and receive a [`(RaylibHandle, RaylibThread)`](RaylibHandle) pair.
+/// the window and receive a [`RaylibHandle`].
 ///
 /// [`build`]: RaylibBuilder::build
 ///
 /// # Examples
 ///
 /// ```no_run
-/// use raylib::prelude::*;
+/// use raylib::handle::{self, RaylibDraw};
+/// use raylib::types::Color;
 ///
-/// let rl = raylib::init()
-///     .size(1280, 720)
-///     .title("My Game")
-///     .vsync()
-///     .msaa_4x()
-///     .build();
+/// let mut builder = handle::init();
+/// let mut rl = builder.size(1280, 720).title("My Game").vsync().msaa_4x().build();
 ///
 /// // rl is now ready; enter the game loop.
-/// while !rl.window_should_close() {
-///     let mut d = rl.begin_drawing(&thread);
+/// while !raylib::sdl::window_should_close() {
+///     let mut d = rl.begin_drawing();
 ///     d.clear_background(Color::RAYWHITE);
 /// }
 /// ```
@@ -288,7 +284,7 @@ impl<'a> RaylibBuilder<'a> {
 
         set_config_flags(flags);
 
-        set_trace_log_level(self.log_level);
+        self.log_level.set_trace_log_level();
 
         let rl = init_raylib(self.width, self.height, self.title);
 
@@ -309,7 +305,7 @@ fn init_raylib(width: i32, height: i32, title: &str) -> RaylibHandle {
         if !is_window_ready() {
             panic!("Attempting to create window failed!");
         }
-        RaylibHandle(())
+        RaylibHandle(PhantomData)
     }
 }
 
@@ -363,7 +359,7 @@ pub trait RaylibDraw {
     fn get_shapes_texture_rectangle(&self) -> Rectangle { get_shapes_texture_rectangle() }
 
     #[inline]
-    fn set_shapes_texture(&mut self, texture: Texture2D, rec: Rectangle) { set_shapes_texture(texture, rec); }
+    fn set_shapes_texture(&mut self, texture: Texture2D, rec: Rectangle) { texture.set_shapes_texture(rec); }
 
     // SHAPES
     #[inline]

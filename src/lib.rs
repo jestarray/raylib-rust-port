@@ -15,9 +15,8 @@ compile_error!(
     "Desktop OpenGL and OpenGL ES cannot be enabled together; use --no-default-features for ES builds"
 );
 
-// Safe, snake_case wrappers around the raw C-style bindings below. `safe` is only a
-// filesystem grouping; the modules themselves are exposed at the crate root so callers
-// write `use raylib::core::*;` rather than `use raylib::safe::core::*;`.
+// Safe wrappers for global operations. Type-owned operations live in `types.rs`.
+// `safe` is a filesystem grouping; its modules are exposed at the crate root.
 mod safe;
 
 pub use safe::{core, handle, sdl, shapes, text, textures};
@@ -29,9 +28,8 @@ pub mod rlgl;
 pub mod rmodels;
 pub mod types;
 
-// The raw C-style bindings are private implementation details. Each one is reachable only
-// through its safe `snake_case` wrapper, re-exported above as `raylib::core`,
-// `raylib::sdl`, `raylib::shapes`, `raylib::text` and `raylib::textures`.
+// The raw C-style bindings are private implementation details. Public access goes through
+// the safe wrappers above or methods in `types.rs`.
 //
 // Keeping the modules declared (rather than deleting these lines) is what lets the wrappers
 // name them as `crate::rcore::...`; a private module is still nameable inside the crate but

@@ -12,10 +12,6 @@
 use crate::rshapes::*;
 use crate::types::{Color, Rectangle, Texture2D, Vector2};
 
-pub fn set_shapes_texture(texture: Texture2D, rec: Rectangle) {
-    unsafe { SetShapesTexture(texture, rec) }
-}
-
 pub fn get_shapes_texture() -> Texture2D {
     unsafe { GetShapesTexture() }
 }

@@ -84,7 +84,13 @@ pub unsafe fn LoadFontEx(fileName: &str, fontSize: i32, codepoints: Option<&[i32
         glyphs: Vec::new(),
     };
 
-    let file_data = LoadFileData(fileName).unwrap();
+    let file_data = match LoadFileData(fileName) {
+        Ok(data) => data,
+        Err(error) => {
+            warn!("FONT: [{}] Failed to load font data: {}", fileName, error);
+            return font;
+        }
+    };
     let data_size = file_data.len();
     if data_size > 0 {
         let data = std::slice::from_raw_parts(file_data.as_ptr(), data_size);

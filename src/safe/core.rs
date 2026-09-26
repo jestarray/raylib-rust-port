@@ -1,18 +1,8 @@
 //! Safe wrappers for the raw `rcore` bindings.
 //!
-//! Every public function of `rcore` is mirrored here with a `snake_case` name and a
-//! signature that can be called without `unsafe`:
-//!
-//! * `i32`/`u32` parameters that name a value from [`crate::types`] use the matching enum
-//!   ([`ConfigFlags`], [`BlendMode`], [`TraceLogLevel`], [`KeyboardKey`], [`MouseButton`],
-//!   [`GamepadButton`], [`GamepadAxis`], [`ShaderUniformDataType`]).
-//! * file/path parameters are generic over [`AsRef<Path>`](AsRef).
-//! * raw pointers become references: `*const c_void` uniform payloads turn into `&T` or
-//!   `&[T]`, and `*mut AutomationEventList` becomes `&mut AutomationEventList`.
-//! * redundant length arguments are derived from the slice that is passed in.
-//!
-//! The raw `rcore` module is private, so this module is the only way to reach window,
-//! drawing and input functionality from outside the crate.
+//! Global `rcore` functions are exposed here with `snake_case` names.
+//! Operations exposing live global state require `unsafe`; ordinary wrappers are safe to call.
+//! Methods on data types live in [`crate::types`].
 
 use std::path::Path;
 
@@ -21,10 +11,8 @@ use log::warn;
 use crate::rcore::TraceLogCallback;
 use crate::rcore::*;
 use crate::types::{
-    AutomationEvent, AutomationEventList, BlendMode, Camera, Camera2D, Color, ConfigFlags,
-    GamepadAxis, GamepadButton, KeyboardKey, Matrix, MouseButton, Ray, RenderTexture2D, Shader,
-    ShaderUniformDataType, Texture2D, TraceLogLevel, Vector2, Vector3, VrDeviceInfo,
-    VrStereoConfig,
+    AutomationEventList, BlendMode, Camera, Camera2D, Color, GamepadAxis, GamepadButton,
+    KeyboardKey, MouseButton, RenderTexture2D, Shader, Vector2, VrStereoConfig,
 };
 
 // The `CORE` global's data types, re-exported so callers can name what [`state`] returns
@@ -36,20 +24,21 @@ pub use crate::rcore::{
     WindowData,
 };
 
-/// Read-only, zero-cost view of raylib's live global `CORE` state.
+/// Read-only view of raylib's live global `CORE` state.
 ///
 /// Handy for debugging and for the few values that have no dedicated accessor:
 ///
 /// ```no_run
-/// let state = raylib::core::state();
+/// let state = unsafe { raylib::core::state() };
 /// println!("screen: {:?}", state.Window.screen);
 /// println!("exit key: {}", state.Input.Keyboard.exitKey);
 /// println!("{state:#?}"); // `CoreData` derives `Debug`
 /// ```
 ///
-/// This borrows the live state rather than copying it, so do not hold the reference across a
-/// call that mutates core state. Use [`state_snapshot`] when you need to keep it around.
-pub fn state() -> &'static CoreData {
+/// # Safety
+/// The caller must ensure no raylib call mutates `CORE` for the lifetime of the
+/// returned reference, and no other thread accesses it concurrently.
+pub unsafe fn state() -> &'static CoreData {
     // `addr_of!` takes the address without forming a reference to the `static mut`, which
     // edition 2024 rejects outright (`static_mut_refs` is a hard error there).
     unsafe { &*std::ptr::addr_of!(crate::rcore::CORE) }
@@ -58,8 +47,11 @@ pub fn state() -> &'static CoreData {
 /// Owned copy of raylib's global `CORE` state, taken at the moment of the call.
 ///
 /// Unlike [`state`], the result is detached from the live state, so it is safe to store and
-/// inspect later. It is a deep copy, so prefer [`state`] for a one-off read.
-pub fn state_snapshot() -> CoreData {
+/// inspect later.
+///
+/// # Safety
+/// No other thread may mutate `CORE` while the snapshot is copied.
+pub unsafe fn state_snapshot() -> CoreData {
     unsafe { (*std::ptr::addr_of!(crate::rcore::CORE)).clone() }
 }
 
@@ -115,10 +107,6 @@ pub fn is_window_focused() -> bool {
 
 pub fn is_window_resized() -> bool {
     unsafe { IsWindowResized() }
-}
-
-pub fn is_window_state(flag: ConfigFlags) -> bool {
-    unsafe { IsWindowState(flag as u32) }
 }
 
 pub fn get_screen_width() -> i32 {
@@ -229,14 +217,6 @@ pub fn end_vr_stereo_mode() {
     unsafe { EndVrStereoMode() }
 }
 
-pub fn load_vr_stereo_config(device: VrDeviceInfo) -> VrStereoConfig {
-    unsafe { LoadVrStereoConfig(device) }
-}
-
-pub fn unload_vr_stereo_config(config: VrStereoConfig) {
-    UnloadVrStereoConfig(config)
-}
-
 //----------------------------------------------------------------------------------
 // Shaders
 //----------------------------------------------------------------------------------
@@ -261,105 +241,9 @@ pub fn load_shader_from_memory(vs_code: Option<&str>, fs_code: Option<&str>) -> 
     unsafe { LoadShaderFromMemory(vs_code, fs_code) }
 }
 
-pub fn is_shader_valid(shader: Shader) -> bool {
-    IsShaderValid(shader)
-}
-
-pub fn unload_shader(shader: &mut Shader) {
-    unsafe { UnloadShader(shader) }
-}
-
-pub fn get_shader_location(shader: &Shader, uniform_name: &str) -> i32 {
-    unsafe { GetShaderLocation(shader, uniform_name) }
-}
-
-pub fn get_shader_location_attrib(shader: Shader, attrib_name: &str) -> i32 {
-    unsafe { GetShaderLocationAttrib(shader, attrib_name) }
-}
-
-/// Takes a reference to a single value of the type named by `uniform_type`.
-pub fn set_shader_value<T>(
-    shader: &mut Shader,
-    loc_index: i32,
-    value: T,
-    uniform_type: ShaderUniformDataType,
-) {
-    let v = std::ptr::from_ref(&value).cast();
-    unsafe { SetShaderValue(shader, loc_index, v, uniform_type as i32) }
-}
-
-/// Takes a slice whose `len()` becomes the uniform count. Each element of `value` must be
-/// one `uniform_type` value, so e.g. a `vec2` uniform is passed as `&[[f32; 2]]`.
-pub fn set_shader_value_v<T>(
-    shader: &mut Shader,
-    loc_index: i32,
-    value: &[T],
-    uniform_type: ShaderUniformDataType,
-) {
-    unsafe {
-        SetShaderValueV(
-            shader,
-            loc_index,
-            value.as_ptr().cast(),
-            uniform_type as i32,
-            value.len() as i32,
-        )
-    }
-}
-
-pub fn set_shader_value_matrix(shader: Shader, loc_index: i32, mat: Matrix) {
-    unsafe { SetShaderValueMatrix(shader, loc_index, mat) }
-}
-
-pub fn set_shader_value_texture(shader: Shader, loc_index: i32, texture: Texture2D) {
-    unsafe { SetShaderValueTexture(shader, loc_index, texture) }
-}
-
 //----------------------------------------------------------------------------------
 // Screen-space conversions
 //----------------------------------------------------------------------------------
-
-pub fn get_screen_to_world_ray(position: Vector2, camera: Camera) -> Ray {
-    unsafe { GetScreenToWorldRay(position, camera) }
-}
-
-pub fn get_screen_to_world_ray_ex(
-    position: Vector2,
-    camera: Camera,
-    width: i32,
-    height: i32,
-) -> Ray {
-    unsafe { GetScreenToWorldRayEx(position, camera, width, height) }
-}
-
-pub fn get_camera_matrix(camera: Camera) -> Matrix {
-    GetCameraMatrix(camera)
-}
-
-pub fn get_camera_matrix_2d(camera: Camera2D) -> Matrix {
-    GetCameraMatrix2D(camera)
-}
-
-pub fn get_world_to_screen(position: Vector3, camera: Camera) -> Vector2 {
-    unsafe { GetWorldToScreen(position, camera) }
-}
-
-pub fn get_world_to_screen_ex(
-    position: Vector3,
-    camera: Camera,
-    width: i32,
-    height: i32,
-) -> Vector2 {
-    unsafe { GetWorldToScreenEx(position, camera, width, height) }
-}
-
-pub fn get_world_to_screen_2d(position: Vector2, camera: Camera2D) -> Vector2 {
-    GetWorldToScreen2D(position, camera)
-}
-
-pub fn get_screen_to_world_2d(position: Vector2, camera: Camera2D) -> Vector2 {
-    GetScreenToWorld2D(position, camera)
-}
 
 //----------------------------------------------------------------------------------
 // Timing
@@ -399,14 +283,6 @@ pub fn take_screenshot<P: AsRef<Path>>(file_name: P) {
 /// [`init_window`] has run.
 pub fn set_config_flags(flags: u32) {
     unsafe { SetConfigFlags(flags) }
-}
-
-pub fn set_trace_log_level(log_type: TraceLogLevel) {
-    unsafe { SetTraceLogLevel(log_type as i32) }
-}
-
-pub fn trace_log(log_type: TraceLogLevel, text: std::fmt::Arguments<'_>) {
-    TraceLog(log_type as i32, text)
 }
 
 pub fn set_trace_log_callback(callback: Option<TraceLogCallback>) {
@@ -546,25 +422,6 @@ pub fn load_automation_event_list<P: AsRef<Path>>(file_name: Option<P>) -> Autom
     LoadAutomationEventList(file_name)
 }
 
-pub fn unload_automation_event_list(list: &mut AutomationEventList) {
-    UnloadAutomationEventList(list)
-}
-
-pub fn export_automation_event_list<P: AsRef<Path>>(
-    list: AutomationEventList,
-    file_name: P,
-) -> bool {
-    match path_to_str(file_name.as_ref()) {
-        Some(file_name) => unsafe { ExportAutomationEventList(list, file_name) },
-        None => false,
-    }
-}
-
-/// The list is kept in a static, so `list` must outlive the recording session.
-pub fn set_automation_event_list(list: &mut AutomationEventList) {
-    unsafe { SetAutomationEventList(list) }
-}
-
 pub fn set_automation_event_base_frame(frame: i32) {
     unsafe { SetAutomationEventBaseFrame(frame) }
 }
@@ -575,10 +432,6 @@ pub fn start_automation_event_recording() {
 
 pub fn stop_automation_event_recording() {
     unsafe { StopAutomationEventRecording() }
-}
-
-pub fn play_automation_event(event: AutomationEvent) {
-    unsafe { PlayAutomationEvent(event) }
 }
 
 #[cfg(feature = "SUPPORT_AUTOMATION_EVENTS")]

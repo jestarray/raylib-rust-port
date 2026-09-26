@@ -1,10 +1,24 @@
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use image::ColorType;
+use log::warn;
+use std::marker::PhantomData;
+use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::{
-    core::{get_shader_location, get_world_to_screen_2d, set_shader_value},
-    text::measure_text_ex,
-    textures::*,
+use crate::rcore::*;
+use crate::rshapes::SetShapesTexture;
+use crate::rtext::*;
+use crate::rtextures::*;
+use crate::safe::core::path_to_str;
+
+use crate::safe::{
+    core::{
+        get_gamepad_axis_movement, is_gamepad_button_down, is_gamepad_button_pressed,
+        is_gamepad_button_released, is_gamepad_button_up, is_key_down, is_key_pressed,
+        is_key_pressed_repeat, is_key_released, is_key_up, is_mouse_button_down,
+        is_mouse_button_pressed, is_mouse_button_released, is_mouse_button_up, set_exit_key,
+    },
+    sdl::{get_key_name, set_mouse_cursor},
 };
 
 pub type Vector2 = Vec2;
@@ -79,6 +93,12 @@ impl Color {
             b: ((color >> 8) & 0xFF) as u8,
             a: (color & 0xFF) as u8,
         }
+    }
+
+    /// Returns this color with its alpha scaled by `alpha`.
+    #[must_use]
+    pub fn fade(self, alpha: f32) -> Self {
+        Fade(self, alpha)
     }
 }
 
@@ -304,7 +324,7 @@ impl Rectangle {
     /// Gets the overlap between two colliding rectangles.
     /// Shorter alias name: [Self::get_overlap_area]
     /// ```rust
-    /// use raylib::core::math::Rectangle;
+    /// use raylib::types::Rectangle;
     /// let r1 = Rectangle::new(0.0, 0.0, 10.0, 10.0);
     /// let r2 = Rectangle::new(20.0, 20.0, 10.0, 10.0);
     /// assert_eq!(None, r1.get_collision_rec(r2));
@@ -394,9 +414,13 @@ impl Image {
     }
     pub fn gen_image_color(width: i32, height: i32, color: Color) -> Image {
         let format = PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
-        let dims = (width * height) as usize;
+        let dims = usize::try_from(width)
+            .ok()
+            .and_then(|w| usize::try_from(height).ok().and_then(|h| w.checked_mul(h)))
+            .and_then(|pixels| pixels.checked_mul(4))
+            .expect("image dimensions exceed addressable memory");
         let mut data = Vec::with_capacity(dims);
-        for _ in 0..dims {
+        for _ in 0..(dims / 4) {
             data.push(color.r);
             data.push(color.g);
             data.push(color.b);
@@ -411,8 +435,44 @@ impl Image {
         }
     }
     pub fn export_image_to_memory(&self, file_ext: &str) -> Option<Vec<u8>> {
-        export_image_to_memory(self, file_ext)
+        ExportImageToMemory(self, file_ext)
     }
+
+    #[must_use]
+    pub fn image_from_image(&self, rec: Rectangle) -> Image {
+        unsafe { ImageFromImage(self, rec) }
+    }
+
+    #[must_use]
+    pub fn load_image_colors(&self) -> Vec<Color> {
+        LoadImageColors(self)
+    }
+
+    #[must_use]
+    pub fn is_image_valid(&self) -> bool {
+        IsImageValid(self)
+    }
+
+    pub fn unload_image(&mut self) {
+        UnloadImage(self);
+    }
+
+    pub fn export_image<P: AsRef<std::path::Path>>(&self, path: P) {
+        if let Some(path) = path_to_str(path.as_ref()) {
+            ExportImage(self, path);
+        }
+    }
+
+    #[must_use]
+    pub fn load_texture_from_image(&self) -> Texture {
+        LoadTextureFromImage(self)
+    }
+
+    #[must_use]
+    pub fn load_font_from_image(&self, key: Color, first_char: i32) -> Font {
+        unsafe { LoadFontFromImage(self, key, first_char) }
+    }
+
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -437,6 +497,78 @@ impl Default for Texture {
             mipmaps: 1,
             format: 0,
         }
+    }
+}
+
+impl Texture {
+    #[must_use]
+    pub fn is_texture_valid(&self) -> bool {
+        IsTextureValid(*self)
+    }
+
+    pub fn unload_texture(&mut self) {
+        UnloadTexture(self);
+    }
+
+    #[must_use]
+    pub fn load_image_from_texture(&self) -> Image {
+        unsafe { LoadImageFromTexture(*self) }
+    }
+
+    pub fn update_texture(&self, pixels: &[u8]) {
+        let required = GetPixelDataSize(self.width, self.height, self.format);
+        if required <= 0 || pixels.len() < required as usize {
+            warn!(
+                "TEXTURE: Update rejected: pixel buffer is too short or texture format is unsupported"
+            );
+            return;
+        }
+        unsafe { UpdateTexture(*self, pixels) }
+    }
+
+    pub fn update_texture_rec(&self, rec: Rectangle, pixels: &[u8]) {
+        if !rec.x.is_finite()
+            || !rec.y.is_finite()
+            || !rec.width.is_finite()
+            || !rec.height.is_finite()
+            || rec.x < 0.0
+            || rec.y < 0.0
+            || rec.width <= 0.0
+            || rec.height <= 0.0
+            || rec.x.fract() != 0.0
+            || rec.y.fract() != 0.0
+            || rec.width.fract() != 0.0
+            || rec.height.fract() != 0.0
+            || rec.x + rec.width > self.width as f32
+            || rec.y + rec.height > self.height as f32
+        {
+            warn!("TEXTURE: Update rejected: rectangle is outside texture bounds");
+            return;
+        }
+        let required = GetPixelDataSize(rec.width as i32, rec.height as i32, self.format);
+        if required <= 0 || pixels.len() < required as usize {
+            warn!(
+                "TEXTURE: Update rejected: pixel buffer is too short or texture format is unsupported"
+            );
+            return;
+        }
+        unsafe { UpdateTextureRec(*self, rec, pixels) }
+    }
+
+    pub fn gen_texture_mipmaps(&mut self) {
+        unsafe { GenTextureMipmaps(self) }
+    }
+
+    pub fn set_texture_filter(&self, filter: TextureFilter) {
+        unsafe { SetTextureFilter(*self, filter as i32) }
+    }
+
+    pub fn set_texture_wrap(&self, wrap: TextureWrap) {
+        unsafe { SetTextureWrap(*self, wrap as i32) }
+    }
+
+    pub fn set_shapes_texture(&self, rec: Rectangle) {
+        unsafe { SetShapesTexture(*self, rec) }
     }
 }
 
@@ -481,6 +613,15 @@ impl RenderTexture {
     pub fn texture_mut(&mut self) -> &mut Texture2D {
         &mut self.texture
     }
+
+    #[must_use]
+    pub fn is_render_texture_valid(&self) -> bool {
+        IsRenderTextureValid(self.clone())
+    }
+
+    pub fn unload_render_texture(self) {
+        unsafe { UnloadRenderTexture(self) }
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -511,7 +652,7 @@ pub trait RaylibTexture2D: AsRef<Texture2D> + AsMut<Texture2D> {
     #[inline]
     #[must_use]
     fn mipmaps(&self) -> i32 {
-        self.as_ref().width
+        self.as_ref().mipmaps
     }
 
     /// Data format (PixelFormat type)
@@ -524,12 +665,12 @@ pub trait RaylibTexture2D: AsRef<Texture2D> + AsMut<Texture2D> {
     /// Updates GPU texture with new data.
     #[inline]
     fn update_texture(&mut self, pixels: &[u8]) {
-        update_texture(self.as_mut().clone(), pixels);
+        self.as_ref().update_texture(pixels);
     }
 
     /// Update GPU texture rectangle with new data
     fn update_texture_rec(&mut self, rec: Rectangle, pixels: &[u8]) {
-        update_texture_rec(self.as_ref().clone(), rec, pixels);
+        self.as_ref().update_texture_rec(rec, pixels);
     }
 
     /// Gets pixel data from GPU texture and returns an `Image`.
@@ -537,25 +678,25 @@ pub trait RaylibTexture2D: AsRef<Texture2D> + AsMut<Texture2D> {
     #[inline]
     #[must_use]
     fn load_image(&self) -> Image {
-        load_image_from_texture(self.as_ref().clone())
+        self.as_ref().load_image_from_texture()
     }
 
     /// Generates GPU mipmaps for a `texture`.
     #[inline]
     fn gen_texture_mipmaps(&mut self) {
-        gen_texture_mipmaps(self.as_mut());
+        self.as_mut().gen_texture_mipmaps();
     }
 
     /// Sets global `texture` scaling filter mode.
     #[inline]
     fn set_texture_filter(&self, filter_mode: TextureFilter) {
-        set_texture_filter(self.as_ref().clone(), filter_mode);
+        self.as_ref().set_texture_filter(filter_mode);
     }
 
     /// Sets global texture wrapping mode.
     #[inline]
     fn set_texture_wrap(&self, wrap_mode: TextureWrap) {
-        set_texture_wrap(self.as_ref().clone(), wrap_mode);
+        self.as_ref().set_texture_wrap(wrap_mode);
     }
 
     // Check if a texture is valid (loaded in GPU)
@@ -595,6 +736,33 @@ pub struct Camera3D {
 }
 pub type Camera = Camera3D;
 
+impl Camera3D {
+    #[must_use]
+    pub fn get_camera_matrix(self) -> Matrix {
+        GetCameraMatrix(self)
+    }
+
+    #[must_use]
+    pub fn get_screen_to_world_ray(self, position: Vector2) -> Ray {
+        unsafe { GetScreenToWorldRay(position, self) }
+    }
+
+    #[must_use]
+    pub fn get_screen_to_world_ray_ex(self, position: Vector2, width: i32, height: i32) -> Ray {
+        unsafe { GetScreenToWorldRayEx(position, self, width, height) }
+    }
+
+    #[must_use]
+    pub fn get_world_to_screen(self, position: Vector3) -> Vector2 {
+        unsafe { GetWorldToScreen(position, self) }
+    }
+
+    #[must_use]
+    pub fn get_world_to_screen_ex(self, position: Vector3, width: i32, height: i32) -> Vector2 {
+        unsafe { GetWorldToScreenEx(position, self, width, height) }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 #[repr(C)]
@@ -606,8 +774,18 @@ pub struct Camera2D {
 }
 
 impl Camera2D {
+    #[must_use]
+    pub fn get_camera_matrix_2d(self) -> Matrix {
+        GetCameraMatrix2D(self)
+    }
+
     pub fn get_world_to_screen_2d(&self, position: Vector2) -> Vector2 {
-        get_world_to_screen_2d(position, *self)
+        GetWorldToScreen2D(position, *self)
+    }
+
+    #[must_use]
+    pub fn get_screen_to_world_2d(self, position: Vector2) -> Vector2 {
+        GetScreenToWorld2D(position, self)
     }
 }
 
@@ -657,7 +835,46 @@ pub struct Font {
 impl Font {
     #[must_use]
     pub fn measure_text(&self, text: &str, font_size: f32, spacing: f32) -> Vector2 {
-        measure_text_ex(self, text, font_size, spacing)
+        self.measure_text_ex(text, font_size, spacing)
+    }
+
+    #[must_use]
+    pub fn measure_text_ex(&self, text: &str, font_size: f32, spacing: f32) -> Vector2 {
+        MeasureTextEx(self, text, font_size, spacing)
+    }
+
+    pub fn unload_font(&mut self) {
+        UnloadFont(self);
+    }
+
+    #[must_use]
+    pub fn is_font_valid(&self) -> bool {
+        IsFontValid(self)
+    }
+
+    #[must_use]
+    pub fn get_glyph_index(&self, codepoint: i32) -> usize {
+        GetGlyphIndex(self, codepoint)
+    }
+
+    #[must_use]
+    pub fn get_glyph_info(&self, codepoint: i32) -> &GlyphInfo {
+        GetGlyphInfo(self, codepoint)
+    }
+
+    #[must_use]
+    pub fn get_glyph_atlas_rec(&self, codepoint: i32) -> Rectangle {
+        GetGlyphAtlasRec(self, codepoint)
+    }
+
+    #[must_use]
+    pub fn measure_text_codepoints(
+        &self,
+        codepoints: &[i32],
+        font_size: f32,
+        spacing: f32,
+    ) -> Vector2 {
+        MeasureTextCodepoints(self, codepoints, font_size, spacing)
     }
 }
 
@@ -684,6 +901,12 @@ pub enum ConfigFlags {
     FLAG_INTERLACED_HINT              = 0x00010000,   // Set to try enabling interlaced video format (for V3D)
     FLAG_GL_CONTEXT_DEBUG                 = 0x00020000,
 }
+impl ConfigFlags {
+    #[must_use]
+    pub fn is_window_state(self) -> bool {
+        unsafe { IsWindowState(self as u32) }
+    }
+}
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Default)]
@@ -697,6 +920,15 @@ pub enum TraceLogLevel {
     LOG_ERROR = 5,
     LOG_FATAL = 6,
     LOG_NONE = 7,
+}
+impl TraceLogLevel {
+    pub fn set_trace_log_level(self) {
+        unsafe { SetTraceLogLevel(self as i32) }
+    }
+
+    pub fn trace_log(self, text: std::fmt::Arguments<'_>) {
+        TraceLog(self as i32, text);
+    }
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
@@ -813,6 +1045,41 @@ pub enum KeyboardKey {
     KEY_VOLUME_UP = 24,
     KEY_VOLUME_DOWN = 25,
 }
+impl KeyboardKey {
+    #[must_use]
+    pub fn is_key_pressed(self) -> bool {
+        is_key_pressed(self)
+    }
+
+    #[must_use]
+    pub fn is_key_pressed_repeat(self) -> bool {
+        is_key_pressed_repeat(self)
+    }
+
+    #[must_use]
+    pub fn is_key_down(self) -> bool {
+        is_key_down(self)
+    }
+
+    #[must_use]
+    pub fn is_key_released(self) -> bool {
+        is_key_released(self)
+    }
+
+    #[must_use]
+    pub fn is_key_up(self) -> bool {
+        is_key_up(self)
+    }
+
+    pub fn set_exit_key(self) {
+        set_exit_key(self);
+    }
+
+    #[must_use]
+    pub fn get_key_name(self) -> String {
+        get_key_name(self)
+    }
+}
 impl From<KeyboardKey> for i32 {
     fn from(val: KeyboardKey) -> Self {
         val as i32
@@ -830,6 +1097,27 @@ pub enum MouseButton {
     MOUSE_BUTTON_FORWARD = 5,
     MOUSE_BUTTON_BACK = 6,
 }
+impl MouseButton {
+    #[must_use]
+    pub fn is_mouse_button_pressed(self) -> bool {
+        is_mouse_button_pressed(self)
+    }
+
+    #[must_use]
+    pub fn is_mouse_button_down(self) -> bool {
+        is_mouse_button_down(self)
+    }
+
+    #[must_use]
+    pub fn is_mouse_button_released(self) -> bool {
+        is_mouse_button_released(self)
+    }
+
+    #[must_use]
+    pub fn is_mouse_button_up(self) -> bool {
+        is_mouse_button_up(self)
+    }
+}
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -845,6 +1133,11 @@ pub enum MouseCursor {
     MOUSE_CURSOR_RESIZE_NESW = 8,
     MOUSE_CURSOR_RESIZE_ALL = 9,
     MOUSE_CURSOR_NOT_ALLOWED = 10,
+}
+impl MouseCursor {
+    pub fn set_mouse_cursor(self) {
+        set_mouse_cursor(self);
+    }
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
@@ -869,6 +1162,27 @@ pub enum GamepadButton {
     GAMEPAD_BUTTON_LEFT_THUMB,      // Gamepad joystick pressed button left
     GAMEPAD_BUTTON_RIGHT_THUMB,     // Gamepad joystick pressed button right
 }
+impl GamepadButton {
+    #[must_use]
+    pub fn is_gamepad_button_pressed(self, gamepad: i32) -> bool {
+        is_gamepad_button_pressed(gamepad, self)
+    }
+
+    #[must_use]
+    pub fn is_gamepad_button_down(self, gamepad: i32) -> bool {
+        is_gamepad_button_down(gamepad, self)
+    }
+
+    #[must_use]
+    pub fn is_gamepad_button_released(self, gamepad: i32) -> bool {
+        is_gamepad_button_released(gamepad, self)
+    }
+
+    #[must_use]
+    pub fn is_gamepad_button_up(self, gamepad: i32) -> bool {
+        is_gamepad_button_up(gamepad, self)
+    }
+}
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -879,6 +1193,12 @@ pub enum GamepadAxis {
     GAMEPAD_AXIS_RIGHT_Y = 3,
     GAMEPAD_AXIS_LEFT_TRIGGER = 4,
     GAMEPAD_AXIS_RIGHT_TRIGGER = 5,
+}
+impl GamepadAxis {
+    #[must_use]
+    pub fn get_gamepad_axis_movement(self, gamepad: i32) -> f32 {
+        get_gamepad_axis_movement(gamepad, self)
+    }
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
@@ -949,6 +1269,37 @@ pub enum ShaderUniformDataType {
     SHADER_UNIFORM_UIVEC4 = 11,
     SHADER_UNIFORM_SAMPLER2D = 12,
 }
+
+mod shader_uniform_sealed {
+    pub trait Sealed {}
+}
+
+/// A value whose layout matches a shader uniform type.
+pub trait ShaderUniformValue: Copy + shader_uniform_sealed::Sealed {
+    const UNIFORM_TYPE: ShaderUniformDataType;
+}
+
+macro_rules! impl_shader_uniform_value {
+    ($ty:ty, $uniform_type:ident) => {
+        impl shader_uniform_sealed::Sealed for $ty {}
+        impl ShaderUniformValue for $ty {
+            const UNIFORM_TYPE: ShaderUniformDataType = ShaderUniformDataType::$uniform_type;
+        }
+    };
+}
+
+impl_shader_uniform_value!(f32, SHADER_UNIFORM_FLOAT);
+impl_shader_uniform_value!([f32; 2], SHADER_UNIFORM_VEC2);
+impl_shader_uniform_value!([f32; 3], SHADER_UNIFORM_VEC3);
+impl_shader_uniform_value!([f32; 4], SHADER_UNIFORM_VEC4);
+impl_shader_uniform_value!(i32, SHADER_UNIFORM_INT);
+impl_shader_uniform_value!([i32; 2], SHADER_UNIFORM_IVEC2);
+impl_shader_uniform_value!([i32; 3], SHADER_UNIFORM_IVEC3);
+impl_shader_uniform_value!([i32; 4], SHADER_UNIFORM_IVEC4);
+impl_shader_uniform_value!(u32, SHADER_UNIFORM_UINT);
+impl_shader_uniform_value!([u32; 2], SHADER_UNIFORM_UIVEC2);
+impl_shader_uniform_value!([u32; 3], SHADER_UNIFORM_UIVEC3);
+impl_shader_uniform_value!([u32; 4], SHADER_UNIFORM_UIVEC4);
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -986,6 +1337,12 @@ pub enum PixelFormat {
     PIXELFORMAT_COMPRESSED_PVRT_RGBA = 22,
     PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA = 23,
     PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA = 24,
+}
+impl PixelFormat {
+    #[must_use]
+    pub fn get_pixel_data_size(self, width: i32, height: i32) -> i32 {
+        GetPixelDataSize(width, height, self as i32)
+    }
 }
 impl PixelFormat {
     #[must_use]
@@ -1098,20 +1455,74 @@ pub struct Shader {
 
 impl Shader {
     #[must_use]
-    pub fn get_shader_location(&self, uniform_name: &str) -> i32 {
-        get_shader_location(self, uniform_name)
+    pub fn is_shader_valid(&self) -> bool {
+        IsShaderValid(self.clone())
     }
-    pub fn set_shader_value<T>(
+
+    pub fn unload_shader(&mut self) {
+        unsafe { UnloadShader(self) }
+    }
+
+    #[must_use]
+    pub fn get_shader_location(&self, uniform_name: &str) -> i32 {
+        unsafe { GetShaderLocation(self, uniform_name) }
+    }
+
+    #[must_use]
+    pub fn get_shader_location_attrib(&self, attrib_name: &str) -> i32 {
+        unsafe { GetShaderLocationAttrib(self.clone(), attrib_name) }
+    }
+
+    /// Sets one uniform value. `uniform_type` must match the value's Rust type.
+    pub fn set_shader_value<T: ShaderUniformValue>(
         &mut self,
         loc_index: i32,
         value: T,
         uniform_type: ShaderUniformDataType,
     ) {
-        set_shader_value(self, loc_index, value, uniform_type);
+        assert!(
+            uniform_type == T::UNIFORM_TYPE
+                || (uniform_type == ShaderUniformDataType::SHADER_UNIFORM_SAMPLER2D
+                    && T::UNIFORM_TYPE == ShaderUniformDataType::SHADER_UNIFORM_INT),
+            "shader uniform type does not match the value"
+        );
+        let value = std::ptr::from_ref(&value).cast();
+        unsafe { SetShaderValue(self, loc_index, value, uniform_type as i32) }
+    }
+
+    /// Sets multiple uniform values. Each element must match `uniform_type`.
+    pub fn set_shader_value_v<T: ShaderUniformValue>(
+        &mut self,
+        loc_index: i32,
+        value: &[T],
+        uniform_type: ShaderUniformDataType,
+    ) {
+        assert!(
+            uniform_type == T::UNIFORM_TYPE
+                || (uniform_type == ShaderUniformDataType::SHADER_UNIFORM_SAMPLER2D
+                    && T::UNIFORM_TYPE == ShaderUniformDataType::SHADER_UNIFORM_INT),
+            "shader uniform type does not match the values"
+        );
+        let count = i32::try_from(value.len()).expect("too many shader uniform values");
+        unsafe {
+            SetShaderValueV(
+                self,
+                loc_index,
+                value.as_ptr().cast(),
+                uniform_type as i32,
+                count,
+            )
+        }
+    }
+
+    pub fn set_shader_value_matrix(&self, loc_index: i32, mat: Matrix) {
+        unsafe { SetShaderValueMatrix(self.clone(), loc_index, mat) }
+    }
+
+    pub fn set_shader_value_texture(&self, loc_index: i32, texture: Texture2D) {
+        unsafe { SetShaderValueTexture(self.clone(), loc_index, texture) }
     }
 }
-
-// use crate::Matrix; // or import the matching C-compatible Matrix type
 
 // VrDeviceInfo, Head-Mounted-Display device parameters
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1129,6 +1540,13 @@ pub struct VrDeviceInfo {
     pub chromaAbCorrection: [f32; 4],   // Chromatic aberration correction parameters
 }
 
+impl VrDeviceInfo {
+    #[must_use]
+    pub fn load_vr_stereo_config(self) -> VrStereoConfig {
+        unsafe { LoadVrStereoConfig(self) }
+    }
+}
+
 // VrStereoConfig, VR stereo rendering configuration for simulator
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
@@ -1143,6 +1561,12 @@ pub struct VrStereoConfig {
     pub rightScreenCenter: [f32; 2], // VR right screen center
     pub scale: [f32; 2],             // VR distortion scale
     pub scaleIn: [f32; 2],           // VR distortion scale in
+}
+
+impl VrStereoConfig {
+    pub fn unload_vr_stereo_config(self) {
+        UnloadVrStereoConfig(self);
+    }
 }
 
 #[repr(C)]
@@ -1163,6 +1587,12 @@ pub struct AutomationEvent {
     pub params: [i32; 4], // Event parameters (if required)
 }
 
+impl AutomationEvent {
+    pub fn play_automation_event(self) {
+        unsafe { PlayAutomationEvent(self) }
+    }
+}
+
 // Automation event list
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(C)]
@@ -1180,6 +1610,59 @@ impl AutomationEventList {
             count: 0,
             events: vec![AutomationEvent::default(); cap as usize],
         }
+    }
+
+    pub fn unload_automation_event_list(&mut self) {
+        UnloadAutomationEventList(self);
+    }
+
+    pub fn export_automation_event_list<P: AsRef<std::path::Path>>(self, file_name: P) -> bool {
+        match path_to_str(file_name.as_ref()) {
+            Some(file_name) => unsafe { ExportAutomationEventList(self, file_name) },
+            None => false,
+        }
+    }
+
+    /// Registers this list for recording. Dropping the guard stops recording.
+    pub fn set_automation_event_list(&mut self) -> AutomationEventListRegistration<'_> {
+        assert!(
+            !AUTOMATION_LIST_REGISTERED.swap(true, Ordering::AcqRel),
+            "an automation event list is already registered"
+        );
+        unsafe { SetAutomationEventList(self) }
+        AutomationEventListRegistration {
+            list: self,
+            _not_send: PhantomData,
+        }
+    }
+}
+
+static AUTOMATION_LIST_REGISTERED: AtomicBool = AtomicBool::new(false);
+
+/// Keeps a registered automation list alive until the registration is dropped.
+pub struct AutomationEventListRegistration<'a> {
+    list: &'a mut AutomationEventList,
+    _not_send: PhantomData<Rc<()>>,
+}
+
+impl AutomationEventListRegistration<'_> {
+    pub fn count(&self) -> u32 {
+        self.list.count
+    }
+
+    /// Copies the current events without exposing a reference that recording could invalidate.
+    pub fn snapshot(&self) -> AutomationEventList {
+        self.list.clone()
+    }
+}
+
+impl Drop for AutomationEventListRegistration<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            StopAutomationEventRecording();
+            SetAutomationEventList(std::ptr::null_mut());
+        }
+        AUTOMATION_LIST_REGISTERED.store(false, Ordering::Release);
     }
 }
 

@@ -9,7 +9,6 @@ use raylib::shapes::{
     draw_circle_gradient, draw_line, draw_rectangle, draw_rectangle_lines, draw_rectangle_rec,
 };
 use raylib::text::draw_text;
-use raylib::textures::fade;
 use raylib::types::{Camera2D, Color, KeyboardKey, Rectangle, Vector2};
 
 const MAX_BUILDINGS: usize = 100;
@@ -126,7 +125,7 @@ fn main() {
         draw_rectangle(screen_width - 5, 5, 5, screen_height - 10, RED);
         draw_rectangle(0, screen_height - 5, screen_width, 5, RED);
 
-        draw_rectangle(10, 10, 250, 113, fade(SKYBLUE, 0.5));
+        draw_rectangle(10, 10, 250, 113, SKYBLUE.fade(0.5));
         draw_rectangle_lines(10, 10, 250, 113, BLUE);
 
         draw_text("Free 2D camera controls:", 20, 20, 10, BLACK);

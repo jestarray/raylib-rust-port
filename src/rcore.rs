@@ -1529,7 +1529,7 @@ pub fn WaitTime(seconds: f64) {
 
     #[cfg(feature = "SUPPORT_BUSY_WAIT_LOOP")]
     {
-        while unsafe { GetTime() } < destination_time {}
+        while unsafe { GetTime() } < destinationTime {}
     }
 
     #[cfg(not(feature = "SUPPORT_BUSY_WAIT_LOOP"))]
@@ -1764,6 +1764,7 @@ pub fn SaveFileData(file_name: &str, data: &[u8]) -> bool {
 // Export data to code (.h), returns true on success
 pub fn ExportDataAsCode(data: &[u8], dataSize: i32, fileName: &str) -> bool
 {
+    if dataSize <= 0 || dataSize as usize > data.len() { return false; }
     let mut result = false;
 
     const TEXT_BYTES_PER_LINE: i32 = 20;
@@ -2852,6 +2853,7 @@ pub unsafe fn SetupViewport(width: i32, height: i32)
 // Checking events in current frame and save them into currentEventList
 // NOTE: Recording is by default done at EndDrawing(), before PollInputEvents()
 pub unsafe fn RecordAutomationEvent() {
+    if currentEventList.is_null() { return; }
     let gcurrentEventList = &mut *currentEventList;
     if gcurrentEventList.count == gcurrentEventList.capacity {
         return;

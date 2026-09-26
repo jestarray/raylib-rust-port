@@ -135,11 +135,8 @@ pub unsafe fn ImageFromImage(image: &Image, rec: Rectangle) -> Image
 /// Copy an uncompressed image into RGBA colors. Drop the vector to release it.
 /// Invalid dimensions, null data, and unsupported formats return an empty vector.
 ///
-/// # Safety
-/// `image.data` must point to readable storage for the specified dimensions and
-/// pixel format for the duration of this call.
 #[allow(clippy::chunks_exact_to_as_chunks)]
-pub unsafe fn LoadImageColors(image: &Image) -> Vec<Color> {
+pub fn LoadImageColors(image: &Image) -> Vec<Color> {
     if image.is_data_null() || image.width <= 0 || image.height <= 0 {
         return Vec::new();
     }
@@ -188,7 +185,11 @@ pub unsafe fn LoadImageColors(image: &Image) -> Vec<Color> {
         }
     };
 
-    let bytes = std::slice::from_raw_parts(image.data.as_ptr(), byte_count);
+    if image.data.len() < byte_count {
+        warn!("IMAGE: Pixel buffer is shorter than its dimensions and format require");
+        return Vec::new();
+    }
+    let bytes = &image.data[..byte_count];
     let mut colors = Vec::with_capacity(pixel_count);
     for pixel in bytes.chunks_exact(stride) {
         let color = match image.format {

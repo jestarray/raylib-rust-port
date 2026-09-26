@@ -7,7 +7,7 @@ use raylib::rcolors::{BLACK, GREEN, MAROON, RAYWHITE};
 use raylib::sdl::window_should_close;
 use raylib::shapes::draw_rectangle;
 use raylib::text::{draw_fps, draw_text};
-use raylib::textures::{draw_texture, load_texture, unload_texture};
+use raylib::textures::{draw_texture, load_texture};
 use raylib::types::{Color, KeyboardKey, MouseButton, Texture2D, Vector2};
 
 // This is the maximum amount of elements (quads) per batch
@@ -129,7 +129,7 @@ fn main() {
     }
 
     // De-Initialization
-    unload_texture(&mut tex_bunny); // Unload bunny texture
+    tex_bunny.unload_texture(); // Unload bunny texture
 
     close_window(); // Close window and OpenGL context
 }

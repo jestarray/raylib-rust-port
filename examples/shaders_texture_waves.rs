@@ -1,11 +1,11 @@
 use raylib::core::{
     begin_drawing, begin_shader_mode, clear_background, close_window, end_drawing, end_shader_mode,
-    get_frame_time, get_screen_height, get_screen_width, get_shader_location, init_window,
-    load_shader, set_shader_value, set_target_fps, unload_shader,
+    get_frame_time, get_screen_height, get_screen_width, init_window,
+    load_shader, set_target_fps,
 };
 use raylib::rcolors::{RAYWHITE, WHITE};
 use raylib::sdl::window_should_close;
-use raylib::textures::{draw_texture, load_texture, unload_texture};
+use raylib::textures::{draw_texture, load_texture};
 use raylib::types::ShaderUniformDataType;
 
 #[cfg(target_os = "android")]
@@ -35,13 +35,13 @@ fn main() {
         Some(format!("resources/shaders/glsl{GLSL_VERSION}/wave.fs")),
     );
 
-    let seconds_loc = get_shader_location(&shader, "seconds");
-    let freq_x_loc = get_shader_location(&shader, "freqX");
-    let freq_y_loc = get_shader_location(&shader, "freqY");
-    let amp_x_loc = get_shader_location(&shader, "ampX");
-    let amp_y_loc = get_shader_location(&shader, "ampY");
-    let speed_x_loc = get_shader_location(&shader, "speedX");
-    let speed_y_loc = get_shader_location(&shader, "speedY");
+    let seconds_loc = shader.get_shader_location("seconds");
+    let freq_x_loc = shader.get_shader_location("freqX");
+    let freq_y_loc = shader.get_shader_location("freqY");
+    let amp_x_loc = shader.get_shader_location("ampX");
+    let amp_y_loc = shader.get_shader_location("ampY");
+    let speed_x_loc = shader.get_shader_location("speedX");
+    let speed_y_loc = shader.get_shader_location("speedY");
 
     // Shader uniform values that can be updated at any time
     let freq_x: f32 = 25.0;
@@ -52,50 +52,42 @@ fn main() {
     let speed_y: f32 = 8.0;
 
     let screen_size: [f32; 2] = [get_screen_width() as f32, get_screen_height() as f32];
-    let size_loc = get_shader_location(&shader, "size");
+    let size_loc = shader.get_shader_location("size");
 
-    // The raw bindings took a `*const c_void` plus a uniform type; the safe wrappers take a
-    // reference to the value, so no pointer casts are needed here.
-    set_shader_value(
-        &mut shader,
+    // Shader uniform methods accept values whose types match the declared uniform type.
+    shader.set_shader_value(
         size_loc,
-        &screen_size,
+        screen_size,
         ShaderUniformDataType::SHADER_UNIFORM_VEC2,
     );
-    set_shader_value(
-        &mut shader,
+    shader.set_shader_value(
         freq_x_loc,
-        &freq_x,
+        freq_x,
         ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
     );
-    set_shader_value(
-        &mut shader,
+    shader.set_shader_value(
         freq_y_loc,
-        &freq_y,
+        freq_y,
         ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
     );
-    set_shader_value(
-        &mut shader,
+    shader.set_shader_value(
         amp_x_loc,
-        &amp_x,
+        amp_x,
         ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
     );
-    set_shader_value(
-        &mut shader,
+    shader.set_shader_value(
         amp_y_loc,
-        &amp_y,
+        amp_y,
         ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
     );
-    set_shader_value(
-        &mut shader,
+    shader.set_shader_value(
         speed_x_loc,
-        &speed_x,
+        speed_x,
         ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
     );
-    set_shader_value(
-        &mut shader,
+    shader.set_shader_value(
         speed_y_loc,
-        &speed_y,
+        speed_y,
         ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
     );
 
@@ -108,10 +100,9 @@ fn main() {
         // Update
         seconds += get_frame_time();
 
-        set_shader_value(
-            &mut shader,
+        shader.set_shader_value(
             seconds_loc,
-            &seconds,
+            seconds,
             ShaderUniformDataType::SHADER_UNIFORM_FLOAT,
         );
 
@@ -131,8 +122,8 @@ fn main() {
     }
 
     // De-Initialization
-    unload_shader(&mut shader);
-    unload_texture(&mut texture);
+    shader.unload_shader();
+    texture.unload_texture();
 
     close_window();
 }

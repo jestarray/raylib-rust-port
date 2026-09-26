@@ -14,7 +14,7 @@ use raylib::shapes::{
     draw_rectangle_rounded, draw_triangle,
 };
 use raylib::text::draw_text;
-use raylib::textures::{draw_texture, load_texture, unload_texture};
+use raylib::textures::{draw_texture, load_texture};
 use raylib::types::{
     ConfigFlags, GamepadAxis, GamepadButton, KeyboardKey, MouseButton, Rectangle, Vector2,
 };
@@ -529,8 +529,8 @@ fn main() {
     }
 
     // De-Initialization
-    unload_texture(&mut tex_ps3_pad);
-    unload_texture(&mut tex_xbox_pad);
+    tex_ps3_pad.unload_texture();
+    tex_xbox_pad.unload_texture();
 
     close_window();
 }

@@ -2657,6 +2657,7 @@ pub unsafe fn rlUpdateTexture(id: u32, offsetX: i32, offsetY: i32, width: i32, h
 
     if (glInternalFormat != 0) && (format < PixelFormat::PIXELFORMAT_COMPRESSED_DXT1_RGB as i32)
     {
+        gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
         gl::TexSubImage2D(gl::TEXTURE_2D, 0, offsetX, offsetY, width, height, glFormat, glType, data);
     }
     else { warn!("TEXTURE: [ID {}] Failed to update for current texture format ({})", id, format); }
