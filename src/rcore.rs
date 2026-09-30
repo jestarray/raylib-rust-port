@@ -117,6 +117,8 @@ pub struct KeyboardData {
     pub currentKeyState: [i8; MAX_KEYBOARD_KEYS],
     pub previousKeyState: [i8; MAX_KEYBOARD_KEYS],
     pub keyRepeatInFrame: [i8; MAX_KEYBOARD_KEYS],
+    pub keyPressedInFrame: [i8; MAX_KEYBOARD_KEYS],
+    pub keyReleasedInFrame: [i8; MAX_KEYBOARD_KEYS],
     pub keyPressedQueue: [i32; MAX_KEY_PRESSED_QUEUE],
     pub keyPressedQueueCount: i32,
     pub charPressedQueue: [i32; MAX_CHAR_PRESSED_QUEUE],
@@ -129,6 +131,8 @@ impl Default for KeyboardData {
             currentKeyState: [0; MAX_KEYBOARD_KEYS],
             previousKeyState: [0; MAX_KEYBOARD_KEYS],
             keyRepeatInFrame: [0; MAX_KEYBOARD_KEYS],
+            keyPressedInFrame: [0; MAX_KEYBOARD_KEYS],
+            keyReleasedInFrame: [0; MAX_KEYBOARD_KEYS],
             keyPressedQueue: [0; MAX_KEY_PRESSED_QUEUE],
             keyPressedQueueCount: 0,
             charPressedQueue: [0; MAX_CHAR_PRESSED_QUEUE],
@@ -262,6 +266,8 @@ pub static mut CORE: CoreData = CoreData {
             currentKeyState: [0; MAX_KEYBOARD_KEYS],
             previousKeyState: [0; MAX_KEYBOARD_KEYS],
             keyRepeatInFrame: [0; MAX_KEYBOARD_KEYS],
+            keyPressedInFrame: [0; MAX_KEYBOARD_KEYS],
+            keyReleasedInFrame: [0; MAX_KEYBOARD_KEYS],
             keyPressedQueue: [0; MAX_KEY_PRESSED_QUEUE],
             keyPressedQueueCount: 0,
             charPressedQueue: [0; MAX_CHAR_PRESSED_QUEUE],
@@ -2401,7 +2407,8 @@ pub unsafe fn IsKeyPressed(key: KeyboardKey) -> bool
 
     if ((key as i32 > 0) && ((key as i32) < MAX_KEYBOARD_KEYS as i32))
     {
-        if ((CORE.Input.Keyboard.previousKeyState[(key) as usize] == 0) && (CORE.Input.Keyboard.currentKeyState[(key) as usize] == 1)) { pressed = true; }
+        if CORE.Input.Keyboard.keyPressedInFrame[key as usize] != 0
+            || ((CORE.Input.Keyboard.previousKeyState[key as usize] == 0) && (CORE.Input.Keyboard.currentKeyState[key as usize] == 1)) { pressed = true; }
     }
 
     return pressed;
@@ -2440,7 +2447,8 @@ pub unsafe fn IsKeyReleased(key: i32) -> bool
 
     if ((key > 0) && (key < MAX_KEYBOARD_KEYS as i32))
     {
-        if ((CORE.Input.Keyboard.previousKeyState[(key) as usize] == 1) && (CORE.Input.Keyboard.currentKeyState[(key) as usize] == 0)) { released = true; }
+        if CORE.Input.Keyboard.keyReleasedInFrame[key as usize] != 0
+            || ((CORE.Input.Keyboard.previousKeyState[key as usize] == 1) && (CORE.Input.Keyboard.currentKeyState[key as usize] == 0)) { released = true; }
     }
 
     return released;

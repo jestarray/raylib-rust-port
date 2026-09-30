@@ -1272,6 +1272,8 @@ pub unsafe fn PollInputEvents()
     {
         CORE.Input.Keyboard.previousKeyState[i] = CORE.Input.Keyboard.currentKeyState[i];
         CORE.Input.Keyboard.keyRepeatInFrame[i] = 0;
+        CORE.Input.Keyboard.keyPressedInFrame[i] = 0;
+        CORE.Input.Keyboard.keyReleasedInFrame[i] = 0;
     }
 
     // Register previous mouse states
@@ -1381,6 +1383,10 @@ pub unsafe fn PollInputEvents()
                         CORE.Input.Keyboard.keyPressedQueueCount += 1;
                     }
 
+                    if CORE.Input.Keyboard.currentKeyState[key as usize] == 0 {
+                        CORE.Input.Keyboard.keyPressedInFrame[key as usize] = 1;
+                    }
+
                     CORE.Input.Keyboard.currentKeyState[key as usize] = 1;
                 }
 
@@ -1392,7 +1398,12 @@ pub unsafe fn PollInputEvents()
             },
             value if value == SDL_EventType::KEY_UP => {
                 let key: i32 = ConvertScancodeToKey(event.key.scancode);
-                if (key != KEY_NULL as i32) { CORE.Input.Keyboard.currentKeyState[key as usize] = 0; }
+                if (key != KEY_NULL as i32) {
+                    if CORE.Input.Keyboard.currentKeyState[key as usize] != 0 {
+                        CORE.Input.Keyboard.keyReleasedInFrame[key as usize] = 1;
+                    }
+                    CORE.Input.Keyboard.currentKeyState[key as usize] = 0;
+                }
             },
             value if value == SDL_EventType::TEXT_INPUT => {
                 // NOTE: event.text.text data comes an UTF-8 text sequence but register codepoints (int)
