@@ -812,6 +812,10 @@ pub unsafe fn SetWindowFocused()
     SDL_RaiseWindow(platform.window);
 }
 
+pub(crate) unsafe fn GetSDLWindow() -> *mut SDL_Window {
+    platform.window
+}
+
 // Get native window handle
 // NOTE: Handle type depends on OS and windowing system
 pub unsafe fn GetWindowHandle() -> *mut std::ffi::c_void

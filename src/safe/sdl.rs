@@ -13,7 +13,9 @@
 //! The raw `rsdl` module is private, so this module is the only way to reach the SDL
 //! window, monitor and platform helpers from outside the crate.
 
-use std::ffi::{CStr, c_void};
+use std::ffi::{CStr, CString, c_char, c_void};
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, Sender};
 
 use sdl3_sys::events::{SDL_EventType, SDL_TouchFingerEvent};
 use sdl3_sys::scancode::SDL_Scancode;
@@ -23,6 +25,94 @@ use sdl3_sys::video::{SDL_DisplayID, SDL_DisplayMode};
 
 use crate::rsdl::*;
 use crate::types::{ConfigFlags, Image, KeyboardKey, MouseCursor, Vector2};
+
+/// A selected file, cancellation (`Ok(None)`), or an SDL error.
+pub type FileDialogResult = Result<Option<PathBuf>, String>;
+
+struct FileDialogContext {
+    sender: Sender<FileDialogResult>,
+    // SDL borrows these until the callback returns, including the filter array itself.
+    _name: CString,
+    _pattern: CString,
+    location: Option<CString>,
+    filter: sdl3_sys::dialog::SDL_DialogFileFilter,
+}
+
+unsafe extern "C" fn open_file_dialog_callback(
+    userdata: *mut c_void,
+    filelist: *const *const c_char,
+    _filter: i32,
+) {
+    // SDL calls this exactly once. Copy its borrowed path before returning, and
+    // release the context even if the UI has already dropped the receiver.
+    let context = unsafe { Box::from_raw(userdata.cast::<FileDialogContext>()) };
+    let result = if filelist.is_null() {
+        let error = unsafe { CStr::from_ptr(sdl3_sys::error::SDL_GetError()) };
+        Err(error.to_string_lossy().into_owned())
+    } else if unsafe { (*filelist).is_null() } {
+        Ok(None)
+    } else {
+        let path = unsafe { CStr::from_ptr(*filelist) };
+        Ok(Some(PathBuf::from(path.to_string_lossy().into_owned())))
+    };
+    let _ = context.sender.send(result);
+}
+
+/// Opens a single-file chooser asynchronously, modal for the raylib window.
+///
+/// Call on SDL's main thread and poll the returned receiver from the UI loop.
+/// `pattern` is an SDL extension filter such as `"png"` or `"png;jpg"`.
+/// Dropping the receiver safely discards the eventual result.
+pub fn show_open_file_dialog(
+    name: &str,
+    pattern: &str,
+    location: Option<&Path>,
+) -> Result<Receiver<FileDialogResult>, String> {
+    if !unsafe { sdl3_sys::init::SDL_IsMainThread() } {
+        return Err("File dialogs must be opened on SDL's main thread".into());
+    }
+    let name = CString::new(name).map_err(|err| err.to_string())?;
+    let pattern = CString::new(pattern).map_err(|err| err.to_string())?;
+    let location = location
+        .map(|path| {
+            let path = path.to_str().ok_or("File dialog location is not UTF-8")?;
+            CString::new(path).map_err(|err| err.to_string())
+        })
+        .transpose()?;
+    let (sender, receiver) = mpsc::channel();
+    let context = Box::new(FileDialogContext {
+        sender,
+        filter: sdl3_sys::dialog::SDL_DialogFileFilter {
+            name: name.as_ptr(),
+            pattern: pattern.as_ptr(),
+        },
+        _name: name,
+        _pattern: pattern,
+        location,
+    });
+    let context = Box::into_raw(context);
+    unsafe {
+        // The callback may run before SDL_ShowOpenFileDialog returns. Do not
+        // access the context after handing ownership to SDL.
+        sdl3_sys::dialog::SDL_ShowOpenFileDialog(
+            Some(open_file_dialog_callback),
+            context.cast(),
+            GetSDLWindow(),
+            &(*context).filter,
+            1,
+            (*context)
+                .location
+                .as_ref()
+                .map_or(std::ptr::null(), |s| s.as_ptr()),
+            false,
+        );
+    }
+    Ok(receiver)
+}
+
+#[cfg(test)]
+#[path = "../../tests/support/file_dialog.rs"]
+mod file_dialog_tests;
 
 /// Returns `None` when there is no controller at `joystick_index`; otherwise the name is
 /// copied out of SDL's borrowed `*const c_char` into an owned [`String`].
