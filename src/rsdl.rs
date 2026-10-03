@@ -61,6 +61,9 @@ static mut platform: PlatformData = PlatformData {
     windowHandleX11: 0,
 };   // Platform specific data
 
+// Own one cursor per shape; platform.cursor only borrows the selected entry.
+static mut mouseCursors: [*mut SDL_Cursor; CursorsLUT.len()] = [std::ptr::null_mut(); CursorsLUT.len()];
+
 static mapScancodeToKey: [i32; SCANCODE_MAPPED_NUM] = [
     KEY_NULL as i32,           // SDL_SCANCODE_UNKNOWN
     0,
@@ -1211,8 +1214,11 @@ pub unsafe fn SetMousePosition(x: i32, y: i32)
 // Set mouse cursor
 pub unsafe fn SetMouseCursor(cursor: i32)
 {
-    platform.cursor = SDL_CreateSystemCursor(CursorsLUT[cursor as usize]);
-    SDL_SetCursor(platform.cursor);
+    let Some(shape) = CursorsLUT.get(cursor as usize) else { return; };
+    let cached = &mut mouseCursors[cursor as usize];
+    if cached.is_null() { *cached = SDL_CreateSystemCursor(*shape); }
+    if cached.is_null() || !SDL_SetCursor(*cached) { return; }
+    platform.cursor = *cached;
 
     CORE.Input.Mouse.cursor = cursor;
 }
@@ -1924,7 +1930,13 @@ pub unsafe fn InitPlatform() -> i32
 // Close platform
 pub unsafe fn ClosePlatform()
 {
-    SDL_DestroyCursor(platform.cursor); // Free cursor
+    for cursor in &mut mouseCursors {
+        if !cursor.is_null() {
+            SDL_DestroyCursor(*cursor);
+            *cursor = std::ptr::null_mut();
+        }
+    }
+    platform.cursor = std::ptr::null_mut();
     if !platform.glContext.is_null() { SDL_GL_DestroyContext(platform.glContext); } // Deinitialize OpenGL context
     SDL_DestroyWindow(platform.window);
     SDL_Quit(); // Deinitialize SDL internal global state
