@@ -472,7 +472,6 @@ impl Image {
     pub fn load_font_from_image(&self, key: Color, first_char: i32) -> Font {
         unsafe { LoadFontFromImage(self, key, first_char) }
     }
-
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -569,6 +568,11 @@ impl Texture {
 
     pub fn set_shapes_texture(&self, rec: Rectangle) {
         unsafe { SetShapesTexture(*self, rec) }
+    }
+    #[must_use]
+    /// produces the width and height
+    pub fn wh(&self) -> Vector2 {
+        Vector2::new(self.width as f32, self.height as f32)
     }
 }
 
