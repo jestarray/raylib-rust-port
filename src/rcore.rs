@@ -759,8 +759,15 @@ pub unsafe fn EndDrawing()
 {
     if (IsKeyPressed(KeyboardKey::KEY_F12))
     {
-        TakeScreenshot(&format!("screenshot_{}.png", GetUTCString()));
-        screenshotCounter += 1;
+        let directory = std::path::Path::new(&GetWorkingDirectory()).join("screenshots");
+        match std::fs::create_dir_all(&directory) {
+            Ok(()) => {
+                let path = directory.join(format!("screenshot_{}.png", GetUTCString()));
+                TakeScreenshot(&path.to_string_lossy());
+                screenshotCounter += 1;
+            }
+            Err(error) => warn!("SYSTEM: Could not create screenshot directory [{}]: {}", directory.display(), error),
+        }
     }
 }
 
@@ -1597,14 +1604,10 @@ pub unsafe fn TakeScreenshot(fileName: &str)
     let imgData = rlReadScreenPixels(imageSize.x, imageSize.y);
     let image = Image { data: imgData, width: imageSize.x, height: imageSize.y, mipmaps: 1, format: PixelFormat::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32 };
 
-    let mut path = String::new();
-    if (!IsPathAbsolute(fileName)) { path = format!("{}/{}", CStr::from_ptr(CORE.Storage.basePath).to_string_lossy(), fileName); }
-    else { path = fileName.to_owned(); }
+    ExportImage(&image, fileName); // WARNING: Module required: rtextures
 
-    ExportImage(&image, &path); // WARNING: Module required: rtextures
-
-    if (FileExists(&path)) { info!("SYSTEM: [{}] Screenshot taken successfully", path); }
-    else { warn!("SYSTEM: [{}] Screenshot could not be saved", path); }
+    if (FileExists(fileName)) { info!("SYSTEM: [{}] Screenshot taken successfully", fileName); }
+    else { warn!("SYSTEM: [{}] Screenshot could not be saved", fileName); }
 }
 
 // Set up window configuration flags (view FLAGS)
@@ -2384,8 +2387,15 @@ pub unsafe fn PlayAutomationEvent(event: AutomationEvent)
     #[cfg(feature = "SUPPORT_SCREEN_CAPTURE")]
             x if x == AutomationEventType::ACTION_TAKE_SCREENSHOT as u32 =>
             {
-                TakeScreenshot(&format!("screenshot{:03}.png", screenshotCounter));
-                screenshotCounter += 1;
+                let directory = std::path::Path::new(&GetWorkingDirectory()).join("screenshots");
+                match std::fs::create_dir_all(&directory) {
+                    Ok(()) => {
+                        let path = directory.join(format!("screenshot{:03}.png", screenshotCounter));
+                        TakeScreenshot(&path.to_string_lossy());
+                        screenshotCounter += 1;
+                    }
+                    Err(error) => warn!("SYSTEM: Could not create screenshot directory [{}]: {}", directory.display(), error),
+                }
             }
             x if x == AutomationEventType::ACTION_SETTARGETFPS as u32 => { SetTargetFPS(event.params[0]); }
             _ => {}
