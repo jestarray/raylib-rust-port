@@ -1248,7 +1248,10 @@ pub unsafe fn PollInputEvents()
     CORE.Input.Mouse.currentWheelMove.y = 0.0;
 
     // Register previous mouse position
-    if (CORE.Input.Mouse.cursorLocked) { CORE.Input.Mouse.currentPosition = Vector2::new(0.0, 0.0); }
+    if (CORE.Input.Mouse.cursorLocked) { 
+        CORE.Input.Mouse.currentPosition = Vector2::new(0.0, 0.0); 
+        CORE.Input.Mouse.previousPosition = Vector2::new(0.0, 0.0);
+    }
     else { CORE.Input.Mouse.previousPosition = CORE.Input.Mouse.currentPosition; }
 
     // Reset last gamepad button/axis registered state
@@ -1462,9 +1465,8 @@ pub unsafe fn PollInputEvents()
             value if value == SDL_EventType::MOUSE_MOTION => {
                 if (CORE.Input.Mouse.cursorLocked)
                 {
-                    CORE.Input.Mouse.currentPosition.x = (event.motion.xrel as f32);
-                    CORE.Input.Mouse.currentPosition.y = (event.motion.yrel as f32);
-                    CORE.Input.Mouse.previousPosition = Vector2::new(0.0, 0.0);
+                    CORE.Input.Mouse.currentPosition.x += event.motion.xrel;
+                    CORE.Input.Mouse.currentPosition.y += event.motion.yrel;
                 }
                 else
                 {
